@@ -4,39 +4,39 @@ This document tracks the intended scope for the initial Sotto desktop product. T
 
 ## Core interaction
 
-- [ ] Global voice-input shortcut
-- [ ] Hold-to-talk / press-to-talk mode
-- [ ] Toggle push-to-talk mode
-- [ ] Non-activating overlay with live audio indicator
-- [ ] Local recording save
+- [x] Global voice-input shortcut
+- [x] Hold-to-talk / press-to-talk mode
+- [x] Toggle push-to-talk mode
+- [x] Non-activating overlay with live audio indicator
+- [x] Local recording save
 
 ## Audio import and export
 
-- [ ] Import audio: `.mp3`, `.m4a`, `.wav`, `.webm`
+- [x] Import audio: `.mp3`, `.m4a`, `.wav`, `.webm`
 - [ ] Export transcript to `.txt`
 
 ## Transcript history
 
-- [ ] Transcript history
-- [ ] History search
+- [x] Transcript history
+- [x] History search
 - [ ] Playback original audio
 - [ ] Re-transcribe with another model
 - [ ] Copy transcript
 
 ## Storage and lifecycle
 
-- [ ] Storage cap in MB for history/audio/transcripts, excluding downloaded model files
-- [ ] Model manager
+- [x] Storage cap in MB for history/audio/transcripts, excluding downloaded model files
+- [x] Model manager
 
 ## Model support
 
 - [ ] Local Whisper-family models
-- [ ] NVIDIA Parakeet model section
+- [x] NVIDIA Parakeet model section
 
 ## Providers
 
-- [ ] Cloud provider section for OpenAI
-- [ ] Cloud provider section for Groq
+- [x] Cloud provider section for OpenAI
+- [x] Cloud provider section for Groq
 
 ## App surfaces
 
@@ -55,9 +55,25 @@ This document tracks the intended scope for the initial Sotto desktop product. T
 - [x] UserDefaults-backed mock preferences for recording mode, model selection, storage settings, provider toggles, and launch-at-login placeholder state
 - [x] Buy button placeholder kept visibly non-functional
 
+## Voice Input completion in this task
+
+- [x] AudioRecorderService with microphone permission flow, local file saving, duration, file size, and live level data
+- [x] VoiceInputController explicit states: idle, requestingPermission, recording, stopping, pendingTranscription, failed
+- [x] Configurable global shortcut capture and Carbon-based registration
+- [x] Hold to Talk behavior
+- [x] Toggle to Talk behavior
+- [x] Non-activating floating recording overlay
+- [x] Pending transcription history handoff after recording stops
+- [x] Tests for controller transitions, recording mode behavior, and recording storage path generation
+
+## Permissions and follow-up notes
+
+- Microphone access is required before audio recording can start.
+- Global hotkeys are registered while Sotto is running and do not require the main window to stay focused.
+- Input device selection is a documented follow-up. The current build records from the system default microphone.
+
 ## Current blockers
 
 - Local transcription is blocked by missing model runtime integration, download management, and inference orchestration.
-- Audio recording is blocked by missing capture/session infrastructure and UI wiring.
 - Cloud providers are blocked by this scaffold intentionally excluding networking and credential flows.
 - Build validation in the current environment is blocked until the Apple/Xcode license is accepted with `sudo xcodebuild -license`.

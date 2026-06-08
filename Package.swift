@@ -23,6 +23,10 @@ let package = Package(
         .target(
             name: "SottoKit"
         ),
+        .testTarget(
+            name: "SottoKitTests",
+            dependencies: ["SottoKit"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
