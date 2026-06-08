@@ -16,12 +16,12 @@ let package = Package(
             name: "Sotto",
             dependencies: ["SottoKit"]
         ),
+        .executableTarget(
+            name: "SottoSmokeChecks",
+            dependencies: ["SottoKit"]
+        ),
         .target(
             name: "SottoKit"
-        ),
-        .testTarget(
-            name: "SottoKitTests",
-            dependencies: ["SottoKit"]
         ),
     ],
     swiftLanguageModes: [.v6]

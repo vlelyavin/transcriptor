@@ -32,12 +32,13 @@ swift run Sotto
 ## Test
 
 ```bash
-swift test
+swift run SottoSmokeChecks
 ```
 
 ## Current feature status
 
 - App shell: implemented
+- Smoke checks: implemented
 - Main window and sidebar navigation: implemented
 - Native macOS Settings window: implemented as placeholder UI
 - Transcript history screen: placeholder
@@ -53,7 +54,7 @@ swift test
 
 - macOS 14 or newer
 - Apple Swift 6.3 or newer
-- Full Xcode is required for `xcodebuild`; this repository was scaffolded in an environment with Command Line Tools only, so validation here used `swift build` and `swift test`
+- Full Xcode is required for `xcodebuild`; this repository was scaffolded in an environment with Command Line Tools only, so validation here used `swift build` and `swift run SottoSmokeChecks`
 - API keys must be stored in the macOS Keychain only when provider support is implemented
 
 ## Notes
