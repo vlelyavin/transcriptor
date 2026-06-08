@@ -3,11 +3,12 @@ import UniformTypeIdentifiers
 
 public struct ImportAudioView: View {
     @State private var isDropTargeted = false
-    @State private var showNotImplementedMessage = false
+    @State private var isFileImporterPresented = false
+    @Bindable private var appState: AppState
 
-    private let recentImports = RecentImportItem.mockItems
-
-    public init() {}
+    public init(appState: AppState) {
+        self.appState = appState
+    }
 
     public var body: some View {
         ScrollView {
@@ -25,7 +26,7 @@ public struct ImportAudioView: View {
                         Text("Transcribe any audio file.")
                             .font(.system(size: 42, weight: .bold))
 
-                        Text("Bring voice memos, meeting recordings, podcast clips, or any supported local file into Sotto. The import UI is ready even though real ingestion is still mocked.")
+                        Text("Imported files are copied into Sotto-managed local storage so history remains durable across app restarts.")
                             .font(.title3)
                             .foregroundStyle(.secondary)
 
@@ -35,33 +36,45 @@ public struct ImportAudioView: View {
                         ], spacing: 16) {
                             importCategoryCard(
                                 title: "Voice Memos",
+                                detail: "MP3 or M4A from the Finder",
                                 systemImage: "waveform.and.mic",
                                 tint: .orange
                             )
                             importCategoryCard(
                                 title: "Meeting Recordings",
+                                detail: "WAV for the cleanest local playback",
                                 systemImage: "video",
                                 tint: .blue
                             )
                             importCategoryCard(
-                                title: "Podcast Episodes",
-                                systemImage: "headphones",
-                                tint: .purple
+                                title: "Local Audio Archive",
+                                detail: "Recent imports stay in Application Support",
+                                systemImage: "internaldrive",
+                                tint: .green
                             )
                             importCategoryCard(
-                                title: "Any Audio File",
-                                systemImage: "music.note",
-                                tint: .green
+                                title: "WebM Status",
+                                detail: "Visible in the picker, but not transcodable yet",
+                                systemImage: "exclamationmark.triangle",
+                                tint: .yellow
                             )
                         }
 
                         HStack(spacing: 10) {
                             Button("Import Audio") {
-                                showNotImplementedMessage = true
+                                isFileImporterPresented = true
                             }
                             .keyboardShortcut("I", modifiers: [.command, .shift])
 
                             shortcutBadge
+                        }
+
+                        if let importFeedbackMessage = appState.importFeedbackMessage {
+                            UnavailableActionBanner(message: importFeedbackMessage)
+                        } else {
+                            Text("`.webm` files remain visible for parity, but they are imported into storage as failed items because this build does not yet ship a reliable WebM decoder/transcoder.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,26 +82,34 @@ public struct ImportAudioView: View {
 
                 SectionCard(
                     title: "Recent Imports",
-                    subtitle: "Mock rows that preview the future local import queue."
+                    subtitle: "These rows come from the real persisted history store."
                 ) {
-                    VStack(spacing: 10) {
-                        ForEach(recentImports) { item in
-                            recentImportRow(item: item)
+                    if appState.recentImports.isEmpty {
+                        Text("No audio imports yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(appState.recentImports) { item in
+                                recentImportRow(item: item)
+                            }
                         }
                     }
                 }
-
-                UnavailableActionBanner(
-                    message: "Real file ingestion, waveform parsing, and transcription handoff are not implemented yet."
-                )
             }
             .padding(24)
         }
         .navigationTitle("Import Audio")
-        .alert("Import Audio", isPresented: $showNotImplementedMessage) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("The import UI is wired, but real file ingestion is not implemented yet.")
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: supportedImportContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case let .success(urls):
+                appState.importAudio(from: urls)
+            case let .failure(error):
+                appState.importFeedbackMessage = error.localizedDescription
+            }
         }
     }
 
@@ -108,11 +129,7 @@ public struct ImportAudioView: View {
 
             HStack(spacing: 10) {
                 ForEach(SupportedImportFormat.allCases) { format in
-                    Text(format.fileExtensionLabel)
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    formatChip(for: format)
                 }
             }
         }
@@ -128,11 +145,10 @@ public struct ImportAudioView: View {
                 .padding(12)
         }
         .onTapGesture {
-            showNotImplementedMessage = true
+            isFileImporterPresented = true
         }
-        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { _ in
-            showNotImplementedMessage = true
-            return false
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
+            handleDroppedProviders(providers)
         }
     }
 
@@ -153,7 +169,26 @@ public struct ImportAudioView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func importCategoryCard(title: String, systemImage: String, tint: Color) -> some View {
+    private var supportedImportContentTypes: [UTType] {
+        [
+            UTType(filenameExtension: "mp3") ?? .audio,
+            UTType(filenameExtension: "m4a") ?? .audio,
+            UTType(filenameExtension: "wav") ?? .audio,
+            UTType(filenameExtension: "webm") ?? .data
+        ]
+    }
+
+    private func formatChip(for format: SupportedImportFormat) -> some View {
+        let backgroundStyle = format == .webm ? Color.yellow.opacity(0.14) : Color.secondary.opacity(0.12)
+
+        return Text(format.fileExtensionLabel)
+            .font(.system(.body, design: .monospaced))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(backgroundStyle, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func importCategoryCard(title: String, detail: String, systemImage: String, tint: Color) -> some View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.title3)
@@ -161,8 +196,14 @@ public struct ImportAudioView: View {
                 .frame(width: 56, height: 56)
                 .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            Text(title)
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
         }
@@ -176,15 +217,15 @@ public struct ImportAudioView: View {
 
     private func recentImportRow(item: RecentImportItem) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: "waveform")
-                .foregroundStyle(.secondary)
+            Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
+                .foregroundStyle(item.status == .failed ? .yellow : .secondary)
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.fileName)
                     .font(.headline)
 
-                Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds))")
+                Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -202,6 +243,34 @@ public struct ImportAudioView: View {
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
+        let group = DispatchGroup()
+        let collector = DroppedURLCollector()
+
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                defer { group.leave() }
+
+                if let data = item as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    collector.append(url)
+                } else if let url = item as? URL {
+                    collector.append(url)
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            let droppedURLs = collector.urls
+            if !droppedURLs.isEmpty {
+                appState.importAudio(from: droppedURLs)
+            }
+        }
+
+        return true
+    }
+
     private func durationLabel(_ duration: Int) -> String {
         let minutes = duration / 60
         let seconds = duration % 60
@@ -215,10 +284,27 @@ public struct ImportAudioView: View {
     }
 }
 
+private final class DroppedURLCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URL] = []
+
+    var urls: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ url: URL) {
+        lock.lock()
+        storage.append(url)
+        lock.unlock()
+    }
+}
+
 #if DEBUG
 struct ImportAudioView_Previews: PreviewProvider {
     static var previews: some View {
-        ImportAudioView()
+        ImportAudioView(appState: .preview)
             .frame(width: 1280, height: 860)
     }
 }

@@ -67,9 +67,9 @@ public struct MainWindowView: View {
         case .overview:
             OverviewView(appState: appState)
         case .history:
-            HistoryView(historyStore: appState.historyStore)
+            HistoryView(appState: appState)
         case .importAudio:
-            ImportAudioView()
+            ImportAudioView(appState: appState)
         case .models:
             ModelsView(appState: appState)
         case .settings:
