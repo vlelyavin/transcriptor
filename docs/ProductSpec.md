@@ -21,7 +21,7 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 - [x] Transcript history
 - [x] History search
 - [x] Playback original audio
-- [ ] Re-transcribe with another model
+- [x] Re-transcribe with another model
 - [x] Copy transcript
 
 ## Storage and lifecycle
@@ -34,7 +34,7 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 
 ## Model support
 
-- [ ] Local Whisper-family models
+- [x] Local Whisper-family models
 - [x] NVIDIA Parakeet model section
 
 ## Providers
@@ -46,20 +46,20 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 
 - [x] Native macOS Settings window
 - [x] Main window shell
-- [x] History screen with search, filters, real persisted rows, and detail pane
+- [x] History screen with search, filters, real persisted rows, progress, and detail pane
 - [x] Import Audio screen with drag-and-drop zone, supported format chips, shortcut display, and recent persisted imports
-- [x] Models screen with WhisperKit, NVIDIA Parakeet, and Cloud Models sections
+- [x] Models screen with WhisperKit, Parakeet, and Cloud Models sections
 - [x] Settings hub entry in the main window
 - [x] Native Settings window with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
 
-## UI completion in this task
+## UI completion
 
 - [x] Sidebar-based main navigation for Sotto
 - [x] Import Audio command with `Cmd+Shift+I`
-- [x] UserDefaults-backed mock preferences for recording mode, model selection, storage settings, provider toggles, and launch-at-login placeholder state
+- [x] UserDefaults-backed preferences for recording mode, model selection, storage settings, provider toggles, and launch-at-login placeholder state
 - [x] Buy button placeholder kept visibly non-functional
 
-## Voice Input completion in this task
+## Voice input completion
 
 - [x] AudioRecorderService with microphone permission flow, local file saving, duration, file size, and live level data
 - [x] VoiceInputController explicit states: idle, requestingPermission, recording, stopping, pendingTranscription, failed
@@ -70,7 +70,7 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 - [x] Pending transcription history handoff after recording stops
 - [x] Tests for controller transitions, recording mode behavior, and recording storage path generation
 
-## Durable history completion in this task
+## Durable history completion
 
 - [x] SwiftData-backed persistence for history records
 - [x] Application Support layout for `Recordings`, `Imports`, `Metadata`, and reserved `Models`
@@ -82,15 +82,40 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 - [x] Blocking new imports when storage is over cap and auto-delete is disabled
 - [x] Tests for persistence CRUD, storage usage, pruning order, transcript export formatting, and missing-file playback
 
+## Local transcription completion
+
+- [x] Provider abstraction with `TranscriptionProvider`, `LocalTranscriptionProvider`, `TranscriptionJob`, `TranscriptionResult`, `TranscriptionProgress`, and `TranscriptionError`
+- [x] Async transcription queue with cancellation, persisted history status updates, and queue progress surfaced in History
+- [x] WhisperKit integration pinned to Argmax OSS Swift `1.0.0`
+- [x] Real model manager flows for download, load, and delete
+- [x] Local transcription for new or existing pending recordings/imports once a local model is downloaded
+- [x] Re-transcription with transcript version preservation
+- [x] Settings for default local model, auto-transcribe after recording/import, and preferred local provider
+- [x] Tests for model catalog mapping, provider-backed queue transitions, cancellation, and re-transcription version preservation
+
+### Implemented local Whisper catalog
+
+- [x] Tiny mapped to `openai_whisper-tiny`
+- [x] Base (English) mapped to `openai_whisper-base.en`
+- [x] Small (English) mapped to `openai_whisper-small.en_217MB`
+- [x] Large V3 Turbo mapped to `openai_whisper-large-v3-v20240930_turbo_632MB`
+- [x] Distil Large V3 mapped to `distil-whisper_distil-large-v3_594MB`
+
+### Environment verification in this task
+
+- [x] `Tiny` downloaded, loaded, and transcribed a short public sample successfully in the local environment
+- [x] Standard `swift test` remains fast by keeping the real Whisper integration test opt-in
+
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
 - Global hotkeys are registered while Sotto is running and do not require the main window to stay focused.
+- Local model downloads require network access to Argmax's public WhisperKit model repository.
 - Input device selection is a documented follow-up. The current build records from the system default microphone.
 - Imported audio is copied into Sotto-managed local storage under Application Support so history survives app restarts.
 
 ## Current blockers
 
-- Local transcription is blocked by missing model runtime integration, download management, and inference orchestration.
-- Cloud providers are blocked by this scaffold intentionally excluding networking and credential flows.
+- NVIDIA Parakeet remains blocked because no validated local macOS runtime is integrated yet.
+- Cloud providers remain blocked because this build intentionally excludes networking and credential flows.
 - `.webm` import remains blocked because this build does not yet include a reliable WebM decoder/transcoder dependency. WebM files are stored as failed import records instead of being falsely treated as supported.

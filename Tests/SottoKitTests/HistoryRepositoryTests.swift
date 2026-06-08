@@ -18,6 +18,18 @@ final class HistoryRepositoryTests: XCTestCase {
             workingFilePath: "/tmp/crud-test.wav",
             transcriptText: "hello world",
             transcriptPreview: "hello world",
+            transcriptVersions: [
+                TranscriptVersion(
+                    transcriptText: "hello world",
+                    transcriptPreview: "hello world",
+                    characterCount: 11,
+                    modelID: "tiny",
+                    modelName: "Tiny",
+                    providerID: "whisperkit-local",
+                    providerName: "WhisperKit Local",
+                    language: "en"
+                )
+            ],
             durationSeconds: 4,
             characterCount: 11,
             modelID: "tiny",
@@ -36,6 +48,7 @@ final class HistoryRepositoryTests: XCTestCase {
         let fetchedEntry = try XCTUnwrap(reloadedRepository.fetch(id: entry.id))
         XCTAssertEqual(fetchedEntry.displayName, entry.displayName)
         XCTAssertEqual(fetchedEntry.transcriptText, "hello world")
+        XCTAssertEqual(fetchedEntry.transcriptVersions.count, 1)
 
         _ = try reloadedRepository.delete(id: entry.id)
         XCTAssertTrue(try reloadedRepository.fetchAll().isEmpty)
