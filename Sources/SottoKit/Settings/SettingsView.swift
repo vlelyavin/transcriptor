@@ -99,7 +99,7 @@ public struct SettingsView: View {
                 }
             }
         case .overlay:
-            settingsForm(title: "Overlay", subtitle: "Preferences for the future non-activating recording overlay.") {
+            settingsForm(title: "Overlay", subtitle: "Preferences for the live non-activating recording overlay.") {
                 Section("Appearance") {
                     Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
                     Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
@@ -141,6 +141,33 @@ public struct SettingsView: View {
                     Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
                     Toggle("Exclude downloaded model files from cap", isOn: $appState.storageSettings.excludesDownloadedModels)
                 }
+
+                Section("Usage") {
+                    LabeledContent("Current usage") {
+                        Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
+                    }
+
+                    LabeledContent("Audio files") {
+                        Text(megabyteString(for: appState.storageUsage.audioBytes))
+                    }
+
+                    LabeledContent("Metadata and exports") {
+                        Text(megabyteString(for: appState.storageUsage.historyBytes + appState.storageUsage.metadataBytes))
+                    }
+
+                    if appState.storageSettings.excludesDownloadedModels {
+                        LabeledContent("Model cache (excluded)") {
+                            Text(megabyteString(for: appState.storageUsage.modelBytes))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let storageWarningMessage = appState.storageWarningMessage {
+                        Text(storageWarningMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
         case .cloudProviders:
             settingsForm(title: "Cloud Providers", subtitle: "Provider toggles persist locally, but real networking and credentials are still unavailable.") {
@@ -166,8 +193,9 @@ public struct SettingsView: View {
             settingsForm(title: "Privacy", subtitle: "Truthful notes about what this UI does and does not do yet.") {
                 Section("Current Behavior") {
                     Label("No audio is uploaded by this scaffold because networking is not implemented.", systemImage: "lock.shield")
-                    Label("Original audio can be marked for local save, but recording itself is not implemented yet.", systemImage: "internaldrive")
+                    Label("Recordings and imported audio stay in Sotto-managed Application Support storage on this Mac.", systemImage: "internaldrive")
                     Label("Provider toggles store local preference state only.", systemImage: "key")
+                    Label("WebM import is stored as a failed item because this build does not yet include a reliable WebM decoder/transcoder.", systemImage: "exclamationmark.triangle")
                 }
             }
         }
@@ -202,6 +230,10 @@ public struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func megabyteString(for bytes: Int64) -> String {
+        String(format: "%.2f MB", Double(bytes) / 1_048_576)
     }
 }
 

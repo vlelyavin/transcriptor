@@ -47,6 +47,10 @@ public struct OverviewView: View {
                     subtitle: "History, audio, and transcript retention will be capped independently of downloaded model files."
                 ) {
                     Text("Current history cap: \(appState.storageSettings.capMegabytes) MB")
+                    Text("Managed usage: \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
+                        .foregroundStyle(.secondary)
+                    Text("History items stored: \(appState.historyStore.entries.count)")
+                        .foregroundStyle(.secondary)
                     Text("Auto-delete oldest history: \(appState.storageSettings.autoDeleteOldestHistory ? "On" : "Off")")
                         .foregroundStyle(.secondary)
                     Text("Downloaded model files excluded: \(appState.storageSettings.excludesDownloadedModels ? "Yes" : "No")")
@@ -56,5 +60,9 @@ public struct OverviewView: View {
             .padding(24)
         }
         .navigationTitle("Overview")
+    }
+
+    private func megabyteString(for bytes: Int64) -> String {
+        String(format: "%.2f MB", Double(bytes) / 1_048_576)
     }
 }

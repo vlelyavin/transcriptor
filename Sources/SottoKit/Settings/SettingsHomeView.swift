@@ -36,7 +36,7 @@ public struct SettingsHomeView: View {
                         lines: [
                             "Selected: \(appState.selectedModel?.name ?? "None")",
                             "History cap: \(appState.storageSettings.capMegabytes) MB",
-                            "Delete oldest first: \(appState.storageSettings.autoDeleteOldestHistory ? "On" : "Off")",
+                            "Managed usage: \(megabyteString(for: appState.storageUsage.totalManagedBytes))",
                         ]
                     )
 
@@ -67,6 +67,12 @@ public struct SettingsHomeView: View {
                     Text("The Buy button in the toolbar is also a non-functional placeholder kept only for screenshot parity.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    if let storageWarningMessage = appState.storageWarningMessage {
+                        Text(storageWarningMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
             .padding(24)
@@ -93,5 +99,9 @@ public struct SettingsHomeView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(.quaternary, lineWidth: 1)
         )
+    }
+
+    private func megabyteString(for bytes: Int64) -> String {
+        String(format: "%.2f MB", Double(bytes) / 1_048_576)
     }
 }
