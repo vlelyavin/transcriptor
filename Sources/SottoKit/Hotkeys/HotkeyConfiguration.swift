@@ -1,8 +1,8 @@
 import Foundation
 
-public enum RecordingMode: String, CaseIterable, Identifiable, Sendable {
+public enum RecordingMode: String, CaseIterable, Identifiable, Hashable, Sendable {
     case holdToTalk
-    case togglePushToTalk
+    case toggleToTalk
 
     public var id: String { rawValue }
 
@@ -10,8 +10,8 @@ public enum RecordingMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .holdToTalk:
             "Hold to Talk"
-        case .togglePushToTalk:
-            "Toggle Push to Talk"
+        case .toggleToTalk:
+            "Toggle to Talk"
         }
     }
 }

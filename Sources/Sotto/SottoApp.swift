@@ -9,10 +9,18 @@ struct SottoApp: App {
         WindowGroup {
             MainWindowView(appState: appState)
         }
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Import Audio") {
+                    appState.selectedScreen = .importAudio
+                }
+                .keyboardShortcut("I", modifiers: [.command, .shift])
+            }
+        }
 
         Settings {
             SettingsView(appState: appState)
-                .frame(width: 720, height: 520)
+                .frame(minWidth: 820, minHeight: 560)
         }
     }
 }

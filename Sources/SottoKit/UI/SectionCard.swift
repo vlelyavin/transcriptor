@@ -16,21 +16,25 @@ public struct SectionCard<Content: View>: View {
     }
 
     public var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
 
-                    Text(subtitle)
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                content
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+
+            content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        )
     }
 }

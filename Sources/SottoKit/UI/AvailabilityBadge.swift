@@ -18,6 +18,10 @@ public struct AvailabilityBadge: View {
 
     private var backgroundColor: Color {
         switch availability {
+        case .available:
+            .blue
+        case .downloaded:
+            .green
         case .planned:
             .orange
         case .unavailable:

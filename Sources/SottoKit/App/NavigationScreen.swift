@@ -1,6 +1,6 @@
 import Foundation
 
-public enum NavigationScreen: String, CaseIterable, Identifiable {
+public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
     case overview
     case history
     case importAudio

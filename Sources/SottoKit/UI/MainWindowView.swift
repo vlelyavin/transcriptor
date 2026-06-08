@@ -1,6 +1,7 @@
 import SwiftUI
 
 public struct MainWindowView: View {
+    @Environment(\.openSettings) private var openSettings
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
@@ -9,15 +10,24 @@ public struct MainWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            List(NavigationScreen.allCases, selection: $appState.selectedScreen) { screen in
-                Label(screen.title, systemImage: screen.systemImage)
-                    .tag(screen)
+            List(selection: $appState.selectedScreen) {
+                Section {
+                    ForEach(NavigationScreen.allCases) { screen in
+                        Label(screen.title, systemImage: screen.systemImage)
+                            .tag(screen)
+                    }
+                }
             }
+            .safeAreaInset(edge: .top) {
+                SidebarHeaderView()
+            }
+            .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
             contentView
         }
         .frame(minWidth: 960, minHeight: 640)
+        .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup {
                 Button {
@@ -27,7 +37,14 @@ public struct MainWindowView: View {
                 .disabled(true)
                 .help("Recording is not implemented in this initial scaffold.")
 
-                SettingsLink {
+                Button("Buy") {
+                    appState.selectedScreen = .overview
+                }
+                .help("Placeholder only. Licensing is not implemented.")
+
+                Button {
+                    openSettings()
+                } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
             }
@@ -44,9 +61,18 @@ public struct MainWindowView: View {
         case .importAudio:
             ImportAudioView()
         case .models:
-            ModelsView(catalog: appState.modelCatalog, providers: appState.providerCatalog)
+            ModelsView(appState: appState)
         case .settings:
-            SettingsView(appState: appState)
+            SettingsHomeView(appState: appState)
         }
     }
 }
+
+#if DEBUG
+struct MainWindowView_Previews: PreviewProvider {
+    static var previews: some View {
+        MainWindowView(appState: .preview)
+            .frame(width: 1280, height: 860)
+    }
+}
+#endif

@@ -25,7 +25,7 @@ public struct OverviewView: View {
                 ) {
                     Label("Non-activating overlay: planned", systemImage: "rectangle.inset.filled.and.person.filled")
                     Label("Live audio indicator: planned", systemImage: "waveform.badge.mic")
-                    Label("Current mode placeholder: \(appState.recordingState.mode.title)", systemImage: "keyboard")
+                    Label("Current mode preference: \(appState.recordingState.mode.title)", systemImage: "keyboard")
                 }
 
                 SectionCard(
@@ -34,13 +34,20 @@ public struct OverviewView: View {
                 ) {
                     Text("Whisper-family models, Parakeet exploration, and OpenAI/Groq provider entries are visible in the UI, but none are presented as functional until the real runtimes and networking layers exist.")
                         .foregroundStyle(.secondary)
+
+                    if let selectedModel = appState.selectedModel {
+                        Text("Selected model preference: \(selectedModel.name)")
+                            .font(.callout)
+                    }
                 }
 
                 SectionCard(
                     title: "Storage Controls",
                     subtitle: "History, audio, and transcript retention will be capped independently of downloaded model files."
                 ) {
-                    Text("Current placeholder cap: \(appState.storageSettings.capMegabytes) MB")
+                    Text("Current history cap: \(appState.storageSettings.capMegabytes) MB")
+                    Text("Auto-delete oldest history: \(appState.storageSettings.autoDeleteOldestHistory ? "On" : "Off")")
+                        .foregroundStyle(.secondary)
                     Text("Downloaded model files excluded: \(appState.storageSettings.excludesDownloadedModels ? "Yes" : "No")")
                         .foregroundStyle(.secondary)
                 }

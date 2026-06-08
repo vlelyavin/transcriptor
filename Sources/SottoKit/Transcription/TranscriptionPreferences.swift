@@ -1,14 +1,11 @@
 import Foundation
 
 public struct TranscriptionPreferences: Equatable, Sendable {
-    public var preferredLocalModelID: String?
-    public var preferredCloudProviderID: String?
+    public var selectedModelID: String
 
     public init(
-        preferredLocalModelID: String? = nil,
-        preferredCloudProviderID: String? = nil
+        selectedModelID: String = "whisper-large-v3-turbo"
     ) {
-        self.preferredLocalModelID = preferredLocalModelID
-        self.preferredCloudProviderID = preferredCloudProviderID
+        self.selectedModelID = selectedModelID
     }
 }

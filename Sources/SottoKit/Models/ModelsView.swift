@@ -1,61 +1,54 @@
 import SwiftUI
 
 public struct ModelsView: View {
-    private let catalog: ModelCatalog
-    private let providers: ProviderCatalog
+    @Bindable private var appState: AppState
 
-    public init(catalog: ModelCatalog, providers: ProviderCatalog) {
-        self.catalog = catalog
-        self.providers = providers
+    public init(appState: AppState) {
+        self.appState = appState
     }
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 22) {
                 SectionCard(
                     title: "Model Manager",
-                    subtitle: "Local and cloud-backed transcription options will live here."
+                    subtitle: "Mock inventory states are visible so the UI can be validated before downloads, inference, or cloud calls exist."
                 ) {
-                    Text("This initial scaffold intentionally shows future models and providers as unavailable until the actual runtimes, downloads, and networking flows exist.")
+                    Text("Available and downloaded badges in this screen are illustrative only. No model downloads, no local transcription runtime, and no cloud networking are implemented in this build.")
                         .foregroundStyle(.secondary)
+
+                    if let selectedModel = appState.selectedModel {
+                        Text("Preferred model: \(selectedModel.name)")
+                            .font(.callout.weight(.medium))
+                    }
                 }
 
-                ForEach(catalog.sections) { section in
-                    SectionCard(
-                        title: section.title,
-                        subtitle: section.description
-                    ) {
-                        VStack(alignment: .leading, spacing: 14) {
+                ForEach(appState.modelCatalog.sections) { section in
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(section.title)
+                            .font(.title2.weight(.semibold))
+
+                        Text(section.description)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 18)], spacing: 18) {
                             ForEach(section.models) { model in
-                                ModelRow(model: model)
+                                modelCard(model)
                             }
                         }
                     }
                 }
 
-                SectionCard(
-                    title: "Cloud Providers",
-                    subtitle: "Remote transcription integrations are listed early but remain disabled."
-                ) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(providers.providers) { provider in
-                            HStack(alignment: .top, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(provider.name)
-                                        .font(.headline)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Cloud Models")
+                        .font(.title2.weight(.semibold))
 
-                                    Text(provider.summary)
-                                        .foregroundStyle(.secondary)
+                    Text("Remote providers are shown for structure and preference management only. They remain unavailable until networking and credential flows are added.")
+                        .foregroundStyle(.secondary)
 
-                                    Text(provider.availability.blocker)
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-
-                                Spacer()
-
-                                AvailabilityBadge(availability: provider.availability)
-                            }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 18)], spacing: 18) {
+                        ForEach(appState.providerCatalog.providers) { provider in
+                            providerCard(provider)
                         }
                     }
                 }
@@ -64,34 +57,127 @@ public struct ModelsView: View {
         }
         .navigationTitle("Models")
     }
-}
 
-private struct ModelRow: View {
-    let model: ModelDescriptor
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
+    private func modelCard(_ model: ModelDescriptor) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(model.name)
-                        .font(.headline)
+                        .font(.title3.weight(.semibold))
 
-                    Text(model.downloadSizeDescription)
+                    Text(model.engineLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Text(model.notes)
-                    .foregroundStyle(.secondary)
+                Spacer()
 
-                Text(model.availability.blocker)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                if let accentBadgeLabel = model.accentBadgeLabel {
+                    Text(accentBadgeLabel)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.yellow.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.yellow)
+                }
             }
 
-            Spacer()
+            HStack(spacing: 22) {
+                statColumn(title: "Size", value: model.downloadSizeDescription)
+                statColumn(title: "Speed", value: model.speedDescription)
+                statColumn(title: "Accuracy", value: model.accuracyDescription)
+            }
 
-            AvailabilityBadge(availability: model.availability)
+            Divider()
+
+            Text(model.notes)
+                .foregroundStyle(.secondary)
+
+            Text(model.availability.message)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            HStack {
+                AvailabilityBadge(availability: model.availability)
+
+                Spacer()
+
+                Button(appState.transcriptionPreferences.selectedModelID == model.id ? "Selected" : "Set Preferred") {
+                    appState.transcriptionPreferences.selectedModelID = model.id
+                }
+                .disabled(model.family == "Parakeet")
+            }
+        }
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(appState.transcriptionPreferences.selectedModelID == model.id ? .orange : .quaternary, lineWidth: 1.5)
+        )
+    }
+
+    private func providerCard(_ provider: ProviderDescriptor) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(provider.name)
+                        .font(.title3.weight(.semibold))
+
+                    Text(provider.summary)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(provider.modelLabel)
+                    .font(.system(.caption, design: .monospaced))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(.blue)
+            }
+
+            Divider()
+
+            Text(provider.priceNote)
+                .foregroundStyle(.secondary)
+
+            Text(provider.availability.message)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            HStack {
+                AvailabilityBadge(availability: provider.availability)
+                Spacer()
+                Button("Unavailable") {}
+                    .disabled(true)
+            }
+        }
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        )
+    }
+
+    private func statColumn(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.headline)
         }
     }
 }
+
+#if DEBUG
+struct ModelsView_Previews: PreviewProvider {
+    static var previews: some View {
+        ModelsView(appState: .preview)
+            .frame(width: 1280, height: 920)
+    }
+}
+#endif
