@@ -6,7 +6,7 @@ Sotto is a native macOS speech-to-text desktop app with a local-first design. Th
 
 - Native SwiftUI macOS app targeting macOS 14 and newer.
 - Local-first architecture for on-device transcription workflows.
-- Placeholder surfaces for recording, history, model management, imports, providers, and settings.
+- Native shell for recording, history, model management, imports, providers, and settings.
 - Honest availability states for anything not implemented yet.
 
 ## Build
@@ -40,10 +40,10 @@ swift run SottoSmokeChecks
 - App shell: implemented
 - Smoke checks: implemented
 - Main window and sidebar navigation: implemented
-- Native macOS Settings window: implemented as placeholder UI
-- Transcript history screen: placeholder
-- Import audio screen: placeholder
-- Model manager screen: placeholder
+- Native macOS Settings window: implemented with persisted mock preferences
+- Transcript history screen: implemented with search, filters, mock rows, and detail pane
+- Import audio screen: implemented with drag-and-drop zone, shortcut, and mock recent imports
+- Model manager screen: implemented with WhisperKit, Parakeet, and cloud sections
 - Local Whisper-family models: planned, not implemented
 - NVIDIA Parakeet section: visible but unavailable
 - OpenAI provider section: visible but unavailable
@@ -55,6 +55,7 @@ swift run SottoSmokeChecks
 - macOS 14 or newer
 - Apple Swift 6.3 or newer
 - Full Xcode is required for `xcodebuild`; this repository was scaffolded in an environment with Command Line Tools only, so validation here used `swift build` and `swift run SottoSmokeChecks`
+- The current local machine must also accept the Apple/Xcode license with `sudo xcodebuild -license` before build commands will run again
 - API keys must be stored in the macOS Keychain only when provider support is implemented
 
 ## Notes
