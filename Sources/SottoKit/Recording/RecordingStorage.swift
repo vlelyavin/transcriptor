@@ -13,29 +13,22 @@ public enum RecordingStorageError: Error, LocalizedError {
 
 public struct RecordingStorage {
     public let fileManager: FileManager
-    private let applicationSupportURLProvider: @Sendable () -> URL?
+    private let layout: AppStorageLayout
 
     public init(
         fileManager: FileManager = .default,
-        applicationSupportURLProvider: @escaping @Sendable () -> URL? = {
-            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        }
+        layout: AppStorageLayout = AppStorageLayout()
     ) {
         self.fileManager = fileManager
-        self.applicationSupportURLProvider = applicationSupportURLProvider
+        self.layout = layout
     }
 
     public func applicationSupportDirectory() throws -> URL {
-        guard let baseDirectory = applicationSupportURLProvider() else {
+        do {
+            return try layout.recordingsDirectory()
+        } catch {
             throw RecordingStorageError.invalidApplicationSupportDirectory
         }
-
-        let directory = baseDirectory
-            .appendingPathComponent("Sotto", isDirectory: true)
-            .appendingPathComponent("Recordings", isDirectory: true)
-
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
-        return directory
     }
 
     public func nextRecordingURL(
