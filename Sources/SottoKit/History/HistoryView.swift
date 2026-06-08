@@ -4,50 +4,134 @@ public struct HistoryView: View {
     @State private var searchText = ""
     @State private var selectedFilter: HistoryFilter = .all
     @State private var selectedEntryID: HistoryEntry.ID?
+    @State private var entryPendingDeletion: HistoryEntry?
+    @State private var showDeleteAllConfirmation = false
+    @Bindable private var appState: AppState
 
-    private let historyStore: HistoryStore
-
-    public init(historyStore: HistoryStore) {
-        self.historyStore = historyStore
-        _selectedEntryID = State(initialValue: historyStore.entries.first?.id)
+    public init(appState: AppState) {
+        self.appState = appState
+        _selectedEntryID = State(initialValue: appState.historyStore.entries.first?.id)
     }
 
     public var body: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 0) {
-                Picker("Source", selection: $selectedFilter) {
-                    ForEach(HistoryFilter.allCases) { filter in
-                        Text(filter.title).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                headerControls
 
                 Group {
                     if filteredEntries.isEmpty {
-                        ContentUnavailableView(
-                            "No Matching Transcripts",
-                            systemImage: "text.quote",
-                            description: Text("Try a different filter or search term. Playback, copy, export, and re-transcription remain mocked in this build.")
-                        )
+                        emptyState
                     } else {
                         List(filteredEntries, selection: $selectedEntryID) { entry in
                             historyRow(entry)
                                 .tag(entry.id)
+                                .contextMenu {
+                                    Button("Play / Pause") {
+                                        appState.togglePlayback(for: entry)
+                                    }
+                                    .disabled(entry.preferredPlaybackPath == nil)
+
+                                    Button("Copy Transcript") {
+                                        appState.copyTranscript(for: entry)
+                                    }
+                                    .disabled(!entry.canCopyTranscript)
+
+                                    Button("Export Transcript") {
+                                        appState.exportTranscript(for: entry)
+                                    }
+                                    .disabled(!entry.canExportTranscript)
+
+                                    Divider()
+
+                                    Button("Delete", role: .destructive) {
+                                        entryPendingDeletion = entry
+                                    }
+                                }
                         }
                         .listStyle(.inset)
                     }
                 }
                 .frame(minWidth: 420)
-                .searchable(text: $searchText, prompt: "Search transcripts")
+                .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
             }
 
             detailPane
-                .frame(minWidth: 340, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 .background(.regularMaterial)
         }
         .navigationTitle("History")
+        .alert("Delete History Item", isPresented: Binding(
+            get: { entryPendingDeletion != nil },
+            set: { newValue in
+                if !newValue {
+                    entryPendingDeletion = nil
+                }
+            }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let entryPendingDeletion {
+                    appState.deleteHistoryEntry(entryPendingDeletion)
+                }
+                entryPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                entryPendingDeletion = nil
+            }
+        } message: {
+            Text("This removes the history record and its managed local files.")
+        }
+        .confirmationDialog("Delete all history?", isPresented: $showDeleteAllConfirmation, titleVisibility: .visible) {
+            Button("Delete All", role: .destructive) {
+                appState.deleteAllHistory()
+            }
+        } message: {
+            Text("This removes every stored history item and all managed audio files.")
+        }
+    }
+
+    private var headerControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("Source", selection: $selectedFilter) {
+                ForEach(HistoryFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                if let historyActionMessage = appState.historyActionMessage {
+                    Text(historyActionMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let storageWarningMessage = appState.storageWarningMessage {
+                    Text(storageWarningMessage)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Delete All", role: .destructive) {
+                    showDeleteAllConfirmation = true
+                }
+                .disabled(appState.historyStore.entries.isEmpty)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .padding(.bottom, 12)
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView(
+            searchText.isEmpty ? "No History Yet" : "No Matching Transcripts",
+            systemImage: "text.quote",
+            description: Text(searchText.isEmpty ? "Record or import audio to build a durable local history." : "Try a different filter or search term.")
+        )
     }
 
     private var detailPane: some View {
@@ -57,7 +141,7 @@ public struct HistoryView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(entry.title)
+                                Text(entry.displayName)
                                     .font(.largeTitle.weight(.semibold))
 
                                 Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
@@ -66,7 +150,12 @@ public struct HistoryView: View {
                                 HStack(spacing: 8) {
                                     detailTag(entry.transcriptionStatus.title)
                                     detailTag(entry.sourceType.title)
-                                    detailTag(entry.modelName)
+                                    if let modelName = entry.modelName {
+                                        detailTag(modelName)
+                                    }
+                                    if let providerName = entry.providerName {
+                                        detailTag(providerName)
+                                    }
                                 }
                             }
 
@@ -74,37 +163,50 @@ public struct HistoryView: View {
                         }
 
                         HStack(spacing: 10) {
-                            Button("Copy Transcript") {}
-                                .disabled(true)
-                            Button("Export .txt") {}
-                                .disabled(true)
+                            Button("Copy Transcript") {
+                                appState.copyTranscript(for: entry)
+                            }
+                            .disabled(!entry.canCopyTranscript)
+
+                            Button("Export .txt") {
+                                appState.exportTranscript(for: entry)
+                            }
+                            .disabled(!entry.canExportTranscript)
+
                             Button("Re-transcribe") {}
                                 .disabled(true)
-                            Button("Playback") {}
-                                .disabled(true)
+
+                            Button(playbackButtonTitle(for: entry)) {
+                                appState.togglePlayback(for: entry)
+                            }
+                            .disabled(entry.preferredPlaybackPath == nil)
+
+                            Spacer()
+
+                            Button("Delete", role: .destructive) {
+                                entryPendingDeletion = entry
+                            }
                         }
 
-                        UnavailableActionBanner(
-                            message: "Copy, export, re-transcribe, and playback controls are intentionally disabled until the backend exists."
-                        )
+                        if let historyActionMessage = appState.historyActionMessage {
+                            UnavailableActionBanner(message: historyActionMessage)
+                        }
+
+                        if let errorMessage = entry.errorMessage {
+                            UnavailableActionBanner(message: errorMessage)
+                        }
+
+                        if entry.transcriptionStatus != .completed {
+                            UnavailableActionBanner(
+                                message: "This item has not been transcribed yet. Copy and export unlock when real transcript text exists."
+                            )
+                        }
 
                         Divider()
 
-                        if let audioFilePath = entry.audioFilePath {
-                            LabeledContent("Audio Path") {
-                                Text(audioFilePath)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
+                        metadataGrid(for: entry)
 
-                        if let fileSizeBytes = entry.fileSizeBytes {
-                            LabeledContent("File Size") {
-                                Text(byteCountFormatter.string(fromByteCount: fileSizeBytes))
-                            }
-                        }
-
-                        Text(entry.transcriptionStatus == .pendingTranscription ? "Pending transcription..." : entry.transcriptText)
+                        Text(displayTranscriptText(for: entry))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -114,14 +216,35 @@ public struct HistoryView: View {
                 ContentUnavailableView(
                     "Select a Transcript",
                     systemImage: "sidebar.right",
-                    description: Text("Choose a history item to inspect transcript details and future actions.")
+                    description: Text("Choose a history item to inspect its transcript, playback controls, and storage details.")
                 )
             }
         }
     }
 
+    private func metadataGrid(for entry: HistoryEntry) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
+            metadataRow(title: "Original Audio", value: entry.originalFilePath ?? "Unavailable")
+            metadataRow(title: "Working Audio", value: entry.workingFilePath ?? "Unavailable")
+            metadataRow(title: "File Size", value: byteCountFormatter.string(fromByteCount: entry.fileSizeBytes))
+            metadataRow(title: "Language", value: entry.language ?? "Unknown")
+            metadataRow(title: "Model", value: entry.modelName ?? "Not assigned")
+            metadataRow(title: "Provider", value: entry.providerName ?? "Local")
+        }
+    }
+
+    private func metadataRow(title: String, value: String) -> some View {
+        GridRow {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(title.contains("Audio") ? .system(.caption, design: .monospaced) : .body)
+                .textSelection(.enabled)
+        }
+    }
+
     private var filteredEntries: [HistoryEntry] {
-        historyStore.entries.filter { entry in
+        appState.historyStore.entries.filter { entry in
             matchesFilter(entry) && matchesSearch(entry)
         }
     }
@@ -146,9 +269,7 @@ public struct HistoryView: View {
             return true
         }
 
-        return entry.title.localizedCaseInsensitiveContains(searchText)
-            || entry.transcriptPreview.localizedCaseInsensitiveContains(searchText)
-            || entry.transcriptText.localizedCaseInsensitiveContains(searchText)
+        return entry.searchableText.localizedCaseInsensitiveContains(searchText)
     }
 
     private func historyRow(_ entry: HistoryEntry) -> some View {
@@ -160,10 +281,12 @@ public struct HistoryView: View {
 
                 Spacer()
 
-                detailTag(entry.modelName)
+                if let modelName = entry.modelName {
+                    detailTag(modelName)
+                }
             }
 
-            Text(entry.transcriptionStatus == .pendingTranscription ? "Pending transcription..." : entry.transcriptPreview)
+            Text(displayPreviewText(for: entry))
                 .font(.headline)
                 .lineLimit(2)
 
@@ -175,6 +298,38 @@ public struct HistoryView: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private func displayTranscriptText(for entry: HistoryEntry) -> String {
+        if !entry.transcriptText.isEmpty {
+            return entry.transcriptText
+        }
+
+        switch entry.transcriptionStatus {
+        case .pending:
+            return "Pending transcription..."
+        case .transcribing:
+            return "Transcribing..."
+        case .completed:
+            return "No transcript text available."
+        case .failed:
+            return entry.errorMessage ?? "This history item failed."
+        }
+    }
+
+    private func displayPreviewText(for entry: HistoryEntry) -> String {
+        if !entry.transcriptPreview.isEmpty {
+            return entry.transcriptPreview
+        }
+        return displayTranscriptText(for: entry)
+    }
+
+    private func playbackButtonTitle(for entry: HistoryEntry) -> String {
+        if appState.audioPlaybackService.currentlyPlayingEntryID == entry.id,
+           appState.audioPlaybackService.isPlaying {
+            return "Pause"
+        }
+        return "Play"
     }
 
     private func metadataLabel(systemImage: String, text: String) -> some View {
@@ -215,7 +370,7 @@ public struct HistoryView: View {
 #if DEBUG
 struct HistoryView_Previews: PreviewProvider {
     static var previews: some View {
-        HistoryView(historyStore: .mock)
+        HistoryView(appState: .preview)
             .frame(width: 1280, height: 860)
     }
 }
