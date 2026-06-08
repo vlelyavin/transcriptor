@@ -35,8 +35,9 @@ public struct SettingsHomeView: View {
                         title: "Models",
                         lines: [
                             "Selected: \(appState.selectedModel?.name ?? "None")",
+                            "Auto-transcribe: \(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")",
                             "History cap: \(appState.storageSettings.capMegabytes) MB",
-                            "Managed usage: \(megabyteString(for: appState.storageUsage.totalManagedBytes))",
+                            "Managed usage: \(megabyteString(for: appState.storageUsage.totalManagedBytes))"
                         ]
                     )
 

@@ -113,10 +113,20 @@ public struct SettingsView: View {
                 }
             }
         case .models:
-            settingsForm(title: "Models", subtitle: "Choose the preferred transcription model for future sessions.") {
-                Section("Preferred Model") {
+            settingsForm(title: "Models", subtitle: "Choose which local Whisper model Sotto should use and whether new audio should transcribe automatically.") {
+                Section("Local Provider") {
+                    Picker("Preferred Local Provider", selection: $appState.transcriptionPreferences.preferredLocalProviderID) {
+                        Text("WhisperKit Local").tag("whisperkit-local")
+                    }
+
+                    Text("WhisperKit is the only implemented local provider in this build. Cloud providers remain unavailable for transcription.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Default Local Model") {
                     Picker("Selected Transcription Model", selection: $appState.transcriptionPreferences.selectedModelID) {
-                        ForEach(appState.modelCatalog.allModels) { model in
+                        ForEach(appState.modelCatalog.whisperModels) { model in
                             Text(model.name).tag(model.id)
                         }
                     }
@@ -128,6 +138,16 @@ public struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                }
+
+                Section("Automation") {
+                    Toggle("Auto-transcribe after recording or import", isOn: $appState.transcriptionPreferences.autoTranscribeAfterCapture)
+
+                    if let statusMessage = appState.whisperModelManager.statusMessage {
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -190,10 +210,10 @@ public struct SettingsView: View {
                 }
             }
         case .privacy:
-            settingsForm(title: "Privacy", subtitle: "Truthful notes about what this UI does and does not do yet.") {
+            settingsForm(title: "Privacy", subtitle: "Truthful notes about what this build does and does not do yet.") {
                 Section("Current Behavior") {
-                    Label("No audio is uploaded by this scaffold because networking is not implemented.", systemImage: "lock.shield")
-                    Label("Recordings and imported audio stay in Sotto-managed Application Support storage on this Mac.", systemImage: "internaldrive")
+                    Label("Local WhisperKit transcription keeps audio on this Mac. Sotto does not upload recording or import audio for local runs.", systemImage: "lock.shield")
+                    Label("Model downloads come from Argmax's public WhisperKit model repository and are stored under Application Support.", systemImage: "square.and.arrow.down")
                     Label("Provider toggles store local preference state only.", systemImage: "key")
                     Label("WebM import is stored as a failed item because this build does not yet include a reliable WebM decoder/transcoder.", systemImage: "exclamationmark.triangle")
                 }

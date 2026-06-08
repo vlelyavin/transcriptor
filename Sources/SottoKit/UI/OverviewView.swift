@@ -31,15 +31,18 @@ public struct OverviewView: View {
 
                 SectionCard(
                     title: "Transcription Stack",
-                    subtitle: "The app remains truthful about what is not implemented yet."
+                    subtitle: "Local Whisper transcription is live, while unsupported runtimes still stay visibly unavailable."
                 ) {
-                    Text("Whisper-family models, Parakeet exploration, and OpenAI/Groq provider entries are visible in the UI, but none are presented as functional until the real runtimes and networking layers exist.")
+                    Text("WhisperKit-backed local models can now be downloaded, loaded, and used for on-device transcription. Parakeet and cloud providers remain visible as future work, not working features.")
                         .foregroundStyle(.secondary)
 
                     if let selectedModel = appState.selectedModel {
                         Text("Selected model preference: \(selectedModel.name)")
                             .font(.callout)
                     }
+
+                    Text("Auto-transcribe after recording/import: \(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")")
+                        .foregroundStyle(.secondary)
                 }
 
                 SectionCard(
