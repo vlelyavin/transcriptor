@@ -48,21 +48,47 @@ public struct SettingsView: View {
 
                     Toggle("Save original audio", isOn: $appState.recordingState.savesAudioLocally)
                 }
+
+                Section("Microphone") {
+                    LabeledContent("Permission") {
+                        Text(appState.voiceInputController.permissionStatus.rawValue.capitalized)
+                    }
+
+                    LabeledContent("Input Device") {
+                        Text("System Default")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         case .keyboardShortcut:
-            settingsForm(title: "Keyboard Shortcut", subtitle: "Global shortcut editing remains intentionally unavailable in this build.") {
+            settingsForm(title: "Keyboard Shortcut", subtitle: "The global voice-input shortcut works while Sotto is running and does not require the main window to stay focused.") {
                 Section("Global Voice Input") {
                     LabeledContent("Current Shortcut") {
-                        Text(appState.recordingState.hotkey.modifiers.joined(separator: " + ") + " + " + appState.recordingState.hotkey.key)
+                        Text(appState.recordingState.hotkey.displayString)
                             .font(.system(.body, design: .monospaced))
                     }
 
-                    Button("Capture Shortcut") {}
-                        .disabled(true)
+                    HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
 
-                    Text("Shortcut capture and registration are not implemented yet. The value shown here is mock state only.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let conflictWarning = appState.recordingState.hotkey.obviousConflictWarning {
+                        Text(conflictWarning)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Avoid common system shortcuts like Spotlight or input source switching.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let registrationError = appState.hotkeyRegistrationErrorMessage {
+                        Text(registrationError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 Section("Menu Shortcuts") {
@@ -75,8 +101,15 @@ public struct SettingsView: View {
         case .overlay:
             settingsForm(title: "Overlay", subtitle: "Preferences for the future non-activating recording overlay.") {
                 Section("Appearance") {
+                    Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
                     Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
                     Toggle("Show live audio indicator", isOn: $appState.overlayState.showsLiveAudioIndicator)
+
+                    Picker("Overlay Position", selection: $appState.overlayState.position) {
+                        ForEach(OverlayPosition.allCases) { position in
+                            Text(position.title).tag(position)
+                        }
+                    }
                 }
             }
         case .models:
