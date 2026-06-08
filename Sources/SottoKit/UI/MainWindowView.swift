@@ -3,9 +3,11 @@ import SwiftUI
 public struct MainWindowView: View {
     @Environment(\.openSettings) private var openSettings
     @Bindable private var appState: AppState
+    @Bindable private var voiceInputController: VoiceInputController
 
     public init(appState: AppState) {
         self.appState = appState
+        self.voiceInputController = appState.voiceInputController
     }
 
     public var body: some View {
@@ -31,11 +33,19 @@ public struct MainWindowView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button {
+                    if voiceInputController.isRecording {
+                        voiceInputController.stopFromToolbar()
+                    } else {
+                        voiceInputController.startFromToolbar()
+                    }
                 } label: {
-                    Label("Start Voice Input", systemImage: "mic.fill")
+                    Label(
+                        voiceInputController.isRecording ? "Stop Voice Input" : "Start Voice Input",
+                        systemImage: voiceInputController.isRecording ? "stop.fill" : "mic.fill"
+                    )
                 }
-                .disabled(true)
-                .help("Recording is not implemented in this initial scaffold.")
+                .disabled(voiceInputController.state == .requestingPermission || voiceInputController.state == .stopping)
+                .help(voiceInputController.failureMessage ?? "Use this button or a future global shortcut to control dictation.")
 
                 Button("Buy") {
                     appState.selectedScreen = .overview

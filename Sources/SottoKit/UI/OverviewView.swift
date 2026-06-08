@@ -21,10 +21,11 @@ public struct OverviewView: View {
 
                 SectionCard(
                     title: "Recording Overlay",
-                    subtitle: "Global capture and live feedback are planned for a future milestone."
+                    subtitle: "Global capture, pending recordings, and live feedback now flow through the voice input controller."
                 ) {
-                    Label("Non-activating overlay: planned", systemImage: "rectangle.inset.filled.and.person.filled")
-                    Label("Live audio indicator: planned", systemImage: "waveform.badge.mic")
+                    Label("Current controller state: \(appState.voiceInputController.state.rawValue)", systemImage: "mic.badge.plus")
+                    Label("Overlay enabled: \(appState.overlayState.isEnabled ? "Yes" : "No")", systemImage: "rectangle.inset.filled.and.person.filled")
+                    Label("Live audio indicator: \(appState.overlayState.showsLiveAudioIndicator ? "On" : "Off")", systemImage: "waveform.badge.mic")
                     Label("Current mode preference: \(appState.recordingState.mode.title)", systemImage: "keyboard")
                 }
 
