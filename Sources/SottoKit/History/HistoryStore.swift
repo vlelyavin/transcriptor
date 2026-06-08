@@ -46,7 +46,9 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
     public var workingFilePath: String?
     public var transcriptText: String
     public var transcriptPreview: String
+    public var transcriptVersions: [TranscriptVersion]
     public var createdAt: Date
+    public var lastTranscriptionAt: Date?
     public var durationSeconds: Int
     public var characterCount: Int
     public var modelID: String?
@@ -66,7 +68,9 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         workingFilePath: String?,
         transcriptText: String,
         transcriptPreview: String,
+        transcriptVersions: [TranscriptVersion] = [],
         createdAt: Date = .now,
+        lastTranscriptionAt: Date? = nil,
         durationSeconds: Int,
         characterCount: Int,
         modelID: String? = nil,
@@ -85,7 +89,9 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         self.workingFilePath = workingFilePath
         self.transcriptText = transcriptText
         self.transcriptPreview = transcriptPreview
+        self.transcriptVersions = transcriptVersions
         self.createdAt = createdAt
+        self.lastTranscriptionAt = lastTranscriptionAt
         self.durationSeconds = durationSeconds
         self.characterCount = characterCount
         self.modelID = modelID
@@ -117,6 +123,7 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
             displayName,
             transcriptPreview,
             transcriptText,
+            transcriptVersions.map(\.transcriptText).joined(separator: "\n"),
             modelName ?? "",
             providerName ?? "",
             originalFileName ?? ""
@@ -142,6 +149,54 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
 
     public var storageBytes: Int64 {
         fileSizeBytes
+    }
+
+    public var latestTranscriptVersion: TranscriptVersion? {
+        transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt }).first
+    }
+
+    public var hasTranscriptHistory: Bool {
+        !transcriptVersions.isEmpty || !transcriptText.isEmpty
+    }
+
+    public var hasCompletedTranscript: Bool {
+        !transcriptText.isEmpty && (transcriptionStatus == .completed || !transcriptVersions.isEmpty)
+    }
+
+    public mutating func appendTranscriptVersion(
+        _ version: TranscriptVersion,
+        replacingCurrentTranscript: Bool = true
+    ) {
+        if hasCompletedTranscript && transcriptVersions.isEmpty {
+            transcriptVersions.append(
+                TranscriptVersion(
+                    createdAt: lastTranscriptionAt ?? createdAt,
+                    transcriptText: transcriptText,
+                    transcriptPreview: transcriptPreview,
+                    characterCount: characterCount,
+                    modelID: modelID,
+                    modelName: modelName,
+                    providerID: providerID,
+                    providerName: providerName,
+                    language: language
+                )
+            )
+        }
+
+        transcriptVersions.append(version)
+        transcriptVersions.sort(by: { $0.createdAt > $1.createdAt })
+
+        if replacingCurrentTranscript {
+            transcriptText = version.transcriptText
+            transcriptPreview = version.transcriptPreview
+            characterCount = version.characterCount
+            modelID = version.modelID
+            modelName = version.modelName
+            providerID = version.providerID
+            providerName = version.providerName
+            language = version.language
+            lastTranscriptionAt = version.createdAt
+        }
     }
 
     public static func pendingRecording(
@@ -175,13 +230,27 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
             workingFilePath: nil,
             transcriptText: "Remember to update the API docs before the next release and include the keyboard shortcut migration notes.",
             transcriptPreview: "Remember to update the API docs before the next release and include the keyboard shortcut migration notes.",
+            transcriptVersions: [
+                TranscriptVersion(
+                    createdAt: .now.addingTimeInterval(-1_100),
+                    transcriptText: "Remember to update the API docs before the next release and include the keyboard shortcut migration notes.",
+                    transcriptPreview: "Remember to update the API docs before the next release and include the keyboard shortcut migration notes.",
+                    characterCount: 106,
+                    modelID: "whisper-tiny",
+                    modelName: "Tiny",
+                    providerID: "whisperkit-local",
+                    providerName: "WhisperKit Local",
+                    language: "en"
+                )
+            ],
             createdAt: .now.addingTimeInterval(-1_200),
+            lastTranscriptionAt: .now.addingTimeInterval(-1_100),
             durationSeconds: 42,
             characterCount: 106,
             modelID: "whisper-tiny",
-            modelName: "Whisper Tiny",
-            providerID: nil,
-            providerName: "Local",
+            modelName: "Tiny",
+            providerID: "whisperkit-local",
+            providerName: "WhisperKit Local",
             language: "en",
             fileSizeBytes: 42_000,
             transcriptionStatus: .completed
@@ -196,10 +265,10 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
             createdAt: .now.addingTimeInterval(-86_400),
             durationSeconds: 143,
             characterCount: 0,
-            modelID: "large-v3-turbo",
+            modelID: "whisper-large-v3-turbo",
             modelName: "Large V3 Turbo",
-            providerID: nil,
-            providerName: "Local",
+            providerID: "whisperkit-local",
+            providerName: "WhisperKit Local",
             language: nil,
             fileSizeBytes: 2_400_000,
             transcriptionStatus: .pending

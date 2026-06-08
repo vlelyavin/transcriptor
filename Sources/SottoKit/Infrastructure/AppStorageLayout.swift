@@ -38,7 +38,7 @@ public struct ManagedStorageUsage: Equatable, Sendable {
     }
 }
 
-public struct AppStorageLayout {
+public struct AppStorageLayout: @unchecked Sendable {
     public let fileManager: FileManager
     private let applicationSupportURLProvider: @Sendable () -> URL?
 

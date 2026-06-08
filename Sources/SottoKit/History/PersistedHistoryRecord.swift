@@ -10,7 +10,9 @@ final class PersistedHistoryRecord {
     var workingFilePath: String?
     var transcriptText: String
     var transcriptPreview: String
+    var transcriptVersionsData: Data?
     var createdAt: Date
+    var lastTranscriptionAt: Date?
     var durationSeconds: Int
     var characterCount: Int
     var modelID: String?
@@ -30,7 +32,9 @@ final class PersistedHistoryRecord {
         workingFilePath = entry.workingFilePath
         transcriptText = entry.transcriptText
         transcriptPreview = entry.transcriptPreview
+        transcriptVersionsData = Self.encodeVersions(entry.transcriptVersions)
         createdAt = entry.createdAt
+        lastTranscriptionAt = entry.lastTranscriptionAt
         durationSeconds = entry.durationSeconds
         characterCount = entry.characterCount
         modelID = entry.modelID
@@ -50,7 +54,9 @@ final class PersistedHistoryRecord {
         workingFilePath = entry.workingFilePath
         transcriptText = entry.transcriptText
         transcriptPreview = entry.transcriptPreview
+        transcriptVersionsData = Self.encodeVersions(entry.transcriptVersions)
         createdAt = entry.createdAt
+        lastTranscriptionAt = entry.lastTranscriptionAt
         durationSeconds = entry.durationSeconds
         characterCount = entry.characterCount
         modelID = entry.modelID
@@ -72,7 +78,9 @@ final class PersistedHistoryRecord {
             workingFilePath: workingFilePath,
             transcriptText: transcriptText,
             transcriptPreview: transcriptPreview,
+            transcriptVersions: Self.decodeVersions(transcriptVersionsData),
             createdAt: createdAt,
+            lastTranscriptionAt: lastTranscriptionAt,
             durationSeconds: durationSeconds,
             characterCount: characterCount,
             modelID: modelID,
@@ -84,5 +92,21 @@ final class PersistedHistoryRecord {
             transcriptionStatus: HistoryTranscriptionStatus(rawValue: transcriptionStatusRawValue) ?? .pending,
             errorMessage: errorMessage
         )
+    }
+
+    private static func encodeVersions(_ versions: [TranscriptVersion]) -> Data? {
+        guard !versions.isEmpty else {
+            return nil
+        }
+
+        return try? JSONEncoder().encode(versions)
+    }
+
+    private static func decodeVersions(_ data: Data?) -> [TranscriptVersion] {
+        guard let data else {
+            return []
+        }
+
+        return (try? JSONDecoder().decode([TranscriptVersion].self, from: data)) ?? []
     }
 }

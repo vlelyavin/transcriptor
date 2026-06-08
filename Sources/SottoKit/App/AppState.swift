@@ -47,6 +47,9 @@ public final class AppState {
     public let providerCatalog: ProviderCatalog
     public let voiceInputController: VoiceInputController
     public let audioPlaybackService: AudioPlaybackService
+    public let localTranscriptionProvider: WhisperKitLocalTranscriptionProvider
+    public let whisperModelManager: WhisperModelManager
+    public let transcriptionQueueController: TranscriptionQueueController
     public private(set) var hotkeyRegistrationErrorMessage: String?
     @ObservationIgnored private let hotkeyManager: GlobalHotkeyManager
     @ObservationIgnored private let recordingOverlayManager: RecordingOverlayManager
@@ -85,6 +88,16 @@ public final class AppState {
             ?? (try? HistoryRepository(layout: storageLayout))
             ?? (try! HistoryRepository(inMemory: true))
 
+        let localTranscriptionProvider = WhisperKitLocalTranscriptionProvider(
+            catalog: modelCatalog,
+            storageLayout: storageLayout
+        )
+        let whisperModelManager = WhisperModelManager(
+            catalog: modelCatalog,
+            provider: localTranscriptionProvider
+        )
+        let transcriptionQueueController = TranscriptionQueueController(provider: localTranscriptionProvider)
+
         let persistedEntries = (try? resolvedHistoryRepository.fetchAll()) ?? historyStore.entries
 
         self.preferencesStore = preferencesStore
@@ -112,7 +125,9 @@ public final class AppState {
             position: OverlayPosition(rawValue: snapshot.overlayPositionRawValue) ?? .topCenter
         )
         self.transcriptionPreferences = TranscriptionPreferences(
-            selectedModelID: snapshot.selectedModelID
+            selectedModelID: snapshot.selectedModelID,
+            autoTranscribeAfterCapture: snapshot.autoTranscribeAfterCapture,
+            preferredLocalProviderID: snapshot.preferredLocalProviderID
         )
         self.storageSettings = StorageSettings(
             capMegabytes: snapshot.historyLimitMegabytes,
@@ -128,6 +143,9 @@ public final class AppState {
         self.providerCatalog = providerCatalog
         self.voiceInputController = voiceInputController
         self.audioPlaybackService = audioPlaybackService
+        self.localTranscriptionProvider = localTranscriptionProvider
+        self.whisperModelManager = whisperModelManager
+        self.transcriptionQueueController = transcriptionQueueController
         self.hotkeyRegistrationErrorMessage = nil
 
         voiceInputController.replaceOnRecordingFinished { [weak self] recording in
@@ -151,11 +169,24 @@ public final class AppState {
             }
         )
 
+        transcriptionQueueController.replaceEntryLookup { [weak self] id in
+            self?.historyStore.entries.first(where: { $0.id == id })
+        }
+        transcriptionQueueController.replacePersistEntry { [weak self] entry in
+            guard let self else {
+                return
+            }
+            try self.persistHistoryEntry(entry)
+        }
+        transcriptionQueueController.replaceModelLookup { [weak self] modelID in
+            self?.modelCatalog.model(id: modelID)
+        }
+
         refreshStorageState()
     }
 
     public var selectedModel: ModelDescriptor? {
-        modelCatalog.allModels.first { $0.id == transcriptionPreferences.selectedModelID }
+        modelCatalog.model(id: transcriptionPreferences.selectedModelID)
     }
 
     public var recentImports: [RecentImportItem] {
@@ -163,6 +194,10 @@ public final class AppState {
             .filter { $0.sourceType == .importedAudio }
             .prefix(5)
             .compactMap(RecentImportItem.init)
+    }
+
+    public func historyEntry(id: UUID) -> HistoryEntry? {
+        historyStore.entries.first(where: { $0.id == id })
     }
 
     public func importAudio(from sourceURLs: [URL]) {
@@ -182,20 +217,22 @@ public final class AppState {
                     workingFilePath: prepared.workingFileURL?.path,
                     transcriptText: "",
                     transcriptPreview: importPreview(for: prepared),
+                    createdAt: .now,
                     durationSeconds: prepared.durationSeconds,
                     characterCount: 0,
                     modelID: selectedModel?.id,
                     modelName: selectedModel?.name,
                     providerID: nil,
-                    providerName: "Local",
+                    providerName: nil,
                     language: nil,
                     fileSizeBytes: prepared.fileSizeBytes,
                     transcriptionStatus: prepared.status,
                     errorMessage: prepared.errorMessage
                 )
 
-                try persist(entry)
+                try persistHistoryEntry(entry)
                 importFeedbackMessage = prepared.errorMessage ?? "Imported \(prepared.displayName)."
+                queueAutomaticTranscriptionIfNeeded(for: entry)
             } catch {
                 importFeedbackMessage = error.localizedDescription
             }
@@ -246,7 +283,37 @@ public final class AppState {
         }
     }
 
+    public func transcribe(_ entry: HistoryEntry, using requestedModelID: String? = nil) {
+        guard let model = resolveRequestedModel(for: requestedModelID ?? transcriptionPreferences.selectedModelID) else {
+            historyActionMessage = "Choose a supported local Whisper model before transcribing."
+            return
+        }
+
+        guard localModelReadyForTranscription(model) else {
+            historyActionMessage = "Download and load \(model.name) from Models before transcribing."
+            return
+        }
+
+        transcriptionQueueController.enqueue(
+            entryID: entry.id,
+            modelID: model.id,
+            modelName: model.name
+        )
+        historyActionMessage = "Queued \(entry.displayName) for local transcription."
+    }
+
+    public func retranscribe(_ entry: HistoryEntry, using requestedModelID: String) {
+        transcribe(entry, using: requestedModelID)
+    }
+
+    public func cancelTranscription(for entry: HistoryEntry) {
+        transcriptionQueueController.cancel(entryID: entry.id)
+        historyActionMessage = "Cancelled transcription for \(entry.displayName)."
+    }
+
     public func deleteHistoryEntry(_ entry: HistoryEntry) {
+        transcriptionQueueController.cancel(entryID: entry.id)
+
         do {
             let deletedEntry = try historyRepository.delete(id: entry.id)
             removeManagedFiles(for: deletedEntry)
@@ -259,6 +326,10 @@ public final class AppState {
     }
 
     public func deleteAllHistory() {
+        for entry in historyStore.entries {
+            transcriptionQueueController.cancel(entryID: entry.id)
+        }
+
         do {
             let deletedEntries = try historyRepository.deleteAll()
             deletedEntries.forEach(removeManagedFiles(for:))
@@ -269,6 +340,16 @@ public final class AppState {
         } catch {
             historyActionMessage = error.localizedDescription
         }
+    }
+
+    public func persistHistoryEntry(_ entry: HistoryEntry) throws {
+        try historyRepository.upsert(entry)
+        reloadHistory()
+        refreshStorageState()
+    }
+
+    public func refreshModelInventory() {
+        Task { await whisperModelManager.refresh() }
     }
 
     private func persistPreferences() {
@@ -284,6 +365,8 @@ public final class AppState {
                 overlayShowsLiveIndicator: overlayState.showsLiveAudioIndicator,
                 overlayPositionRawValue: overlayState.position.rawValue,
                 selectedModelID: transcriptionPreferences.selectedModelID,
+                autoTranscribeAfterCapture: transcriptionPreferences.autoTranscribeAfterCapture,
+                preferredLocalProviderID: transcriptionPreferences.preferredLocalProviderID,
                 historyLimitMegabytes: storageSettings.capMegabytes,
                 autoDeleteOldestHistory: storageSettings.autoDeleteOldestHistory,
                 excludesDownloadedModels: storageSettings.excludesDownloadedModels,
@@ -301,16 +384,11 @@ public final class AppState {
         )
 
         do {
-            try persist(entry)
+            try persistHistoryEntry(entry)
+            queueAutomaticTranscriptionIfNeeded(for: entry)
         } catch {
             historyActionMessage = error.localizedDescription
         }
-    }
-
-    private func persist(_ entry: HistoryEntry) throws {
-        try historyRepository.upsert(entry)
-        reloadHistory()
-        refreshStorageState()
     }
 
     private func reloadHistory() {
@@ -340,6 +418,7 @@ public final class AppState {
             isEnforcingStorageCap = true
             for prunedID in enforcement.prunedEntryIDs {
                 if let prunedEntry = historyStore.entries.first(where: { $0.id == prunedID }) {
+                    transcriptionQueueController.cancel(entryID: prunedID)
                     _ = try? historyRepository.delete(id: prunedID)
                     removeManagedFiles(for: prunedEntry)
                 }
@@ -381,5 +460,38 @@ public final class AppState {
     private func fileSizeForIncomingImport(_ sourceURL: URL) throws -> Int64 {
         let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private func queueAutomaticTranscriptionIfNeeded(for entry: HistoryEntry) {
+        guard transcriptionPreferences.autoTranscribeAfterCapture else {
+            return
+        }
+
+        guard entry.transcriptionStatus == .pending else {
+            return
+        }
+
+        transcribe(entry, using: transcriptionPreferences.selectedModelID)
+    }
+
+    private func resolveRequestedModel(for modelID: String) -> ModelDescriptor? {
+        guard let model = modelCatalog.model(id: modelID), model.isWhisperKitLocalModel else {
+            return nil
+        }
+
+        return model
+    }
+
+    private func localModelReadyForTranscription(_ model: ModelDescriptor) -> Bool {
+        guard let item = whisperModelManager.item(for: model.id) else {
+            return false
+        }
+
+        return switch item.state {
+        case .downloaded, .loaded:
+            true
+        default:
+            false
+        }
     }
 }

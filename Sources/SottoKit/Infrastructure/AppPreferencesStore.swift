@@ -12,6 +12,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var overlayShowsLiveIndicator: Bool
     public var overlayPositionRawValue: String
     public var selectedModelID: String
+    public var autoTranscribeAfterCapture: Bool
+    public var preferredLocalProviderID: String
     public var historyLimitMegabytes: Int
     public var autoDeleteOldestHistory: Bool
     public var excludesDownloadedModels: Bool
@@ -29,6 +31,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         overlayShowsLiveIndicator: Bool = true,
         overlayPositionRawValue: String = OverlayPosition.topCenter.rawValue,
         selectedModelID: String = "whisper-large-v3-turbo",
+        autoTranscribeAfterCapture: Bool = false,
+        preferredLocalProviderID: String = "whisperkit-local",
         historyLimitMegabytes: Int = 2_048,
         autoDeleteOldestHistory: Bool = true,
         excludesDownloadedModels: Bool = true,
@@ -45,6 +49,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.overlayShowsLiveIndicator = overlayShowsLiveIndicator
         self.overlayPositionRawValue = overlayPositionRawValue
         self.selectedModelID = selectedModelID
+        self.autoTranscribeAfterCapture = autoTranscribeAfterCapture
+        self.preferredLocalProviderID = preferredLocalProviderID
         self.historyLimitMegabytes = historyLimitMegabytes
         self.autoDeleteOldestHistory = autoDeleteOldestHistory
         self.excludesDownloadedModels = excludesDownloadedModels
@@ -64,6 +70,8 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var overlayShowsLiveIndicator: Bool
     var overlayPositionRawValue: String
     var selectedModelID: String
+    var autoTranscribeAfterCapture: Bool?
+    var preferredLocalProviderID: String?
     var historyLimitMegabytes: Int
     var autoDeleteOldestHistory: Bool
     var excludesDownloadedModels: Bool
@@ -103,6 +111,8 @@ public final class AppPreferencesStore {
             overlayShowsLiveIndicator: decoded.overlayShowsLiveIndicator,
             overlayPositionRawValue: decoded.overlayPositionRawValue,
             selectedModelID: decoded.selectedModelID,
+            autoTranscribeAfterCapture: decoded.autoTranscribeAfterCapture ?? false,
+            preferredLocalProviderID: decoded.preferredLocalProviderID ?? "whisperkit-local",
             historyLimitMegabytes: decoded.historyLimitMegabytes,
             autoDeleteOldestHistory: decoded.autoDeleteOldestHistory,
             excludesDownloadedModels: decoded.excludesDownloadedModels,
@@ -123,6 +133,8 @@ public final class AppPreferencesStore {
             overlayShowsLiveIndicator: snapshot.overlayShowsLiveIndicator,
             overlayPositionRawValue: snapshot.overlayPositionRawValue,
             selectedModelID: snapshot.selectedModelID,
+            autoTranscribeAfterCapture: snapshot.autoTranscribeAfterCapture,
+            preferredLocalProviderID: snapshot.preferredLocalProviderID,
             historyLimitMegabytes: snapshot.historyLimitMegabytes,
             autoDeleteOldestHistory: snapshot.autoDeleteOldestHistory,
             excludesDownloadedModels: snapshot.excludesDownloadedModels,

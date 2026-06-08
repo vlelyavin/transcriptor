@@ -11,6 +11,9 @@ let package = Package(
         .executable(name: "Sotto", targets: ["Sotto"]),
         .library(name: "SottoKit", targets: ["SottoKit"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0"),
+    ],
     targets: [
         .executableTarget(
             name: "Sotto",
@@ -21,7 +24,10 @@ let package = Package(
             dependencies: ["SottoKit"]
         ),
         .target(
-            name: "SottoKit"
+            name: "SottoKit",
+            dependencies: [
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+            ]
         ),
         .testTarget(
             name: "SottoKitTests",
