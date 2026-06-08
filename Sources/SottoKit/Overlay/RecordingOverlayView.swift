@@ -1,0 +1,108 @@
+import SwiftUI
+
+public struct RecordingOverlayView: View {
+    @Bindable private var voiceInputController: VoiceInputController
+    private let overlayState: OverlayState
+
+    public init(
+        voiceInputController: VoiceInputController,
+        overlayState: OverlayState
+    ) {
+        self.voiceInputController = voiceInputController
+        self.overlayState = overlayState
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 10, height: 10)
+
+                    Text(statusTitle)
+                        .font(.headline)
+                }
+
+                Spacer()
+
+                Text(durationLabel)
+                    .font(.system(.headline, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            if overlayState.showsLiveAudioIndicator {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(Array(voiceInputController.liveLevels.bars.enumerated()), id: \.offset) { _, value in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(.green.gradient)
+                            .frame(width: 16, height: max(10, CGFloat(value) * 56))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 12) {
+                metricPill(title: "RMS", value: String(format: "%.2f", voiceInputController.liveLevels.rms))
+                metricPill(title: "Peak", value: String(format: "%.2f", voiceInputController.liveLevels.peak))
+            }
+        }
+        .padding(18)
+        .frame(width: 340)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var statusTitle: String {
+        switch voiceInputController.state {
+        case .recording:
+            "Recording"
+        case .stopping:
+            "Stopping"
+        case .pendingTranscription:
+            "Saved locally"
+        case .requestingPermission:
+            "Requesting permission"
+        case .failed:
+            "Recording failed"
+        case .idle:
+            "Idle"
+        }
+    }
+
+    private var statusColor: Color {
+        switch voiceInputController.state {
+        case .recording:
+            .red
+        case .pendingTranscription:
+            .green
+        case .failed:
+            .orange
+        default:
+            .secondary
+        }
+    }
+
+    private var durationLabel: String {
+        let elapsed = Int(voiceInputController.elapsedDuration)
+        let minutes = elapsed / 60
+        let seconds = elapsed % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func metricPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
