@@ -64,6 +64,13 @@ public struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                Section("Menu Shortcuts") {
+                    LabeledContent("Import Audio") {
+                        Text("Cmd + Shift + I")
+                            .font(.system(.body, design: .monospaced))
+                    }
+                }
             }
         case .overlay:
             settingsForm(title: "Overlay", subtitle: "Preferences for the future non-activating recording overlay.") {

@@ -21,6 +21,12 @@ public struct ModelsView: View {
                         Text("Preferred model: \(selectedModel.name)")
                             .font(.callout.weight(.medium))
                     }
+
+                    HStack(spacing: 10) {
+                        AvailabilityBadge(availability: .available(note: "Mock state"))
+                        AvailabilityBadge(availability: .downloaded(note: "Mock state"))
+                        AvailabilityBadge(availability: .unavailable(blocker: "Unavailable"))
+                    }
                 }
 
                 ForEach(appState.modelCatalog.sections) { section in
@@ -106,6 +112,9 @@ public struct ModelsView: View {
                     appState.transcriptionPreferences.selectedModelID = model.id
                 }
                 .disabled(model.family == "Parakeet")
+
+                Button(actionLabel(for: model.availability)) {}
+                    .disabled(true)
             }
         }
         .padding(20)
@@ -169,6 +178,19 @@ public struct ModelsView: View {
 
             Text(value)
                 .font(.headline)
+        }
+    }
+
+    private func actionLabel(for availability: FeatureAvailability) -> String {
+        switch availability {
+        case .available:
+            "Download"
+        case .downloaded:
+            "Downloaded"
+        case .planned:
+            "Planned"
+        case .unavailable:
+            "Unavailable"
         }
     }
 }

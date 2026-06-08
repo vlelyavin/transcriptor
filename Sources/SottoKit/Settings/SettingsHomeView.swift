@@ -63,6 +63,10 @@ public struct SettingsHomeView: View {
                         Text("The launch-at-login toggle is a placeholder preference only and is not wired to Service Management yet.")
                             .foregroundStyle(.secondary)
                     }
+
+                    Text("The Buy button in the toolbar is also a non-functional placeholder kept only for screenshot parity.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(24)
