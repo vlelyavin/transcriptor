@@ -1,6 +1,6 @@
 # Sotto
 
-Sotto is a native macOS speech-to-text desktop app with a local-first design. The current build includes a native UI shell, real local audio recording, configurable global voice-input hotkeys, a live recording overlay, pending-history handoff, and a truthful product surface for future local Whisper-family models and optional cloud providers.
+Sotto is a native macOS speech-to-text desktop app with a local-first design. The current build includes a native UI shell, real local audio recording, configurable global voice-input hotkeys, a live recording overlay, durable local history, managed audio import, playback, transcript copy/export, and a truthful product surface for future local Whisper-family models and optional cloud providers.
 
 ## Product overview
 
@@ -54,14 +54,19 @@ swift run SottoSmokeChecks
 - Toggle to Talk mode: implemented
 - Live non-activating overlay: implemented
 - Pending transcription history items for completed recordings: implemented
-- Transcript history screen: implemented with search, filters, mock rows, and detail pane
-- Import audio screen: implemented with drag-and-drop zone, shortcut, and mock recent imports
+- Durable history persistence across app restarts: implemented
+- Transcript history screen: implemented with search, filters, delete actions, and real persisted records
+- Audio import to managed local storage: implemented for `.mp3`, `.m4a`, and `.wav`
+- `.webm` import: visibly blocked and stored as a failed item until a real decoder/transcoder is added
+- Playback for stored recordings and imports: implemented
+- Transcript copy and `.txt` export for completed entries: implemented
+- Storage usage display and retention pruning: implemented
 - Model manager screen: implemented with WhisperKit, Parakeet, and cloud sections
 - Local Whisper-family models: planned, not implemented
 - NVIDIA Parakeet section: visible but unavailable
 - OpenAI provider section: visible but unavailable
 - Groq provider section: visible but unavailable
-- Real recording, transcription, and networking: intentionally not implemented
+- Real transcription and networking: intentionally not implemented
 
 ## Known platform requirements
 
@@ -72,6 +77,8 @@ swift run SottoSmokeChecks
 - macOS will ask for Microphone permission the first time recording starts
 - Global hotkeys use Carbon registration and work while Sotto is running, even when the main window is not focused
 - Input device selection is not wired yet; recording currently uses the system default input device
+- Audio imports are copied into `~/Library/Application Support/Sotto`
+- `.webm` import is not fully supported because this build does not yet ship a reliable WebM decoder/transcoder
 - API keys must be stored in the macOS Keychain only when provider support is implemented
 
 ## Notes
@@ -90,3 +97,6 @@ swift run SottoSmokeChecks
 5. Verify the floating overlay appears without focusing the Sotto window.
 6. Speak into the microphone and confirm the live level bars react.
 7. Stop recording and confirm a new `Pending transcription` item appears in History with a local audio path and duration.
+8. Open `Import Audio`, import a `.mp3`, `.m4a`, or `.wav`, and confirm the item persists in History after restarting the app.
+9. Play the imported or recorded item from History and confirm missing files show a clear message instead of failing silently.
+10. For a completed history item, use `Copy Transcript` or `Export .txt` and confirm the exported text uses the native save panel.

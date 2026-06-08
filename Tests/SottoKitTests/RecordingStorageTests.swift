@@ -4,9 +4,13 @@ import XCTest
 final class RecordingStorageTests: XCTestCase {
     func testRecordingStorageGeneratesApplicationSupportRecordingPath() throws {
         let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let storage = RecordingStorage(
+        let layout = AppStorageLayout(
             fileManager: .default,
             applicationSupportURLProvider: { rootDirectory }
+        )
+        let storage = RecordingStorage(
+            fileManager: .default,
+            layout: layout
         )
 
         let url = try storage.nextRecordingURL(

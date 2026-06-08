@@ -1,6 +1,6 @@
 # Sotto Product Spec
 
-This document tracks the intended scope for the initial Sotto desktop product. The repository now includes a richer native UI shell with persisted mock settings, but unchecked items are still not functionally implemented unless noted otherwise.
+This document tracks the intended scope for the initial Sotto desktop product. Checked items below are implemented in the current native macOS build unless a follow-up note says otherwise.
 
 ## Core interaction
 
@@ -12,20 +12,24 @@ This document tracks the intended scope for the initial Sotto desktop product. T
 
 ## Audio import and export
 
-- [x] Import audio: `.mp3`, `.m4a`, `.wav`, `.webm`
-- [ ] Export transcript to `.txt`
+- [x] Import audio: `.mp3`, `.m4a`, `.wav`
+- [ ] Import audio: `.webm`
+- [x] Export transcript to `.txt`
 
 ## Transcript history
 
 - [x] Transcript history
 - [x] History search
-- [ ] Playback original audio
+- [x] Playback original audio
 - [ ] Re-transcribe with another model
-- [ ] Copy transcript
+- [x] Copy transcript
 
 ## Storage and lifecycle
 
 - [x] Storage cap in MB for history/audio/transcripts, excluding downloaded model files
+- [x] Durable local history persistence across app restarts
+- [x] Delete history item
+- [x] Delete all history with confirmation
 - [x] Model manager
 
 ## Model support
@@ -42,8 +46,8 @@ This document tracks the intended scope for the initial Sotto desktop product. T
 
 - [x] Native macOS Settings window
 - [x] Main window shell
-- [x] History screen with search, filters, mock rows, and detail pane
-- [x] Import Audio screen with drag-and-drop zone, supported format chips, shortcut display, and mock recent imports
+- [x] History screen with search, filters, real persisted rows, and detail pane
+- [x] Import Audio screen with drag-and-drop zone, supported format chips, shortcut display, and recent persisted imports
 - [x] Models screen with WhisperKit, NVIDIA Parakeet, and Cloud Models sections
 - [x] Settings hub entry in the main window
 - [x] Native Settings window with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
@@ -66,14 +70,27 @@ This document tracks the intended scope for the initial Sotto desktop product. T
 - [x] Pending transcription history handoff after recording stops
 - [x] Tests for controller transitions, recording mode behavior, and recording storage path generation
 
+## Durable history completion in this task
+
+- [x] SwiftData-backed persistence for history records
+- [x] Application Support layout for `Recordings`, `Imports`, `Metadata`, and reserved `Models`
+- [x] File-picker and drag-and-drop audio import into app-managed storage
+- [x] Local playback for stored recordings and imports
+- [x] Native transcript copy and `.txt` export
+- [x] Search by transcript text, filename, preview, and model name
+- [x] Storage usage display and oldest-first pruning when auto-delete is enabled
+- [x] Blocking new imports when storage is over cap and auto-delete is disabled
+- [x] Tests for persistence CRUD, storage usage, pruning order, transcript export formatting, and missing-file playback
+
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
 - Global hotkeys are registered while Sotto is running and do not require the main window to stay focused.
 - Input device selection is a documented follow-up. The current build records from the system default microphone.
+- Imported audio is copied into Sotto-managed local storage under Application Support so history survives app restarts.
 
 ## Current blockers
 
 - Local transcription is blocked by missing model runtime integration, download management, and inference orchestration.
 - Cloud providers are blocked by this scaffold intentionally excluding networking and credential flows.
-- Build validation in the current environment is blocked until the Apple/Xcode license is accepted with `sudo xcodebuild -license`.
+- `.webm` import remains blocked because this build does not yet include a reliable WebM decoder/transcoder dependency. WebM files are stored as failed import records instead of being falsely treated as supported.
