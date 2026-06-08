@@ -71,6 +71,7 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var groqEnabled: Bool
 }
 
+@MainActor
 public final class AppPreferencesStore {
     public static let standard = AppPreferencesStore()
 

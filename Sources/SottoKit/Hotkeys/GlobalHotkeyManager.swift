@@ -29,10 +29,6 @@ public final class GlobalHotkeyManager {
         self.currentConfiguration = configuration
     }
 
-    deinit {
-        unregister()
-    }
-
     public func register(_ configuration: HotkeyConfiguration) {
         unregister()
         currentConfiguration = configuration
@@ -44,7 +40,7 @@ public final class GlobalHotkeyManager {
 
         installHandlerIfNeeded()
 
-        var hotKeyID = EventHotKeyID(signature: fourCharCode("SOTT"), id: 1)
+        let hotKeyID = EventHotKeyID(signature: fourCharCode("SOTT"), id: 1)
         let status = RegisterEventHotKey(
             UInt32(configuration.keyCode),
             configuration.carbonModifiers,

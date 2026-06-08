@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 
+@MainActor
 @Observable
 public final class AppState {
     public var selectedScreen: NavigationScreen

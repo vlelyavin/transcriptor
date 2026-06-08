@@ -15,7 +15,7 @@ public final class VoiceInputController {
     private let pendingStateDuration: Duration
     private let sleep: @Sendable (Duration) async -> Void
     private var recordingModeProvider: @MainActor () -> RecordingMode
-    private var elapsedTimer: Timer?
+    private var elapsedTask: Task<Void, Never>?
     private var recordingStartedAt: Date?
     private var onRecordingFinished: @MainActor (RecordedAudioAsset) -> Void
 
@@ -168,17 +168,27 @@ public final class VoiceInputController {
     private func startElapsedTimer() {
         stopElapsedTimer()
         elapsedDuration = 0
-        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self, let recordingStartedAt = self.recordingStartedAt else {
-                return
+        elapsedTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else {
+                    return
+                }
+
+                await MainActor.run {
+                    guard let recordingStartedAt = self.recordingStartedAt else {
+                        return
+                    }
+                    self.elapsedDuration = Date().timeIntervalSince(recordingStartedAt)
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
             }
-            self.elapsedDuration = Date().timeIntervalSince(recordingStartedAt)
         }
     }
 
     private func stopElapsedTimer() {
-        elapsedTimer?.invalidate()
-        elapsedTimer = nil
+        elapsedTask?.cancel()
+        elapsedTask = nil
     }
 
     private func resetToIdle() {

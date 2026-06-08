@@ -11,7 +11,7 @@ public enum RecordingStorageError: Error, LocalizedError {
     }
 }
 
-public struct RecordingStorage: Sendable {
+public struct RecordingStorage {
     public let fileManager: FileManager
     private let applicationSupportURLProvider: @Sendable () -> URL?
 

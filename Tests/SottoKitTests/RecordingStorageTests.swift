@@ -14,9 +14,10 @@ final class RecordingStorageTests: XCTestCase {
             identifier: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
         )
 
-        XCTAssertTrue(url.path.contains("Sotto/Recordings"))
+        XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "Recordings")
+        XCTAssertEqual(url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent, "Sotto")
         XCTAssertEqual(url.pathExtension, "wav")
         XCTAssertTrue(url.lastPathComponent.hasPrefix("recording-"))
-        XCTAssertTrue(url.lastPathComponent.contains("AAAAAAAA".lowercased()))
+        XCTAssertTrue(url.lastPathComponent.lowercased().contains("aaaaaaaa"))
     }
 }

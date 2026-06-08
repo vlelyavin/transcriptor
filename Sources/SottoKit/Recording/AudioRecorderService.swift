@@ -28,8 +28,8 @@ public enum AudioRecorderError: Error, LocalizedError {
     }
 }
 
-public protocol AudioRecorderServing: AnyObject {
-    var onLevelsDidChange: ((AudioLevelSnapshot) -> Void)? { get set }
+public protocol AudioRecorderServing: AnyObject, Sendable {
+    var onLevelsDidChange: (@MainActor (AudioLevelSnapshot) -> Void)? { get set }
     var isRecording: Bool { get }
 
     func authorizationStatus() -> MicrophonePermissionStatus
@@ -39,8 +39,8 @@ public protocol AudioRecorderServing: AnyObject {
     func cancelRecording() throws
 }
 
-public final class AudioRecorderService: AudioRecorderServing {
-    public var onLevelsDidChange: ((AudioLevelSnapshot) -> Void)?
+public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendable {
+    public var onLevelsDidChange: (@MainActor (AudioLevelSnapshot) -> Void)?
     public private(set) var isRecording = false
 
     private let storage: RecordingStorage
@@ -115,17 +115,20 @@ public final class AudioRecorderService: AudioRecorderServing {
                 try outputFile.write(from: buffer)
                 self.totalFramesRecorded += AVAudioFramePosition(buffer.frameLength)
             } catch {
-                DispatchQueue.main.async {
-                    self.onLevelsDidChange?(self.lastLevels)
+                let levelHandler = self.onLevelsDidChange
+                let lastLevels = self.lastLevels
+                Task { @MainActor in
+                    levelHandler?(lastLevels)
                 }
                 return
             }
 
             let analyzedLevels = Self.analyzeLevels(from: buffer, previous: self.lastLevels)
             self.lastLevels = analyzedLevels
+            let levelHandler = self.onLevelsDidChange
 
-            DispatchQueue.main.async {
-                self.onLevelsDidChange?(analyzedLevels)
+            Task { @MainActor in
+                levelHandler?(analyzedLevels)
             }
         }
 
@@ -191,7 +194,10 @@ public final class AudioRecorderService: AudioRecorderServing {
         totalFramesRecorded = 0
         isRecording = false
         lastLevels = .zero
-        onLevelsDidChange?(.zero)
+        let levelHandler = onLevelsDidChange
+        Task { @MainActor in
+            levelHandler?(.zero)
+        }
     }
 
     private static func analyzeLevels(

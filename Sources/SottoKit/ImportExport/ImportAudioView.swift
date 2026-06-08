@@ -124,7 +124,7 @@ public struct ImportAudioView: View {
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [10, 10])
                 )
-                .foregroundStyle(isDropTargeted ? .blue : .quaternary)
+                .foregroundStyle(isDropTargeted ? Color.blue : Color.secondary.opacity(0.35))
                 .padding(12)
         }
         .onTapGesture {

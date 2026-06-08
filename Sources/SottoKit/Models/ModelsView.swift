@@ -121,7 +121,7 @@ public struct ModelsView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(appState.transcriptionPreferences.selectedModelID == model.id ? .orange : .quaternary, lineWidth: 1.5)
+                .stroke(appState.transcriptionPreferences.selectedModelID == model.id ? Color.orange : Color.secondary.opacity(0.25), lineWidth: 1.5)
         )
     }
 

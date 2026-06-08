@@ -88,9 +88,8 @@ private actor SleepGate {
     }
 }
 
-@MainActor
-private final class MockAudioRecorderService: AudioRecorderServing {
-    var onLevelsDidChange: ((AudioLevelSnapshot) -> Void)?
+private final class MockAudioRecorderService: AudioRecorderServing, @unchecked Sendable {
+    var onLevelsDidChange: (@MainActor @Sendable (AudioLevelSnapshot) -> Void)?
     var isRecording = false
 
     var permissionStatus: MicrophonePermissionStatus
@@ -113,7 +112,10 @@ private final class MockAudioRecorderService: AudioRecorderServing {
     func startRecording() throws -> URL {
         startCallCount += 1
         isRecording = true
-        onLevelsDidChange?(.zero)
+        let levelHandler = onLevelsDidChange
+        Task { @MainActor in
+            levelHandler?(.zero)
+        }
         return URL(fileURLWithPath: "/tmp/mock.wav")
     }
 
