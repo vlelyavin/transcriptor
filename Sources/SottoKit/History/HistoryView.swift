@@ -64,6 +64,7 @@ public struct HistoryView: View {
                                     .foregroundStyle(.secondary)
 
                                 HStack(spacing: 8) {
+                                    detailTag(entry.transcriptionStatus.title)
                                     detailTag(entry.sourceType.title)
                                     detailTag(entry.modelName)
                                 }
@@ -89,7 +90,21 @@ public struct HistoryView: View {
 
                         Divider()
 
-                        Text(entry.transcriptText)
+                        if let audioFilePath = entry.audioFilePath {
+                            LabeledContent("Audio Path") {
+                                Text(audioFilePath)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+
+                        if let fileSizeBytes = entry.fileSizeBytes {
+                            LabeledContent("File Size") {
+                                Text(byteCountFormatter.string(fromByteCount: fileSizeBytes))
+                            }
+                        }
+
+                        Text(entry.transcriptionStatus == .pendingTranscription ? "Pending transcription..." : entry.transcriptText)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -148,7 +163,7 @@ public struct HistoryView: View {
                 detailTag(entry.modelName)
             }
 
-            Text(entry.transcriptPreview)
+            Text(entry.transcriptionStatus == .pendingTranscription ? "Pending transcription..." : entry.transcriptPreview)
                 .font(.headline)
                 .lineLimit(2)
 
@@ -156,6 +171,7 @@ public struct HistoryView: View {
                 metadataLabel(systemImage: "clock", text: durationLabel(entry.durationSeconds))
                 metadataLabel(systemImage: "textformat.abc", text: "\(entry.characterCount) chars")
                 metadataLabel(systemImage: "tray.full", text: entry.sourceType.title)
+                metadataLabel(systemImage: "waveform", text: entry.transcriptionStatus.title)
             }
         }
         .padding(.vertical, 6)
@@ -186,6 +202,13 @@ public struct HistoryView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private var byteCountFormatter: ByteCountFormatter {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter
     }
 }
 

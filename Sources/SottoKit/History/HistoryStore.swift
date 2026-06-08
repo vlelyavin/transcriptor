@@ -16,6 +16,22 @@ public enum HistorySourceType: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum HistoryTranscriptionStatus: String, CaseIterable, Identifiable, Sendable {
+    case completed
+    case pendingTranscription
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .completed:
+            "Ready"
+        case .pendingTranscription:
+            "Pending transcription"
+        }
+    }
+}
+
 public struct HistoryEntry: Identifiable, Equatable, Sendable {
     public let id: UUID
     public var createdAt: Date
@@ -26,6 +42,9 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
     public var characterCount: Int
     public var modelName: String
     public var sourceType: HistorySourceType
+    public var transcriptionStatus: HistoryTranscriptionStatus
+    public var audioFilePath: String?
+    public var fileSizeBytes: Int64?
 
     public init(
         id: UUID = UUID(),
@@ -36,7 +55,10 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         durationSeconds: Int,
         characterCount: Int,
         modelName: String,
-        sourceType: HistorySourceType
+        sourceType: HistorySourceType,
+        transcriptionStatus: HistoryTranscriptionStatus = .completed,
+        audioFilePath: String? = nil,
+        fileSizeBytes: Int64? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -47,6 +69,9 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         self.characterCount = characterCount
         self.modelName = modelName
         self.sourceType = sourceType
+        self.transcriptionStatus = transcriptionStatus
+        self.audioFilePath = audioFilePath
+        self.fileSizeBytes = fileSizeBytes
     }
 }
 
@@ -55,6 +80,10 @@ public struct HistoryStore: Equatable, Sendable {
 
     public init(entries: [HistoryEntry] = []) {
         self.entries = entries
+    }
+
+    public mutating func prepend(_ entry: HistoryEntry) {
+        entries.insert(entry, at: 0)
     }
 
     public static let mock = HistoryStore(
@@ -67,7 +96,9 @@ public struct HistoryStore: Equatable, Sendable {
                 durationSeconds: 42,
                 characterCount: 178,
                 modelName: "Whisper Tiny",
-                sourceType: .dictation
+                sourceType: .dictation,
+                audioFilePath: nil,
+                fileSizeBytes: nil
             ),
             HistoryEntry(
                 createdAt: .now.addingTimeInterval(-15_200),
@@ -77,7 +108,9 @@ public struct HistoryStore: Equatable, Sendable {
                 durationSeconds: 75,
                 characterCount: 224,
                 modelName: "Large V3 Turbo",
-                sourceType: .dictation
+                sourceType: .dictation,
+                audioFilePath: nil,
+                fileSizeBytes: nil
             ),
             HistoryEntry(
                 createdAt: .now.addingTimeInterval(-86_400),
@@ -87,7 +120,9 @@ public struct HistoryStore: Equatable, Sendable {
                 durationSeconds: 143,
                 characterCount: 217,
                 modelName: "OpenAI",
-                sourceType: .importedAudio
+                sourceType: .importedAudio,
+                audioFilePath: nil,
+                fileSizeBytes: nil
             ),
             HistoryEntry(
                 createdAt: .now.addingTimeInterval(-172_800),
@@ -97,7 +132,9 @@ public struct HistoryStore: Equatable, Sendable {
                 durationSeconds: 94,
                 characterCount: 221,
                 modelName: "Base (English)",
-                sourceType: .importedAudio
+                sourceType: .importedAudio,
+                audioFilePath: nil,
+                fileSizeBytes: nil
             ),
         ]
     )
