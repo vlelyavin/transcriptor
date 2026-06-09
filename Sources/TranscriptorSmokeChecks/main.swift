@@ -19,10 +19,10 @@ struct TranscriptorSmokeChecks {
         expect(catalog.sections.map(\.id) == ["whisper", "parakeet"], "Model catalog exposes Whisper and Parakeet sections.", failures: &failures)
         expect(catalog.whisperModels.contains { $0.id == "whisper-tiny" && $0.supportsLocalTranscription }, "Model catalog includes Tiny as a real local model.", failures: &failures)
         expect(catalog.whisperModels.contains { $0.remoteVariantName == "openai_whisper-large-v3-v20240930_turbo_632MB" }, "Model catalog pins a verified Large V3 Turbo runtime variant.", failures: &failures)
-        expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog includes a Parakeet multilingual placeholder.", failures: &failures)
+        expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
 
         let providers = ProviderCatalog.defaultCatalog
-        expect(providers.providers.map(\.id) == ["openai", "groq"], "Provider catalog includes OpenAI and Groq placeholders.", failures: &failures)
+        expect(providers.providers.map(\.id) == ["openai", "groq"], "Provider catalog includes the implemented OpenAI and Groq providers.", failures: &failures)
 
         if failures.isEmpty {
             print("Transcriptor smoke checks passed.")

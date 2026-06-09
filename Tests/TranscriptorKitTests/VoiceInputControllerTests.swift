@@ -71,6 +71,21 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .failed)
         XCTAssertNotNil(controller.failureMessage)
     }
+
+    func testUndeterminedPermissionRequestsAccessBeforeRecording() async {
+        let recorder = MockAudioRecorderService(permissionStatus: .undetermined, permissionResponse: true)
+        let controller = VoiceInputController(
+            recorder: recorder,
+            recordingModeProvider: { .holdToTalk },
+            sleep: { _ in }
+        )
+
+        await controller.handleHotkeyPressed()
+
+        XCTAssertEqual(recorder.requestPermissionCallCount, 1)
+        XCTAssertEqual(controller.permissionStatus, .granted)
+        XCTAssertEqual(controller.state, .recording)
+    }
 }
 
 private actor SleepGate {
@@ -93,12 +108,18 @@ private final class MockAudioRecorderService: AudioRecorderServing, @unchecked S
     var isRecording = false
 
     var permissionStatus: MicrophonePermissionStatus
+    var permissionResponse: Bool
     var startCallCount = 0
     var stopCallCount = 0
     var cancelCallCount = 0
+    var requestPermissionCallCount = 0
 
-    init(permissionStatus: MicrophonePermissionStatus = .granted) {
+    init(
+        permissionStatus: MicrophonePermissionStatus = .granted,
+        permissionResponse: Bool? = nil
+    ) {
         self.permissionStatus = permissionStatus
+        self.permissionResponse = permissionResponse ?? (permissionStatus == .granted)
     }
 
     func authorizationStatus() -> MicrophonePermissionStatus {
@@ -106,7 +127,9 @@ private final class MockAudioRecorderService: AudioRecorderServing, @unchecked S
     }
 
     func requestPermission() async -> Bool {
-        permissionStatus == .granted
+        requestPermissionCallCount += 1
+        permissionStatus = permissionResponse ? .granted : .denied
+        return permissionResponse
     }
 
     func startRecording() throws -> URL {
