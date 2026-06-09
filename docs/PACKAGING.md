@@ -43,6 +43,7 @@ scripts/package_dmg.sh
 - Microphone access must be declared in the generated `Info.plist`.
 - Accessibility access is still user-granted at runtime for transcript insertion into other apps.
 - No user data, models, recordings, or API keys are bundled into the app or DMG.
+- Parakeet Local model downloads are not bundled. They are fetched on demand after install and currently target Apple Silicon.
 
 ## GitHub Release Upload
 
