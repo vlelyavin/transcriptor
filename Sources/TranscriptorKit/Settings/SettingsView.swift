@@ -65,11 +65,37 @@ public struct SettingsView: View {
         case .general:
             settingsForm(pane: .general) {
                 Section("Application") {
-                    Toggle("Launch at login", isOn: $appState.generalSettings.launchAtLoginEnabled)
+                    Toggle(
+                        "Show Transcriptor in menu bar",
+                        isOn: $appState.generalSettings.showMenuBarIcon
+                    )
 
-                    Text("Launch at login is managed from this Settings window. Transcriptor will show a clear status if the current app bundle cannot register yet.")
+                    Toggle(
+                        "Launch at login",
+                        isOn: Binding(
+                            get: { appState.generalSettings.launchAtLoginEnabled },
+                            set: { appState.setLaunchAtLoginEnabled($0) }
+                        )
+                    )
+                    .disabled(!appState.launchAtLoginStatus.canRegisterFromCurrentRuntime)
+
+                    LabeledContent("Status") {
+                        Text(appState.launchAtLoginStatus.title)
+                    }
+
+                    Text(appState.launchAtLoginStatus.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("Refresh Status") {
+                            appState.refreshLaunchAtLoginStatus()
+                        }
+
+                        Button("Open Login Items Settings") {
+                            appState.openLoginItemsSettings()
+                        }
+                    }
                 }
             }
         case .recording:

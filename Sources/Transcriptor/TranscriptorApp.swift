@@ -4,7 +4,14 @@ import TranscriptorKit
 
 @main
 struct TranscriptorApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
+    private let menuBarStatusItemController: MenuBarStatusItemController
+
+    init() {
+        let appState = AppState()
+        _appState = State(initialValue: appState)
+        menuBarStatusItemController = MenuBarStatusItemController(appState: appState)
+    }
 
     var body: some Scene {
         WindowGroup {

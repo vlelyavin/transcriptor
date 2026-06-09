@@ -28,7 +28,8 @@ public struct SettingsHomeView: View {
                             "Auto-insert: \(appState.generalSettings.insertTranscriptIntoActiveApp ? "On" : "Off")",
                             "Save original audio: \(appState.recordingState.savesAudioLocally ? "On" : "Off")",
                             "Mic permission: \(appState.voiceInputController.permissionStatus.rawValue.capitalized)",
-                            "Launch at login: \(appState.generalSettings.launchAtLoginEnabled ? "Requested" : "Off")",
+                            "Launch at login: \(appState.launchAtLoginStatus.title)",
+                            "Menu bar: \(appState.generalSettings.showMenuBarIcon ? "On" : "Off")",
                         ]
                     )
 
@@ -62,7 +63,7 @@ public struct SettingsHomeView: View {
                         }
                         .keyboardShortcut(",", modifiers: .command)
 
-                        Text("Launch at login still persists as a preference only. Service Management integration is a follow-up.")
+                        Text(appState.launchAtLoginStatus.detail)
                             .foregroundStyle(.secondary)
                     }
 

@@ -58,6 +58,7 @@ public final class AppState {
     public private(set) var providerCredentialValidationStates: [String: ProviderCredentialValidationState]
     public private(set) var hotkeyRegistrationErrorMessage: String?
     public private(set) var accessibilityPermissionStatus: AccessibilityPermissionStatus
+    public private(set) var launchAtLoginStatus: LaunchAtLoginStatus
     @ObservationIgnored private let hotkeyManager: GlobalHotkeyManager
     @ObservationIgnored private let recordingOverlayManager: RecordingOverlayManager
     @ObservationIgnored private let preferencesStore: AppPreferencesStore
@@ -67,6 +68,7 @@ public final class AppState {
     @ObservationIgnored private let storageQuotaService: StorageQuotaService
     @ObservationIgnored private let transcriptExportService: TranscriptExportService
     @ObservationIgnored private let transcriptInsertionService: any TranscriptInsertionServing
+    @ObservationIgnored private let launchAtLoginService: any LaunchAtLoginServing
     @ObservationIgnored private let secretStore: any SecretStore
     @ObservationIgnored private var isEnforcingStorageCap = false
     @ObservationIgnored private var overlaySupplementalClearTask: Task<Void, Never>?
@@ -83,6 +85,7 @@ public final class AppState {
         historyRepository: HistoryRepository? = nil,
         audioPlaybackService: AudioPlaybackService = AudioPlaybackService(),
         transcriptInsertionService: any TranscriptInsertionServing = TranscriptInsertionService(),
+        launchAtLoginService: any LaunchAtLoginServing = LaunchAtLoginService(),
         secretStore: any SecretStore = KeychainSecretStore()
     ) {
         let snapshot = preferencesStore.load()
@@ -132,6 +135,7 @@ public final class AppState {
         let providerCredentialValidationStates = Dictionary(
             uniqueKeysWithValues: providerCatalog.providers.map { ($0.id, ProviderCredentialValidationState.idle) }
         )
+        let launchAtLoginStatus = launchAtLoginService.refreshStatus()
 
         let persistedEntries = (try? resolvedHistoryRepository.fetchAll()) ?? historyStore.entries
 
@@ -144,10 +148,11 @@ public final class AppState {
         self.storageQuotaService = StorageQuotaService(layout: storageLayout)
         self.transcriptExportService = TranscriptExportService()
         self.transcriptInsertionService = transcriptInsertionService
+        self.launchAtLoginService = launchAtLoginService
         self.secretStore = secretStore
         self.selectedScreen = selectedScreen
         self.generalSettings = GeneralSettings(
-            launchAtLoginEnabled: snapshot.launchAtLoginEnabled,
+            launchAtLoginEnabled: launchAtLoginStatus.toggleValue,
             showMenuBarIcon: snapshot.showMenuBarIcon,
             insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
             alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
@@ -199,6 +204,7 @@ public final class AppState {
         self.providerCredentialValidationStates = providerCredentialValidationStates
         self.hotkeyRegistrationErrorMessage = nil
         self.accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
+        self.launchAtLoginStatus = launchAtLoginStatus
 
         voiceInputController.replaceOnRecordingStarted { [weak self] in
             self?.beginVoiceInputCapture()
@@ -562,6 +568,22 @@ public final class AppState {
     public func openAccessibilityPrivacySettings() {
         transcriptInsertionService.openAccessibilitySettings()
         refreshAccessibilityPermissionStatus()
+    }
+
+    public func refreshLaunchAtLoginStatus() {
+        let status = launchAtLoginService.refreshStatus()
+        launchAtLoginStatus = status
+        generalSettings.launchAtLoginEnabled = status.toggleValue
+    }
+
+    public func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        let status = launchAtLoginService.setEnabled(enabled)
+        launchAtLoginStatus = status
+        generalSettings.launchAtLoginEnabled = status.toggleValue
+    }
+
+    public func openLoginItemsSettings() {
+        launchAtLoginService.openSystemSettings()
     }
 
     public func refreshAccessibilityPermissionStatus() {
