@@ -3,35 +3,35 @@
 import PackageDescription
 
 let package = Package(
-    name: "Sotto",
+    name: "Transcriptor",
     platforms: [
         .macOS(.v14),
     ],
     products: [
-        .executable(name: "Sotto", targets: ["Sotto"]),
-        .library(name: "SottoKit", targets: ["SottoKit"]),
+        .executable(name: "Transcriptor", targets: ["Transcriptor"]),
+        .library(name: "TranscriptorKit", targets: ["TranscriptorKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0"),
     ],
     targets: [
         .executableTarget(
-            name: "Sotto",
-            dependencies: ["SottoKit"]
+            name: "Transcriptor",
+            dependencies: ["TranscriptorKit"]
         ),
         .executableTarget(
-            name: "SottoSmokeChecks",
-            dependencies: ["SottoKit"]
+            name: "TranscriptorSmokeChecks",
+            dependencies: ["TranscriptorKit"]
         ),
         .target(
-            name: "SottoKit",
+            name: "TranscriptorKit",
             dependencies: [
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
             ]
         ),
         .testTarget(
-            name: "SottoKitTests",
-            dependencies: ["SottoKit"]
+            name: "TranscriptorKitTests",
+            dependencies: ["TranscriptorKit"]
         ),
     ],
     swiftLanguageModes: [.v6]
