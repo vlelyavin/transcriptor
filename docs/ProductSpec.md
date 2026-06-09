@@ -2,6 +2,22 @@
 
 This document tracks the intended scope for the initial Transcriptor desktop product. Checked items below are implemented in the current native macOS build unless a follow-up note says otherwise.
 
+## Native polish and distribution follow-up
+
+This branch focuses on the final product-facing pass needed before broader distribution:
+
+- [ ] Redesign the main window to feel closer to a native macOS sidebar/detail app
+- [ ] Redesign the dedicated Settings window to feel closer to macOS System Settings
+- [ ] Remove the Buy placeholder from all user-facing surfaces
+- [ ] Redesign the voice input overlay into a centered dictation experience
+- [ ] Add automatic transcript insertion into the active text field with Accessibility-aware fallback behavior
+- [ ] Add a menu bar status item that reflects idle, recording, transcribing, and failed states
+- [ ] Replace the launch-at-login preference placeholder with real Service Management support or an honest packaged-app limitation state
+- [ ] Rewrite README.md as a user-facing install and usage guide
+- [ ] Move developer and packaging details into dedicated docs
+- [ ] Add DMG packaging scripts and release-distribution documentation
+- [ ] Add a GitHub Pages landing page and distribution workflows if repository permissions allow
+
 ## Final QA status matrix
 
 | Feature | Status | Notes |
