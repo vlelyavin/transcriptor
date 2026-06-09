@@ -60,16 +60,16 @@ public struct HistoryView: View {
                                     }
                                 }
                         }
-                        .listStyle(.inset)
+                        .listStyle(.inset(alternatesRowBackgrounds: true))
                     }
                 }
-                .frame(minWidth: 420)
+                .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                 .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
             }
 
             detailPane
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                .background(.regularMaterial)
+                .background(Color(nsColor: .windowBackgroundColor))
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
@@ -106,6 +106,9 @@ public struct HistoryView: View {
 
     private var headerControls: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("History")
+                .font(.title2.weight(.semibold))
+
             Picker("Source", selection: $selectedFilter) {
                 ForEach(HistoryFilter.allCases) { filter in
                     Text(filter.title).tag(filter)
@@ -157,7 +160,11 @@ public struct HistoryView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(entry.displayName)
-                                    .font(.largeTitle.weight(.semibold))
+                                    .font(.title.weight(.semibold))
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
 
                                 Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
                                     .foregroundStyle(.secondary)
@@ -215,17 +222,27 @@ public struct HistoryView: View {
 
                         Divider()
 
-                        if let latestVersion = entry.latestTranscriptVersion {
-                            latestTranscriptSummary(version: latestVersion)
+                        SectionCard(
+                            title: "Transcript",
+                            subtitle: "Latest saved transcript text for this history item."
+                        ) {
+                            if let latestVersion = entry.latestTranscriptVersion {
+                                latestTranscriptSummary(version: latestVersion)
+                            }
+
+                            Text(displayTranscriptText(for: entry))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
-                        metadataGrid(for: entry)
+                        SectionCard(
+                            title: "Details",
+                            subtitle: "Saved metadata, audio paths, and file information."
+                        ) {
+                            metadataGrid(for: entry)
+                        }
 
                         transcriptVersionSection(for: entry)
-
-                        Text(displayTranscriptText(for: entry))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(24)
                 }
@@ -301,10 +318,10 @@ public struct HistoryView: View {
     }
 
     private func progressCard(_ progress: TranscriptionProgress) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(progress.statusMessage)
-                .font(.headline)
-
+        SectionCard(
+            title: "Transcription Progress",
+            subtitle: progress.statusMessage
+        ) {
             if let fractionCompleted = progress.fractionCompleted {
                 ProgressView(value: fractionCompleted)
             } else {
@@ -318,32 +335,21 @@ public struct HistoryView: View {
                     .lineLimit(4)
             }
         }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func cloudPrivacyCard(for provider: ProviderDescriptor) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "icloud.and.arrow.up")
-                .foregroundStyle(.orange)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Cloud Transcription")
-                    .font(.headline)
-                Text("\(provider.privacySummary) Configure or disable this in Settings > Cloud Providers.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        SectionCard(
+            title: "Cloud Transcription",
+            subtitle: "This provider uploads audio only after it is explicitly enabled."
+        ) {
+            Label("\(provider.privacySummary) Configure or disable this in Settings > Cloud Providers.", systemImage: "icloud.and.arrow.up")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func latestTranscriptSummary(version: TranscriptVersion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Latest Transcript")
-                .font(.headline)
-
             HStack(spacing: 8) {
                 detailTag(version.modelName ?? "Unknown Model")
                 detailTag(version.providerName ?? "Local")
@@ -369,6 +375,9 @@ public struct HistoryView: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(title.contains("Audio") ? .system(.caption, design: .monospaced) : .body)
+                .lineLimit(title.contains("Audio") ? 3 : 2)
+                .truncationMode(title.contains("Audio") ? .middle : .tail)
+                .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
     }
@@ -376,10 +385,10 @@ public struct HistoryView: View {
     @ViewBuilder
     private func transcriptVersionSection(for entry: HistoryEntry) -> some View {
         if !entry.transcriptVersions.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Transcript Versions")
-                    .font(.headline)
-
+            SectionCard(
+                title: "Transcript Versions",
+                subtitle: "Older transcripts are preserved when you re-transcribe with a different model or provider."
+            ) {
                 ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -454,20 +463,8 @@ public struct HistoryView: View {
 
     private func historyRow(_ entry: HistoryEntry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(formattedDate(entry.createdAt))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                if let modelName = entry.modelName {
-                    detailTag(modelName)
-                }
-            }
-
             Text(displayPreviewText(for: entry))
-                .font(.headline)
+                .font(.body.weight(.medium))
                 .lineLimit(2)
 
             if let progress = appState.transcriptionQueueController.progress(for: entry.id) {
@@ -480,11 +477,23 @@ public struct HistoryView: View {
                 }
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                metadataLabel(systemImage: "calendar", text: formattedDate(entry.createdAt))
                 metadataLabel(systemImage: "clock", text: durationLabel(entry.durationSeconds))
                 metadataLabel(systemImage: "textformat.abc", text: "\(entry.characterCount) chars")
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 metadataLabel(systemImage: "tray.full", text: entry.sourceType.title)
                 metadataLabel(systemImage: "waveform", text: rowStatusText(for: entry))
+
+                if let modelName = entry.modelName {
+                    metadataLabel(systemImage: "cube.transparent", text: modelName)
+                }
+
+                if let providerName = entry.providerName {
+                    metadataLabel(systemImage: "network", text: providerName)
+                }
             }
         }
         .padding(.vertical, 6)

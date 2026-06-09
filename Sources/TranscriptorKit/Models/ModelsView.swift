@@ -9,17 +9,27 @@ public struct ModelsView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                SectionCard(
-                    title: "Model Manager",
-                    subtitle: "Local Whisper-family downloads are real in this build. Cloud providers are available with Keychain-backed API keys, and Parakeet stays visibly blocked until a validated native runtime exists."
-                ) {
-                    Text("Downloaded models stay on this Mac under Application Support. Audio is not uploaded when using the local WhisperKit provider.")
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Models")
+                        .font(.title.weight(.semibold))
 
+                    Text("Choose a local Whisper model, review cloud provider readiness, and keep unsupported runtimes visibly unavailable.")
+                        .foregroundStyle(.secondary)
+                }
+
+                SectionCard(
+                    title: "Current Selection",
+                    subtitle: "Downloaded local models stay on this Mac under Application Support."
+                ) {
                     if let selectedModel = appState.selectedModel {
-                        Text("Preferred local model: \(selectedModel.name)")
-                            .font(.callout.weight(.medium))
+                        LabeledContent("Preferred local model") {
+                            Text(selectedModel.name)
+                        }
+                    }
+
+                    LabeledContent("Preferred provider") {
+                        Text(appState.transcriptionPreferences.preferredProviderID == "whisperkit-local" ? "WhisperKit Local" : appState.preferredCloudProvider?.name ?? "WhisperKit Local")
                     }
 
                     if let statusMessage = appState.whisperModelManager.statusMessage {
@@ -28,37 +38,19 @@ public struct ModelsView: View {
                 }
 
                 ForEach(appState.modelCatalog.sections) { section in
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(section.title)
-                            .font(.title2.weight(.semibold))
-
-                        Text(section.description)
-                            .foregroundStyle(.secondary)
-
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18)], spacing: 18) {
-                            ForEach(section.models) { model in
-                                if model.isWhisperKitLocalModel {
-                                    whisperModelCard(model)
-                                } else {
-                                    placeholderModelCard(model)
-                                }
-                            }
-                        }
+                    SectionCard(
+                        title: section.title,
+                        subtitle: section.description
+                    ) {
+                        modelRows(for: section.models)
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Cloud Models")
-                        .font(.title2.weight(.semibold))
-
-                    Text("Cloud providers require an API key stored in Keychain and an explicit privacy acknowledgment before audio is uploaded.")
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 18)], spacing: 18) {
-                        ForEach(appState.providerCatalog.providers) { provider in
-                            providerCard(provider)
-                        }
-                    }
+                SectionCard(
+                    title: "Cloud Models",
+                    subtitle: "Cloud providers require a Keychain-stored API key and explicit privacy acknowledgment before audio is uploaded."
+                ) {
+                    providerRows
                 }
             }
             .padding(24)
@@ -66,60 +58,72 @@ public struct ModelsView: View {
         .navigationTitle("Models")
     }
 
-    private func whisperModelCard(_ model: ModelDescriptor) -> some View {
+    @ViewBuilder
+    private func modelRows(for models: [ModelDescriptor]) -> some View {
+        ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
+            if model.isWhisperKitLocalModel {
+                whisperModelRow(model)
+            } else {
+                unavailableModelRow(model)
+            }
+
+            if index < models.count - 1 {
+                Divider()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var providerRows: some View {
+        ForEach(Array(appState.providerCatalog.providers.enumerated()), id: \.element.id) { index, provider in
+            providerRow(provider)
+
+            if index < appState.providerCatalog.providers.count - 1 {
+                Divider()
+            }
+        }
+    }
+
+    private func whisperModelRow(_ model: ModelDescriptor) -> some View {
         let inventoryItem = appState.whisperModelManager.item(for: model.id)
             ?? LocalModelInventoryItem(modelID: model.id, state: .notDownloaded)
 
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(model.name)
-                        .font(.title3.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Text(model.name)
+                            .font(.headline)
 
-                    Text(model.engineLabel)
+                        if let accentBadgeLabel = model.accentBadgeLabel {
+                            Text(accentBadgeLabel)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.yellow.opacity(0.16), in: Capsule())
+                                .foregroundStyle(.yellow)
+                        }
+                    }
+
+                    Text("\(model.engineLabel) • \(model.languageScopeLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                if let accentBadgeLabel = model.accentBadgeLabel {
-                    Text(accentBadgeLabel)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.yellow.opacity(0.18), in: Capsule())
-                        .foregroundStyle(.yellow)
-                }
+                localStateBadge(inventoryItem.state)
             }
 
-            HStack(spacing: 22) {
-                statColumn(title: "Size", value: model.downloadSizeDescription)
-                statColumn(title: "Speed", value: model.speedDescription)
-                statColumn(title: "Accuracy", value: model.accuracyDescription)
+            HStack(spacing: 18) {
+                statLabel(title: "Size", value: model.downloadSizeDescription)
+                statLabel(title: "Speed", value: model.speedDescription)
+                statLabel(title: "Accuracy", value: model.accuracyDescription)
+                statLabel(title: "Use", value: model.intendedUseLabel)
             }
-
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                GridRow {
-                    Text("Use")
-                        .foregroundStyle(.secondary)
-                    Text(model.intendedUseLabel)
-                }
-                GridRow {
-                    Text("Scope")
-                        .foregroundStyle(.secondary)
-                    Text(model.languageScopeLabel)
-                }
-                GridRow {
-                    Text("Status")
-                        .foregroundStyle(.secondary)
-                    localStateBadge(inventoryItem.state)
-                }
-            }
-
-            Divider()
 
             Text(model.notes)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             if let detailMessage = inventoryItem.state.detailMessage {
@@ -141,10 +145,11 @@ public struct ModelsView: View {
                 }
             }
 
-            HStack {
+            HStack(spacing: 10) {
                 Button(appState.transcriptionPreferences.selectedModelID == model.id ? "Selected" : "Set Preferred") {
                     appState.transcriptionPreferences.selectedModelID = model.id
                 }
+                .disabled(appState.transcriptionPreferences.selectedModelID == model.id)
 
                 if canDelete(inventoryItem.state) {
                     Button("Delete", role: .destructive) {
@@ -157,71 +162,63 @@ public struct ModelsView: View {
                 actionButton(for: model, state: inventoryItem.state)
             }
         }
-        .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(appState.transcriptionPreferences.selectedModelID == model.id ? Color.orange : Color.secondary.opacity(0.25), lineWidth: 1.5)
-        )
+        .padding(.vertical, 4)
     }
 
-    private func placeholderModelCard(_ model: ModelDescriptor) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
+    private func unavailableModelRow(_ model: ModelDescriptor) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(model.name)
-                        .font(.title3.weight(.semibold))
+                        .font(.headline)
 
-                    Text(model.engineLabel)
+                    Text("\(model.engineLabel) • \(model.languageScopeLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
+
                 AvailabilityBadge(availability: model.availability)
             }
 
-            HStack(spacing: 22) {
-                statColumn(title: "Size", value: model.downloadSizeDescription)
-                statColumn(title: "Speed", value: model.speedDescription)
-                statColumn(title: "Accuracy", value: model.accuracyDescription)
+            HStack(spacing: 18) {
+                statLabel(title: "Size", value: model.downloadSizeDescription)
+                statLabel(title: "Speed", value: model.speedDescription)
+                statLabel(title: "Accuracy", value: model.accuracyDescription)
+                statLabel(title: "Use", value: model.intendedUseLabel)
             }
 
-            Divider()
-
             Text(model.notes)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             Text(model.availability.message)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
-            HStack {
-                AvailabilityBadge(availability: model.availability)
-                Spacer()
+            HStack(spacing: 10) {
                 Button("Unavailable") {}
                     .disabled(true)
+
+                Spacer()
             }
         }
-        .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.quaternary, lineWidth: 1)
-        )
+        .padding(.vertical, 4)
     }
 
-    private func providerCard(_ provider: ProviderDescriptor) -> some View {
+    private func providerRow(_ provider: ProviderDescriptor) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
 
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(provider.name)
-                        .font(.title3.weight(.semibold))
+                        .font(.headline)
 
                     Text(provider.summary)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 
@@ -244,18 +241,14 @@ public struct ModelsView: View {
                 }
             }
 
-            Divider()
-
-            Text(provider.priceNote)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 18) {
+                statLabel(title: "Privacy", value: provider.privacySummary)
+                statLabel(title: "Billing", value: provider.priceNote)
+            }
 
             Text(runtimeState.message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            Text(provider.privacySummary)
-                .font(.caption)
-                .foregroundStyle(.orange)
 
             if let validationMessage = validationState.message {
                 Text(validationMessage)
@@ -271,6 +264,7 @@ public struct ModelsView: View {
                     Button(appState.transcriptionPreferences.preferredProviderID == provider.id ? "Selected" : "Set Preferred") {
                         appState.transcriptionPreferences.preferredProviderID = provider.id
                     }
+                    .disabled(appState.transcriptionPreferences.preferredProviderID == provider.id)
                 } else {
                     Button("Open Settings") {
                         appState.selectedScreen = .settings
@@ -278,12 +272,7 @@ public struct ModelsView: View {
                 }
             }
         }
-        .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.quaternary, lineWidth: 1)
-        )
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -368,15 +357,16 @@ public struct ModelsView: View {
         }
     }
 
-    private func statColumn(title: String, value: String) -> some View {
+    private func statLabel(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(.headline)
+                .font(.subheadline.weight(.medium))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
