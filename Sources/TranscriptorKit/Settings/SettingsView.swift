@@ -241,6 +241,31 @@ public struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Section("Last Insertion Attempt") {
+                    LabeledContent("Captured App") {
+                        Text(appState.transcriptInsertionDebugSnapshot.capturedAppName ?? "None")
+                            .foregroundStyle(appState.transcriptInsertionDebugSnapshot.capturedAppName == nil ? .secondary : .primary)
+                    }
+
+                    LabeledContent("Target") {
+                        Text(appState.transcriptInsertionDebugSnapshot.targetSummary)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    LabeledContent("Result") {
+                        Text(appState.transcriptInsertionDebugSnapshot.lastOutcome?.message ?? "No insertion attempt yet.")
+                            .foregroundStyle(appState.transcriptInsertionDebugSnapshot.lastOutcome == nil ? .secondary : .primary)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    if let lastUpdatedAt = appState.transcriptInsertionDebugSnapshot.lastUpdatedAt {
+                        LabeledContent("Updated") {
+                            Text(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
         case .keyboardShortcut:
             settingsForm(pane: .keyboardShortcut) {
@@ -330,7 +355,23 @@ public struct SettingsView: View {
                         isSelected: appState.transcriptionPreferences.preferredProviderID == "whisperkit-local",
                         isEnabled: true
                     ) {
-                        appState.transcriptionPreferences.preferredProviderID = "whisperkit-local"
+                        appState.selectPreferredLocalProvider("whisperkit-local")
+                    }
+
+                    providerSelectionRow(
+                        title: "Parakeet Local",
+                        subtitle: parakeetProviderSubtitle,
+                        isSelected: appState.transcriptionPreferences.preferredProviderID == "parakeet-local",
+                        isEnabled: appState.parakeetModelManager.inventory.values.contains {
+                            switch $0.state {
+                            case .unavailable:
+                                false
+                            default:
+                                true
+                            }
+                        }
+                    ) {
+                        appState.selectPreferredLocalProvider("parakeet-local")
                     }
 
                     ForEach(appState.providerCatalog.providers) { provider in
@@ -349,18 +390,25 @@ public struct SettingsView: View {
                 Section("Local Provider") {
                     Picker("Preferred Local Provider", selection: $appState.transcriptionPreferences.preferredLocalProviderID) {
                         Text("WhisperKit Local").tag("whisperkit-local")
+                        Text("Parakeet Local").tag("parakeet-local")
+                    }
+                    .onChange(of: appState.transcriptionPreferences.preferredLocalProviderID) { _, newValue in
+                        appState.selectPreferredLocalProvider(newValue)
                     }
 
-                    Text("WhisperKit is the current local provider. Parakeet support is being promoted into a real local backend instead of a permanent unavailable placeholder.")
+                    Text("Choose which local runtime should be preferred when you transcribe without selecting a cloud provider.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Section("Default Local Model") {
                     Picker("Selected Transcription Model", selection: $appState.transcriptionPreferences.selectedModelID) {
-                        ForEach(appState.modelCatalog.whisperModels) { model in
+                        ForEach(appState.modelCatalog.localModels) { model in
                             Text(model.name).tag(model.id)
                         }
+                    }
+                    .onChange(of: appState.transcriptionPreferences.selectedModelID) { _, newValue in
+                        appState.selectLocalModel(newValue)
                     }
 
                     if let selectedModel = appState.selectedModel {
@@ -465,6 +513,7 @@ public struct SettingsView: View {
             settingsForm(pane: .privacy) {
                 Section("Current Behavior") {
                     Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
+                    Label("Parakeet Local uses FluidAudio Core ML bundles downloaded from Hugging Face and keeps transcription on this Mac.", systemImage: "waveform.badge.mic")
                     Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
                     Label("OpenAI and Groq only send audio after you enable the provider, store an API key in Keychain, and acknowledge the privacy warning.", systemImage: "key")
                     Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
@@ -656,6 +705,21 @@ public struct SettingsView: View {
 
     private func megabyteString(for bytes: Int64) -> String {
         String(format: "%.2f MB", Double(bytes) / 1_048_576)
+    }
+
+    private var parakeetProviderSubtitle: String {
+        if appState.parakeetModelManager.inventory.values.contains(where: {
+            switch $0.state {
+            case .unavailable:
+                false
+            default:
+                true
+            }
+        }) {
+            return "Audio stays on this Mac. Uses a local Core ML Parakeet backend."
+        }
+
+        return "Requires Apple Silicon for the current Core ML backend."
     }
 }
 

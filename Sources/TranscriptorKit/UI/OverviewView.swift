@@ -33,7 +33,7 @@ public struct OverviewView: View {
 
             Section {
                 LabeledContent("Preferred provider") {
-                    Text(appState.transcriptionPreferences.preferredProviderID == "whisperkit-local" ? "WhisperKit Local" : appState.preferredCloudProvider?.name ?? "WhisperKit Local")
+                    Text(preferredProviderTitle)
                 }
 
                 LabeledContent("Selected local model") {
@@ -113,5 +113,16 @@ public struct OverviewView: View {
 
     private func formattedDate(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var preferredProviderTitle: String {
+        switch appState.transcriptionPreferences.preferredProviderID {
+        case "parakeet-local":
+            "Parakeet Local"
+        case "whisperkit-local":
+            "WhisperKit Local"
+        default:
+            appState.preferredCloudProvider?.name ?? "WhisperKit Local"
+        }
     }
 }

@@ -50,15 +50,18 @@ public final class AppState {
     public let voiceInputController: VoiceInputController
     public let audioPlaybackService: AudioPlaybackService
     public let localTranscriptionProvider: WhisperKitLocalTranscriptionProvider
+    public let parakeetTranscriptionProvider: ParakeetLocalTranscriptionProvider
     public let openAITranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let groqTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let whisperModelManager: WhisperModelManager
+    public let parakeetModelManager: ParakeetModelManager
     public let transcriptionQueueController: TranscriptionQueueController
     public let transcriptionTargetResolver: TranscriptionTargetResolver
     public private(set) var storedAPIKeyProviderIDs: Set<String>
     public private(set) var providerCredentialValidationStates: [String: ProviderCredentialValidationState]
     public private(set) var hotkeyRegistrationErrorMessage: String?
     public private(set) var accessibilityPermissionStatus: AccessibilityPermissionStatus
+    public private(set) var transcriptInsertionDebugSnapshot: TranscriptInsertionDebugSnapshot
     public private(set) var launchAtLoginStatus: LaunchAtLoginStatus
     @ObservationIgnored private let hotkeyManager: GlobalHotkeyManager
     @ObservationIgnored private let recordingOverlayManager: RecordingOverlayManager
@@ -109,6 +112,9 @@ public final class AppState {
             catalog: modelCatalog,
             storageLayout: storageLayout
         )
+        let parakeetTranscriptionProvider = ParakeetLocalTranscriptionProvider(
+            catalog: modelCatalog
+        )
         let openAIProvider = OpenAICompatibleCloudTranscriptionProvider(
             descriptor: providerCatalog.provider(id: "openai")!,
             secretStore: secretStore
@@ -121,8 +127,12 @@ public final class AppState {
             catalog: modelCatalog,
             provider: localTranscriptionProvider
         )
+        let parakeetModelManager = ParakeetModelManager(
+            catalog: modelCatalog,
+            provider: parakeetTranscriptionProvider
+        )
         let transcriptionQueueController = TranscriptionQueueController(
-            providers: [localTranscriptionProvider, openAIProvider, groqProvider]
+            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider]
         )
         let transcriptionTargetResolver = TranscriptionTargetResolver(
             modelCatalog: modelCatalog,
@@ -197,15 +207,18 @@ public final class AppState {
         self.voiceInputController = voiceInputController
         self.audioPlaybackService = audioPlaybackService
         self.localTranscriptionProvider = localTranscriptionProvider
+        self.parakeetTranscriptionProvider = parakeetTranscriptionProvider
         self.openAITranscriptionProvider = openAIProvider
         self.groqTranscriptionProvider = groqProvider
         self.whisperModelManager = whisperModelManager
+        self.parakeetModelManager = parakeetModelManager
         self.transcriptionQueueController = transcriptionQueueController
         self.transcriptionTargetResolver = transcriptionTargetResolver
         self.storedAPIKeyProviderIDs = storedAPIKeyProviderIDs
         self.providerCredentialValidationStates = providerCredentialValidationStates
         self.hotkeyRegistrationErrorMessage = nil
         self.accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
+        self.transcriptInsertionDebugSnapshot = transcriptInsertionService.debugSnapshot
         self.launchAtLoginStatus = launchAtLoginStatus
 
         voiceInputController.replaceOnRecordingStarted { [weak self] in
@@ -270,10 +283,11 @@ public final class AppState {
 
     public var readyLocalModelIDs: Set<String> {
         Set(whisperModelManager.downloadedWhisperModels().map(\.id))
+            .union(parakeetModelManager.downloadedParakeetModels().map(\.id))
     }
 
     public var preferredCloudProvider: ProviderDescriptor? {
-        guard transcriptionPreferences.preferredProviderID != "whisperkit-local" else {
+        guard !isLocalProviderID(transcriptionPreferences.preferredProviderID) else {
             return nil
         }
 
@@ -295,6 +309,30 @@ public final class AppState {
     public func openSettings(pane: SettingsPane? = .general) {
         selectedScreen = .settings
         selectedSettingsPane = pane
+    }
+
+    public func selectLocalModel(_ modelID: String) {
+        guard let model = modelCatalog.model(id: modelID), let localProviderID = model.localProviderID else {
+            transcriptionPreferences.selectedModelID = modelID
+            return
+        }
+
+        transcriptionPreferences.selectedModelID = modelID
+        transcriptionPreferences.preferredLocalProviderID = localProviderID
+        transcriptionPreferences.preferredProviderID = localProviderID
+    }
+
+    public func selectPreferredLocalProvider(_ providerID: String) {
+        transcriptionPreferences.preferredLocalProviderID = providerID
+        transcriptionPreferences.preferredProviderID = providerID
+
+        if let selectedModel, selectedModel.localProviderID == providerID {
+            return
+        }
+
+        if let firstModel = modelCatalog.localModels.first(where: { $0.localProviderID == providerID }) {
+            transcriptionPreferences.selectedModelID = firstModel.id
+        }
     }
 
     public func importAudio(from sourceURLs: [URL]) {
@@ -401,8 +439,10 @@ public final class AppState {
         } catch {
             historyActionMessage = error.localizedDescription
             if entry.id == pendingInsertionEntryID {
+                markPendingInsertionFailure(entryID: entry.id, message: error.localizedDescription)
                 pendingInsertionEntryID = nil
                 transcriptInsertionService.clearCapturedTarget()
+                refreshTranscriptInsertionDebugSnapshot()
                 setOverlaySupplementalPhase(.error(error.localizedDescription))
                 scheduleOverlaySupplementalClear(after: .seconds(2))
             }
@@ -464,7 +504,10 @@ public final class AppState {
     }
 
     public func refreshModelInventory() {
-        Task { await whisperModelManager.refresh() }
+        Task {
+            await whisperModelManager.refresh()
+            await parakeetModelManager.refresh()
+        }
     }
 
     public func hasStoredAPIKey(for providerID: String) -> Bool {
@@ -501,6 +544,10 @@ public final class AppState {
             readyLocalModelIDs: readyLocalModelIDs,
             providerStatesByID: providerRuntimeStates
         )
+    }
+
+    public func isLocalProviderID(_ providerID: String) -> Bool {
+        providerID == "whisperkit-local" || providerID == "parakeet-local"
     }
 
     public func saveAPIKey(_ apiKey: String, for providerID: String) {
@@ -570,11 +617,13 @@ public final class AppState {
     public func requestAccessibilityPermissionPrompt() {
         transcriptInsertionService.requestAccessibilityPermissionPrompt()
         refreshAccessibilityPermissionStatus()
+        refreshTranscriptInsertionDebugSnapshot()
     }
 
     public func openAccessibilityPrivacySettings() {
         transcriptInsertionService.openAccessibilitySettings()
         refreshAccessibilityPermissionStatus()
+        refreshTranscriptInsertionDebugSnapshot()
     }
 
     public func refreshLaunchAtLoginStatus() {
@@ -596,6 +645,7 @@ public final class AppState {
     public func refreshAccessibilityPermissionStatus() {
         transcriptInsertionService.refreshPermissionStatus()
         accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
+        refreshTranscriptInsertionDebugSnapshot()
     }
 
     public func resetHotkeyToRecommendedDefault() {
@@ -760,11 +810,13 @@ public final class AppState {
         guard generalSettings.insertTranscriptIntoActiveApp else {
             pendingInsertionEntryID = nil
             transcriptInsertionService.clearCapturedTarget()
+            refreshTranscriptInsertionDebugSnapshot()
             return
         }
 
         refreshAccessibilityPermissionStatus()
         transcriptInsertionService.captureCurrentTargetIfNeeded()
+        refreshTranscriptInsertionDebugSnapshot()
     }
 
     private func handleCompletedTranscription(for entry: HistoryEntry) {
@@ -780,6 +832,7 @@ public final class AppState {
                 entry.transcriptText,
                 settings: generalSettings
             )
+            refreshTranscriptInsertionDebugSnapshot()
             historyActionMessage = outcome.message
 
             switch outcome {
@@ -800,9 +853,25 @@ public final class AppState {
 
         pendingInsertionEntryID = nil
         transcriptInsertionService.clearCapturedTarget()
+        refreshTranscriptInsertionDebugSnapshot()
         historyActionMessage = message
         setOverlaySupplementalPhase(.error(message))
         scheduleOverlaySupplementalClear(after: .seconds(2))
+    }
+
+    private func refreshTranscriptInsertionDebugSnapshot() {
+        transcriptInsertionDebugSnapshot = transcriptInsertionService.debugSnapshot
+    }
+
+    private func markPendingInsertionFailure(entryID: UUID, message: String) {
+        guard var entry = historyEntry(id: entryID), !entry.hasCompletedTranscript else {
+            return
+        }
+
+        entry.transcriptionStatus = .failed
+        entry.errorMessage = message
+        entry.transcriptPreview = message
+        try? persistHistoryEntry(entry)
     }
 
     private func setOverlaySupplementalPhase(_ phase: OverlaySupplementalPhase?) {

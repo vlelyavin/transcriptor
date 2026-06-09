@@ -331,9 +331,9 @@ public struct HistoryView: View {
 
             if !availableRetranscriptionPlans.isEmpty {
                 Menu("Re-transcribe") {
-                    if !downloadedWhisperModels.isEmpty {
+                    if !downloadedLocalModels.isEmpty {
                         Section("Local Models") {
-                            ForEach(downloadedWhisperModels) { model in
+                            ForEach(downloadedLocalModels) { model in
                                 Button(model.name) {
                                     appState.retranscribe(entry, using: model.id)
                                 }
@@ -482,8 +482,8 @@ public struct HistoryView: View {
         filteredEntries.first { $0.id == selectedEntryID } ?? filteredEntries.first
     }
 
-    private var downloadedWhisperModels: [ModelDescriptor] {
-        appState.whisperModelManager.downloadedWhisperModels()
+    private var downloadedLocalModels: [ModelDescriptor] {
+        appState.modelCatalog.localModels.filter { appState.readyLocalModelIDs.contains($0.id) }
     }
 
     private var availableRetranscriptionPlans: [TranscriptionExecutionPlan] {

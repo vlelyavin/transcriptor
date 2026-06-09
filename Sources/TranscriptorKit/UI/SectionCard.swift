@@ -16,14 +16,7 @@ public struct SectionCard<Content: View>: View {
     }
 
     public var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 14) {
-                content
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .groupBoxStyle(.automatic)
-        .overlay(alignment: .topLeading) {
+        VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.headline)
@@ -32,11 +25,14 @@ public struct SectionCard<Content: View>: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .offset(x: 12, y: -12)
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

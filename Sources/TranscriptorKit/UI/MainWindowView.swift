@@ -96,7 +96,7 @@ public struct MainWindowView: View {
         case .models:
             ModelsView(appState: appState)
         case .settings:
-            SettingsHomeView(appState: appState)
+            SettingsView(appState: appState)
         }
     }
 }

@@ -24,22 +24,19 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertTrue(catalog.whisperModels.allSatisfy(\.supportsLocalTranscription))
     }
 
-    func testParakeetModelsRemainVisiblyUnavailableUntilNativeRuntimeExists() {
+    func testParakeetModelsExposeRealLocalProviderMetadata() {
         let catalog = ModelCatalog.defaultCatalog
         let parakeetModels = catalog.sections.first(where: { $0.id == "parakeet" })?.models ?? []
 
         XCTAssertEqual(parakeetModels.map(\.id), ["parakeet-v2-en", "parakeet-v3-multilingual"])
         XCTAssertTrue(
             parakeetModels.allSatisfy {
-                if case .unavailable = $0.availability {
-                    return true
-                }
-                return false
+                $0.supportsLocalTranscription && $0.localProviderID == "parakeet-local"
             }
         )
         XCTAssertTrue(
             parakeetModels.allSatisfy {
-                $0.availability.message.contains("macOS runtime")
+                $0.availability.message.contains("FluidAudio")
             }
         )
     }
