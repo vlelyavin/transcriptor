@@ -23,6 +23,27 @@ final class TranscriptionTargetResolverTests: XCTestCase {
         XCTAssertEqual(plan.modelID, "whisper-tiny")
     }
 
+    func testPreferredLocalProviderResolvesReadyParakeetModel() throws {
+        let resolver = TranscriptionTargetResolver(
+            modelCatalog: .defaultCatalog,
+            providerCatalog: .defaultCatalog
+        )
+        let plan = try resolver.resolve(
+            preferences: TranscriptionPreferences(
+                selectedModelID: "parakeet-v3-multilingual",
+                autoTranscribeAfterCapture: false,
+                preferredLocalProviderID: "parakeet-local",
+                preferredProviderID: "parakeet-local"
+            ),
+            providerSettings: ProviderSettings(),
+            readyLocalModelIDs: ["parakeet-v3-multilingual"],
+            providerStatesByID: [:]
+        )
+
+        XCTAssertEqual(plan.providerID, "parakeet-local")
+        XCTAssertEqual(plan.modelID, "parakeet-v3-multilingual")
+    }
+
     func testPreferredCloudProviderResolvesConfiguredModel() throws {
         let resolver = TranscriptionTargetResolver(
             modelCatalog: .defaultCatalog,

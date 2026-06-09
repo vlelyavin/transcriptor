@@ -7,7 +7,7 @@ This document tracks the intended scope for the initial Transcriptor desktop pro
 This branch focuses on the final product-facing pass needed before broader distribution:
 
 - [x] Redesign the main window to feel closer to a native macOS sidebar/detail app
-- [x] Redesign the dedicated Settings window to feel closer to macOS System Settings
+- [x] Move the full Settings experience into the main app and keep it close to macOS System Settings
 - [x] Remove the Buy placeholder from all user-facing surfaces
 - [x] Redesign the voice input overlay into a centered dictation experience
 - [x] Add automatic transcript insertion into the active text field with Accessibility-aware fallback behavior
@@ -30,15 +30,15 @@ This branch focuses on the final product-facing pass needed before broader distr
 | Import audio: `.webm` | Blocked | Stored as a failed import until a real WebM decoder/transcoder is integrated. |
 | Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
 | Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
-| Automatic transcript insertion | Done | Accessibility-aware insertion targets the previous app, with clipboard and history fallback when direct insertion is unavailable. |
+| Automatic transcript insertion | Partial | The insertion service now captures the original app and focused target, blocks wrong-target insertion, and falls back to clipboard/history safely. Unit coverage is in place, but this branch still needs a final manual cross-app QA pass with Accessibility permission granted. |
 | Menu bar status item | Done | A native menu bar item reflects voice input state and exposes quick actions. |
 | Launch at login | Partial | Packaged `Transcriptor.app` builds can use Service Management. Raw `swift run` and command-line development builds truthfully report “Needs Packaged App”. |
 | Save original audio toggle | Partial | The preference persists, but dictation audio is still retained for safe pending/re-transcription workflows. |
 | Input device selection | Partial | The app currently records from the system default input device only. |
 | Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
 | OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |
-| NVIDIA Parakeet local provider | Blocked | No validated native macOS Swift/Core ML runtime has been integrated for official Parakeet models. |
-| Native Settings window | Done | Settings persist locally and use a native sidebar/detail layout with grouped preference sections. |
+| NVIDIA Parakeet local provider | Partial | A real local FluidAudio/Core ML provider is integrated for Apple Silicon, with model management and transcription wiring. It should be treated as beta until a full v2/v3 manual smoke transcription is completed in this branch. |
+| In-app Settings | Done | Settings now live directly inside the main window with a native sidebar/detail layout and grouped preference sections. |
 
 ## Core interaction
 
@@ -89,13 +89,13 @@ This branch focuses on the final product-facing pass needed before broader distr
 
 ## App surfaces
 
-- [x] Native macOS Settings window
+- [x] Native in-app Settings surface
 - [x] Main window shell
 - [x] History screen with search, filters, real persisted rows, progress, and detail pane
 - [x] Import Audio screen with drag-and-drop zone, supported format chips, shortcut display, and recent persisted imports
 - [x] Models screen with WhisperKit, Parakeet, and Cloud Models sections
 - [x] Settings hub entry in the main window
-- [x] Native Settings window with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
+- [x] In-app Settings with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
 
 ## UI completion
 
@@ -157,6 +157,14 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] `Tiny` downloaded, loaded, and transcribed a short public sample successfully in the local environment
 - [x] Standard `swift test` remains fast by keeping the real Whisper integration test opt-in
 
+### Parakeet Local beta status
+
+- [x] FluidAudio `0.15.2` integrated as the verified local Parakeet runtime
+- [x] Parakeet v2 (English) catalog entry maps to the local provider
+- [x] Parakeet v3 (Multilingual) catalog entry maps to the local provider
+- [x] Model inventory, download, load, delete, and provider-selection flows are wired into the app
+- [ ] Full manual Parakeet smoke transcription completed in this branch
+
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
@@ -173,7 +181,8 @@ This branch focuses on the final product-facing pass needed before broader distr
 
 ## Current blockers
 
-- NVIDIA Parakeet remains blocked because NVIDIA's official Parakeet releases currently target Python/NeMo workflows, and this repo does not yet have a validated native macOS Swift/Core ML runtime or package for Parakeet v2 or v3.
+- Parakeet Local currently targets Apple Silicon only because the verified FluidAudio/Core ML backend used here is not a universal Intel plus Apple Silicon packaging story yet.
+- Parakeet Local is still considered beta until a full manual smoke transcription pass is completed with a downloaded v2 or v3 model in this branch.
 - `.webm` import remains blocked because this build does not yet include a reliable WebM decoder/transcoder dependency. WebM files are stored as failed import records instead of being falsely treated as supported.
 
 ## Cloud transcription completion
@@ -184,7 +193,7 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] Cloud providers expose API-key save, remove, and test flows in Settings
 - [x] Cloud providers require explicit provider enablement plus privacy acknowledgment
 - [x] History re-transcription menu includes ready cloud providers
-- [x] Tests cover request construction, missing-key handling, provider selection, cloud privacy gating, and Parakeet unavailable state
+- [x] Tests cover request construction, missing-key handling, provider selection, cloud privacy gating, and local Parakeet provider selection rules
 
 ### Cloud provider notes
 

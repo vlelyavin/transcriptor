@@ -6,6 +6,7 @@ import XCTest
 final class TranscriptInsertionServiceTests: XCTestCase {
     func testMissingAccessibilityFallsBackToClipboardWhenEnabled() async {
         let platform = MockTranscriptInsertionPlatform(isAccessibilityTrusted: false)
+        platform.frontmostApplicationNameValue = "TextEdit"
         let service = TranscriptInsertionService(platform: platform)
 
         let outcome = await service.insertCapturedTranscript(
@@ -21,6 +22,7 @@ final class TranscriptInsertionServiceTests: XCTestCase {
             .copiedToClipboard("Accessibility access is off. Transcript copied to the clipboard so you can paste it manually.")
         )
         XCTAssertEqual(platform.copiedTexts, ["Hello world"])
+        XCTAssertEqual(service.debugSnapshot.capturedAppName, nil)
     }
 
     func testSecureTargetAvoidsInsertionAndCopiesInstead() async {
@@ -60,6 +62,7 @@ final class TranscriptInsertionServiceTests: XCTestCase {
         XCTAssertEqual(outcome, .inserted("Transcript inserted into the active app."))
         XCTAssertEqual(platform.insertCallCount, 1)
         XCTAssertEqual(platform.pasteCallCount, 0)
+        XCTAssertEqual(platform.activateCallCount, 1)
     }
 
     func testPasteFallbackRunsWhenAccessibilityMutationReturnsFalse() async {
@@ -94,6 +97,30 @@ final class TranscriptInsertionServiceTests: XCTestCase {
         )
     }
 
+    func testTargetFocusChangeFallsBackToClipboardInsteadOfWrongAppInsertion() async {
+        let platform = MockTranscriptInsertionPlatform(isAccessibilityTrusted: true)
+        platform.capturedTarget = makeTarget()
+        platform.isTargetStillFocusedValue = false
+        let service = TranscriptInsertionService(platform: platform)
+        service.captureCurrentTargetIfNeeded()
+
+        let outcome = await service.insertCapturedTranscript(
+            "Focus moved",
+            settings: GeneralSettings(
+                insertTranscriptIntoActiveApp: true,
+                alsoCopyTranscriptToClipboard: true
+            )
+        )
+
+        XCTAssertEqual(
+            outcome,
+            .copiedToClipboard("The original text field changed before insertion finished. Transcript copied to the clipboard.")
+        )
+        XCTAssertEqual(platform.insertCallCount, 0)
+        XCTAssertEqual(platform.pasteCallCount, 0)
+        XCTAssertEqual(platform.copiedTexts, ["Focus moved"])
+    }
+
     private func makeTarget(isSecureField: Bool = false) -> CapturedTextTarget {
         let appElement = AXUIElementCreateApplication(42)
         let focusedElement = AXUIElementCreateApplication(42)
@@ -111,11 +138,14 @@ final class TranscriptInsertionServiceTests: XCTestCase {
 @MainActor
 private final class MockTranscriptInsertionPlatform: TranscriptInsertionPlatform {
     let isAccessibilityTrusted: Bool
+    var frontmostApplicationNameValue: String?
     var capturedTarget: CapturedTextTarget?
+    var isTargetStillFocusedValue = true
     var insertReturnValue = false
     var insertError: TranscriptInsertionPlatformError?
     var pasteError: TranscriptInsertionPlatformError?
     var copiedTexts: [String] = []
+    var activateCallCount = 0
     var insertCallCount = 0
     var pasteCallCount = 0
 
@@ -127,10 +157,22 @@ private final class MockTranscriptInsertionPlatform: TranscriptInsertionPlatform
         isAccessibilityTrusted
     }
 
+    func frontmostApplicationName() -> String? {
+        frontmostApplicationNameValue
+    }
+
     func openAccessibilitySettings() {}
 
     func captureFocusedTarget() -> CapturedTextTarget? {
         capturedTarget
+    }
+
+    func activateApplication(for target: CapturedTextTarget) async throws {
+        activateCallCount += 1
+    }
+
+    func isTargetStillFocused(_ target: CapturedTextTarget) -> Bool {
+        isTargetStillFocusedValue
     }
 
     func insertViaAccessibility(_ text: String, into target: CapturedTextTarget) throws -> Bool {

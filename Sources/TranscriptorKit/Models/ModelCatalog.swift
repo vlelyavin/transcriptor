@@ -4,6 +4,7 @@ public struct ModelDescriptor: Identifiable, Equatable, Sendable {
     public let id: String
     public var name: String
     public var family: String
+    public var localProviderID: String?
     public var engineLabel: String
     public var notes: String
     public var downloadSizeDescription: String
@@ -21,6 +22,7 @@ public struct ModelDescriptor: Identifiable, Equatable, Sendable {
         id: String,
         name: String,
         family: String,
+        localProviderID: String? = nil,
         engineLabel: String,
         notes: String,
         downloadSizeDescription: String,
@@ -37,6 +39,7 @@ public struct ModelDescriptor: Identifiable, Equatable, Sendable {
         self.id = id
         self.name = name
         self.family = family
+        self.localProviderID = localProviderID
         self.engineLabel = engineLabel
         self.notes = notes
         self.downloadSizeDescription = downloadSizeDescription
@@ -52,7 +55,11 @@ public struct ModelDescriptor: Identifiable, Equatable, Sendable {
     }
 
     public var isWhisperKitLocalModel: Bool {
-        supportsLocalTranscription && remoteVariantName != nil
+        localProviderID == "whisperkit-local" && supportsLocalTranscription && remoteVariantName != nil
+    }
+
+    public var isParakeetLocalModel: Bool {
+        localProviderID == "parakeet-local" && supportsLocalTranscription
     }
 }
 
@@ -86,8 +93,16 @@ public struct ModelCatalog: Equatable, Sendable {
         sections.flatMap(\.models)
     }
 
+    public var localModels: [ModelDescriptor] {
+        allModels.filter(\.supportsLocalTranscription)
+    }
+
     public var whisperModels: [ModelDescriptor] {
         sections.first(where: { $0.id == "whisper" })?.models ?? []
+    }
+
+    public var parakeetModels: [ModelDescriptor] {
+        sections.first(where: { $0.id == "parakeet" })?.models ?? []
     }
 
     public func model(id: String) -> ModelDescriptor? {
@@ -105,6 +120,7 @@ public struct ModelCatalog: Equatable, Sendable {
                         id: "whisper-tiny",
                         name: "Tiny",
                         family: "Whisper",
+                        localProviderID: "whisperkit-local",
                         engineLabel: "WhisperKit",
                         notes: "Fastest local model for quick capture and debugging.",
                         downloadSizeDescription: "~66 MB",
@@ -123,6 +139,7 @@ public struct ModelCatalog: Equatable, Sendable {
                         id: "whisper-base-en",
                         name: "Base (English)",
                         family: "Whisper",
+                        localProviderID: "whisperkit-local",
                         engineLabel: "WhisperKit",
                         notes: "Smaller English-first local model for everyday notes.",
                         downloadSizeDescription: "~105 MB",
@@ -141,6 +158,7 @@ public struct ModelCatalog: Equatable, Sendable {
                         id: "whisper-small-en",
                         name: "Small (English)",
                         family: "Whisper",
+                        localProviderID: "whisperkit-local",
                         engineLabel: "WhisperKit",
                         notes: "Better English accuracy while staying practical for laptops.",
                         downloadSizeDescription: "~217 MB",
@@ -159,6 +177,7 @@ public struct ModelCatalog: Equatable, Sendable {
                         id: "whisper-large-v3-turbo",
                         name: "Large V3 Turbo",
                         family: "Whisper",
+                        localProviderID: "whisperkit-local",
                         engineLabel: "WhisperKit",
                         notes: "Best general-purpose local quality in the current catalog.",
                         downloadSizeDescription: "~632 MB",
@@ -178,6 +197,7 @@ public struct ModelCatalog: Equatable, Sendable {
                         id: "whisper-distil-large-v3",
                         name: "Distil Large V3",
                         family: "Whisper",
+                        localProviderID: "whisperkit-local",
                         engineLabel: "WhisperKit",
                         notes: "Faster distilled large model with strong English performance.",
                         downloadSizeDescription: "~594 MB",
@@ -197,36 +217,41 @@ public struct ModelCatalog: Equatable, Sendable {
             ModelSection(
                 id: "parakeet",
                 title: "NVIDIA Parakeet Models",
-                description: "Parakeet cards remain visible for roadmap clarity, but NVIDIA's official Parakeet releases currently target Python/NeMo workflows and this app does not yet have a validated native macOS runtime for them.",
+                description: "Parakeet v2 and v3 use a real local Core ML backend through FluidAudio on macOS 14+ Apple Silicon.",
                 models: [
                     ModelDescriptor(
                         id: "parakeet-v2-en",
                         name: "Parakeet v2 (English)",
                         family: "Parakeet",
-                        engineLabel: "NVIDIA Parakeet",
-                        notes: "Highest recall, English only",
-                        downloadSizeDescription: "2.6 GB",
+                        localProviderID: "parakeet-local",
+                        engineLabel: "Parakeet Local",
+                        notes: "English-only local Parakeet model with strong recall for dictation and transcription.",
+                        downloadSizeDescription: "~1+ GB",
                         speedDescription: "Very Fast",
                         accuracyDescription: "Best",
-                        intendedUseLabel: "Roadmap only",
+                        intendedUseLabel: "High-accuracy English dictation",
                         languageScopeLabel: "English",
-                        availability: .unavailable(
-                            blocker: "NVIDIA does not currently ship a validated native macOS runtime or Swift/Core ML package for this Parakeet model, and this app will not present unofficial conversions as working support."
+                        supportsLocalTranscription: true,
+                        availability: .available(
+                            note: "Downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
                         )
                     ),
                     ModelDescriptor(
                         id: "parakeet-v3-multilingual",
                         name: "Parakeet v3 (Multilingual)",
                         family: "Parakeet",
-                        engineLabel: "NVIDIA Parakeet",
-                        notes: "Multiple languages supported",
-                        downloadSizeDescription: "2.7 GB",
+                        localProviderID: "parakeet-local",
+                        engineLabel: "Parakeet Local",
+                        notes: "Multilingual local Parakeet model with automatic language detection across 25 European languages.",
+                        downloadSizeDescription: "~1+ GB",
                         speedDescription: "Very Fast",
                         accuracyDescription: "Best",
-                        intendedUseLabel: "Roadmap only",
+                        intendedUseLabel: "Multilingual local dictation",
                         languageScopeLabel: "Multilingual",
-                        availability: .unavailable(
-                            blocker: "NVIDIA does not currently ship a validated native macOS runtime or Swift/Core ML package for this Parakeet model, and this app will not present unofficial conversions as working support."
+                        supportsLocalTranscription: true,
+                        accentBadgeLabel: "Beta",
+                        availability: .available(
+                            note: "Downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
                         )
                     ),
                 ]

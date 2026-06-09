@@ -16,28 +16,23 @@ public struct SectionCard<Content: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.headline)
 
                 Text(subtitle)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            Divider()
-
-            content
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
-        )
     }
 }
