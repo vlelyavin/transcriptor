@@ -8,64 +8,110 @@ public struct OverviewView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Transcriptor")
-                        .font(.system(size: 34, weight: .semibold))
-
-                    Text("A native macOS shell for a local-first speech-to-text workflow.")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+        List {
+            Section {
+                LabeledContent("Voice input shortcut") {
+                    Text(appState.recordingState.hotkey.displayString)
+                        .font(.system(.body, design: .monospaced))
                 }
 
-                SectionCard(
-                    title: "Recording Overlay",
-                    subtitle: "Global capture, pending recordings, and live feedback now flow through the voice input controller."
-                ) {
-                    Label("Current controller state: \(appState.voiceInputController.state.rawValue)", systemImage: "mic.badge.plus")
-                    Label("Overlay enabled: \(appState.overlayState.isEnabled ? "Yes" : "No")", systemImage: "rectangle.inset.filled.and.person.filled")
-                    Label("Live audio indicator: \(appState.overlayState.showsLiveAudioIndicator ? "On" : "Off")", systemImage: "waveform.badge.mic")
-                    Label("Current mode preference: \(appState.recordingState.mode.title)", systemImage: "keyboard")
+                LabeledContent("Input mode") {
+                    Text(appState.recordingState.mode.title)
                 }
 
-                SectionCard(
-                    title: "Transcription Stack",
-                    subtitle: "Local Whisper transcription is live, while unsupported runtimes still stay visibly unavailable."
-                ) {
-                    Text("WhisperKit-backed local models can be downloaded, loaded, and used for on-device transcription. OpenAI and Groq are available once you add an API key in Keychain and acknowledge cloud privacy. Parakeet remains visibly blocked until a validated native macOS runtime exists.")
-                        .foregroundStyle(.secondary)
-
-                    if let selectedModel = appState.selectedModel {
-                        Text("Selected model preference: \(selectedModel.name)")
-                            .font(.callout)
-                    }
-
-                    Text("Auto-transcribe after recording/import: \(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")")
-                        .foregroundStyle(.secondary)
+                LabeledContent("Current state") {
+                    Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
-                SectionCard(
-                    title: "Storage Controls",
-                    subtitle: "History, audio, and transcript retention will be capped independently of downloaded model files."
-                ) {
-                    Text("Current history cap: \(appState.storageSettings.capMegabytes) MB")
-                    Text("Managed usage: \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
-                        .foregroundStyle(.secondary)
-                    Text("History items stored: \(appState.historyStore.entries.count)")
-                        .foregroundStyle(.secondary)
-                    Text("Auto-delete oldest history: \(appState.storageSettings.autoDeleteOldestHistory ? "On" : "Off")")
-                        .foregroundStyle(.secondary)
-                    Text("Downloaded model files excluded: \(appState.storageSettings.excludesDownloadedModels ? "Yes" : "No")")
+                LabeledContent("Overlay") {
+                    Text(appState.overlayState.isEnabled ? "Enabled" : "Disabled")
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("Voice Input")
             }
-            .padding(24)
+
+            Section {
+                LabeledContent("Preferred provider") {
+                    Text(appState.transcriptionPreferences.preferredProviderID == "whisperkit-local" ? "WhisperKit Local" : appState.preferredCloudProvider?.name ?? "WhisperKit Local")
+                }
+
+                LabeledContent("Selected local model") {
+                    Text(appState.selectedModel?.name ?? "None selected")
+                }
+
+                LabeledContent("Ready local models") {
+                    Text("\(appState.readyLocalModelIDs.count)")
+                }
+
+                LabeledContent("Auto-transcribe") {
+                    Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
+                }
+            } header: {
+                Text("Transcription")
+            }
+
+            Section {
+                LabeledContent("Managed usage") {
+                    Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
+                }
+
+                LabeledContent("History limit") {
+                    Text("\(appState.storageSettings.capMegabytes) MB")
+                }
+
+                LabeledContent("History items") {
+                    Text("\(appState.historyStore.entries.count)")
+                }
+
+                if let storageWarningMessage = appState.storageWarningMessage {
+                    Text(storageWarningMessage)
+                        .foregroundStyle(.orange)
+                        .font(.callout)
+                }
+            } header: {
+                Text("Storage")
+            }
+
+            Section {
+                if appState.historyStore.entries.isEmpty {
+                    ContentUnavailableView(
+                        "No Recent History",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("Record or import audio to start building transcript history.")
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(appState.historyStore.entries.prefix(5)) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.displayName)
+                                .lineLimit(1)
+
+                            Text("\(entry.transcriptionStatus.title) • \(formattedDate(entry.createdAt))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(entry.transcriptPreview.isEmpty ? "Pending transcription" : entry.transcriptPreview)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            } header: {
+                Text("Recent History")
+            }
         }
+        .listStyle(.inset(alternatesRowBackgrounds: false))
         .navigationTitle("Overview")
     }
 
     private func megabyteString(for bytes: Int64) -> String {
         String(format: "%.2f MB", Double(bytes) / 1_048_576)
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 }

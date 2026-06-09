@@ -4,29 +4,24 @@ public struct SidebarHeaderView: View {
     public init() {}
 
     public var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.regularMaterial)
-                )
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.badge.mic")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 30, height: 30)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 2) {
                 Text("Transcriptor")
-                    .font(.headline)
-
-                Text("Free local-first speech to text")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.title3.weight(.semibold))
             }
 
-            Spacer(minLength: 0)
+            Text("Free local speech to text")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
     }
 }
