@@ -1,6 +1,6 @@
-# Sotto Product Spec
+# Transcriptor Product Spec
 
-This document tracks the intended scope for the initial Sotto desktop product. Checked items below are implemented in the current native macOS build unless a follow-up note says otherwise.
+This document tracks the intended scope for the initial Transcriptor desktop product. Checked items below are implemented in the current native macOS build unless a follow-up note says otherwise.
 
 ## Core interaction
 
@@ -41,6 +41,13 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 
 - [x] Cloud provider section for OpenAI
 - [x] Cloud provider section for Groq
+- [x] OpenAI API key storage in macOS Keychain
+- [x] Groq API key storage in macOS Keychain
+- [x] OpenAI cloud transcription with configurable model ID
+- [x] Groq cloud transcription with configurable model ID
+- [x] Explicit cloud privacy consent before audio upload
+- [x] Re-transcription via available cloud providers
+- [x] Block oversize cloud uploads with a clear error instead of truncating audio
 
 ## App surfaces
 
@@ -54,7 +61,7 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 
 ## UI completion
 
-- [x] Sidebar-based main navigation for Sotto
+- [x] Sidebar-based main navigation for Transcriptor
 - [x] Import Audio command with `Cmd+Shift+I`
 - [x] UserDefaults-backed preferences for recording mode, model selection, storage settings, provider toggles, and launch-at-login placeholder state
 - [x] Buy button placeholder kept visibly non-functional
@@ -109,13 +116,29 @@ This document tracks the intended scope for the initial Sotto desktop product. C
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
-- Global hotkeys are registered while Sotto is running and do not require the main window to stay focused.
+- Global hotkeys are registered while Transcriptor is running and do not require the main window to stay focused.
 - Local model downloads require network access to Argmax's public WhisperKit model repository.
 - Input device selection is a documented follow-up. The current build records from the system default microphone.
-- Imported audio is copied into Sotto-managed local storage under Application Support so history survives app restarts.
+- Imported audio is copied into Transcriptor-managed local storage under Application Support so history survives app restarts.
 
 ## Current blockers
 
-- NVIDIA Parakeet remains blocked because no validated local macOS runtime is integrated yet.
-- Cloud providers remain blocked because this build intentionally excludes networking and credential flows.
+- NVIDIA Parakeet remains blocked because NVIDIA's official Parakeet releases currently target Python/NeMo workflows, and this repo does not yet have a validated native macOS Swift/Core ML runtime or package for Parakeet v2 or v3.
 - `.webm` import remains blocked because this build does not yet include a reliable WebM decoder/transcoder dependency. WebM files are stored as failed import records instead of being falsely treated as supported.
+
+## Cloud transcription completion
+
+- [x] OpenAI credentials stored only in Keychain
+- [x] Groq credentials stored only in Keychain
+- [x] Provider-specific model IDs persist locally and remain user-editable
+- [x] Cloud providers expose API-key save, remove, and test flows in Settings
+- [x] Cloud providers require explicit provider enablement plus privacy acknowledgment
+- [x] History re-transcription menu includes ready cloud providers
+- [x] Tests cover request construction, missing-key handling, provider selection, cloud privacy gating, and Parakeet unavailable state
+
+### Cloud provider notes
+
+- OpenAI is wired to `POST /v1/audio/transcriptions` with `gpt-4o-mini-transcribe` as the default model ID, based on OpenAI's current speech-to-text docs.
+- Groq is wired to `POST /openai/v1/audio/transcriptions` with `whisper-large-v3-turbo` as the default model ID, based on Groq's current speech-to-text docs.
+- This build currently blocks cloud uploads above 25 MB with a clear error message. It does not silently truncate audio and it does not yet implement chunk stitching.
+- Manual end-to-end cloud verification still requires user-provided credentials and was not run in this environment.
