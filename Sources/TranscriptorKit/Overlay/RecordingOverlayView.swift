@@ -4,6 +4,7 @@ public struct RecordingOverlayView: View {
     @Bindable private var voiceInputController: VoiceInputController
     private let overlayState: OverlayState
     private let recordingMode: RecordingMode
+    private let supplementalPhase: OverlaySupplementalPhase?
     private let stopAction: () -> Void
     private let cancelAction: () -> Void
 
@@ -11,12 +12,14 @@ public struct RecordingOverlayView: View {
         voiceInputController: VoiceInputController,
         overlayState: OverlayState,
         recordingMode: RecordingMode,
+        supplementalPhase: OverlaySupplementalPhase?,
         stopAction: @escaping () -> Void,
         cancelAction: @escaping () -> Void
     ) {
         self.voiceInputController = voiceInputController
         self.overlayState = overlayState
         self.recordingMode = recordingMode
+        self.supplementalPhase = supplementalPhase
         self.stopAction = stopAction
         self.cancelAction = cancelAction
     }
@@ -40,11 +43,16 @@ public struct RecordingOverlayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(durationLabel)
-                .font(.system(size: 24, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.primary)
+            if showsDuration {
+                Text(durationLabel)
+                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
+            }
 
-            if overlayState.showsLiveAudioIndicator {
+            if showsProgressIndicator {
+                ProgressView()
+                    .controlSize(.large)
+            } else if overlayState.showsLiveAudioIndicator {
                 HStack(alignment: .bottom, spacing: 8) {
                     ForEach(Array(indicatorValues.enumerated()), id: \.offset) { _, value in
                         Capsule(style: .continuous)
@@ -90,51 +98,87 @@ public struct RecordingOverlayView: View {
     }
 
     private var statusTitle: String {
+        if let supplementalPhase {
+            switch supplementalPhase {
+            case .transcribing:
+                return "Transcribing"
+            case .inserting:
+                return "Inserting"
+            case .saved:
+                return "Saved"
+            case .error:
+                return "Voice Input Failed"
+            }
+        }
+
         switch voiceInputController.state {
         case .recording:
-            "Listening"
+            return "Listening"
         case .stopping:
-            "Finishing"
+            return "Finishing"
         case .pendingTranscription:
-            "Saved"
+            return "Saved"
         case .requestingPermission:
-            "Microphone Access"
+            return "Microphone Access"
         case .failed:
-            "Voice Input Failed"
+            return "Voice Input Failed"
         case .idle:
-            "Idle"
+            return "Idle"
         }
     }
 
     private var statusColor: Color {
+        if let supplementalPhase {
+            switch supplementalPhase {
+            case .transcribing, .inserting:
+                return .blue
+            case .saved:
+                return .green
+            case .error:
+                return .red
+            }
+        }
+
         switch voiceInputController.state {
         case .recording:
-            .red
+            return .red
         case .requestingPermission:
-            .orange
+            return .orange
         case .pendingTranscription:
-            .green
+            return .green
         case .failed:
-            .red
+            return .red
         default:
-            .secondary
+            return .secondary
         }
     }
 
     private var statusSubtitle: String {
+        if let supplementalPhase {
+            switch supplementalPhase {
+            case let .transcribing(message),
+                 let .inserting(message),
+                 let .saved(message),
+                 let .error(message):
+                return message
+            }
+        }
+
         switch voiceInputController.state {
         case .recording:
-            recordingMode == .holdToTalk ? "Release the shortcut to finish dictation." : "Speak naturally, then click Done or press the shortcut again."
+            return recordingMode == .holdToTalk
+                ? "Release the shortcut to finish dictation."
+                : "Speak naturally, then click Done or press the shortcut again."
         case .stopping:
-            "Finishing the current capture and preparing it for transcription."
+            return "Finishing the current capture and preparing it for transcription."
         case .pendingTranscription:
-            "Your recording was saved locally and will stay in history even if transcription finishes later."
+            return "Your recording was saved locally and will stay in history even if transcription finishes later."
         case .requestingPermission:
-            "macOS is requesting microphone access before Transcriptor can start listening."
+            return "macOS is requesting microphone access before Transcriptor can start listening."
         case .failed:
-            voiceInputController.failureMessage ?? "Recording stopped because of an error."
+            return voiceInputController.failureMessage ?? "Recording stopped because of an error."
         case .idle:
-            "Ready"
+            return "Ready"
         }
     }
 
@@ -146,10 +190,14 @@ public struct RecordingOverlayView: View {
     }
 
     private var showsDoneControls: Bool {
-        voiceInputController.state == .recording && recordingMode == .toggleToTalk
+        supplementalPhase == nil && voiceInputController.state == .recording && recordingMode == .toggleToTalk
     }
 
     private var hintText: String? {
+        guard supplementalPhase == nil else {
+            return nil
+        }
+
         switch voiceInputController.state {
         case .recording:
             return recordingMode == .holdToTalk ? "Hold to Talk" : "Toggle to Talk"
@@ -161,6 +209,10 @@ public struct RecordingOverlayView: View {
     }
 
     private var indicatorValues: [Double] {
+        guard supplementalPhase == nil else {
+            return Array(repeating: 0.18, count: max(voiceInputController.liveLevels.bars.count, 10))
+        }
+
         if voiceInputController.state == .recording {
             return voiceInputController.liveLevels.bars.map(Double.init)
         }
@@ -169,34 +221,75 @@ public struct RecordingOverlayView: View {
     }
 
     private var statusSymbol: String {
+        if let supplementalPhase {
+            switch supplementalPhase {
+            case .transcribing:
+                return "waveform.badge.magnifyingglass"
+            case .inserting:
+                return "text.cursor"
+            case .saved:
+                return "checkmark.circle.fill"
+            case .error:
+                return "exclamationmark.triangle.fill"
+            }
+        }
+
         switch voiceInputController.state {
         case .recording:
-            "mic.fill"
+            return "mic.fill"
         case .stopping:
-            "hourglass"
+            return "hourglass"
         case .pendingTranscription:
-            "checkmark.circle.fill"
+            return "checkmark.circle.fill"
         case .requestingPermission:
-            "lock.shield"
+            return "lock.shield"
         case .failed:
-            "exclamationmark.triangle.fill"
+            return "exclamationmark.triangle.fill"
         case .idle:
-            "mic"
+            return "mic"
         }
     }
 
     private var indicatorGradient: LinearGradient {
+        if let supplementalPhase {
+            switch supplementalPhase {
+            case .transcribing, .inserting:
+                return LinearGradient(colors: [.blue, .mint], startPoint: .bottom, endPoint: .top)
+            case .saved:
+                return LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
+            case .error:
+                return LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
+            }
+        }
+
         switch voiceInputController.state {
         case .recording:
-            LinearGradient(colors: [.red, .pink], startPoint: .bottom, endPoint: .top)
+            return LinearGradient(colors: [.red, .pink], startPoint: .bottom, endPoint: .top)
         case .pendingTranscription:
-            LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
+            return LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
         case .failed:
-            LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
+            return LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
         case .requestingPermission:
-            LinearGradient(colors: [.orange, .yellow], startPoint: .bottom, endPoint: .top)
+            return LinearGradient(colors: [.orange, .yellow], startPoint: .bottom, endPoint: .top)
         default:
-            LinearGradient(colors: [.gray.opacity(0.6), .secondary], startPoint: .bottom, endPoint: .top)
+            return LinearGradient(colors: [.gray.opacity(0.6), .secondary], startPoint: .bottom, endPoint: .top)
+        }
+    }
+
+    private var showsDuration: Bool {
+        supplementalPhase == nil
+    }
+
+    private var showsProgressIndicator: Bool {
+        guard let supplementalPhase else {
+            return false
+        }
+
+        switch supplementalPhase {
+        case .transcribing, .inserting:
+            return true
+        case .saved, .error:
+            return false
         }
     }
 }

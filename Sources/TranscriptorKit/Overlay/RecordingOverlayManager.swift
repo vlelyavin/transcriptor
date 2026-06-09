@@ -9,6 +9,7 @@ public final class RecordingOverlayManager {
     private var voiceInputController: VoiceInputController?
     private var overlayStateProvider: (() -> OverlayState)?
     private var recordingModeProvider: (() -> RecordingMode)?
+    private var supplementalPhaseProvider: (() -> OverlaySupplementalPhase?)?
     private var hideTask: Task<Void, Never>?
 
     public init() {}
@@ -16,11 +17,13 @@ public final class RecordingOverlayManager {
     public func bind(
         voiceInputController: VoiceInputController,
         overlayStateProvider: @escaping () -> OverlayState,
-        recordingModeProvider: @escaping () -> RecordingMode
+        recordingModeProvider: @escaping () -> RecordingMode,
+        supplementalPhaseProvider: @escaping () -> OverlaySupplementalPhase?
     ) {
         self.voiceInputController = voiceInputController
         self.overlayStateProvider = overlayStateProvider
         self.recordingModeProvider = recordingModeProvider
+        self.supplementalPhaseProvider = supplementalPhaseProvider
         observeChanges()
         refreshPresentation()
     }
@@ -29,19 +32,21 @@ public final class RecordingOverlayManager {
         guard
             let voiceInputController,
             let overlayStateProvider,
-            let recordingModeProvider
+            let recordingModeProvider,
+            let supplementalPhaseProvider
         else {
             return
         }
 
         let overlayState = overlayStateProvider()
+        let supplementalPhase = supplementalPhaseProvider()
         let shouldShow = overlayState.isEnabled && [
             VoiceInputControllerState.requestingPermission,
             VoiceInputControllerState.recording,
             .stopping,
             .pendingTranscription,
             .failed,
-        ].contains(voiceInputController.state)
+        ].contains(voiceInputController.state) || supplementalPhase != nil
 
         guard shouldShow else {
             hidePanels(animated: true)
@@ -61,6 +66,7 @@ public final class RecordingOverlayManager {
                 voiceInputController: voiceInputController,
                 overlayState: overlayState,
                 recordingMode: recordingModeProvider(),
+                supplementalPhase: supplementalPhase,
                 stopAction: {
                     voiceInputController.stopFromToolbar()
                 },
@@ -78,7 +84,11 @@ public final class RecordingOverlayManager {
         showPanel(panel)
         panel.ignoresMouseEvents = !allowsInteraction(for: voiceInputController.state, mode: recordingModeProvider())
 
-        if voiceInputController.state == .failed {
+        if case .error = supplementalPhase {
+            scheduleHide(after: .seconds(2))
+        } else if case .saved = supplementalPhase {
+            scheduleHide(after: .seconds(1.2))
+        } else if voiceInputController.state == .failed {
             scheduleHide(after: .seconds(2))
         } else if voiceInputController.state == .pendingTranscription {
             scheduleHide(after: .seconds(1.2))
@@ -92,6 +102,7 @@ public final class RecordingOverlayManager {
             _ = overlayStateProvider?().position
             _ = overlayStateProvider?().showsLiveAudioIndicator
             _ = recordingModeProvider?()
+            _ = supplementalPhaseProvider?()
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.observeChanges()

@@ -47,13 +47,17 @@ public final class TranscriptionQueueController {
     private var providersByID: [String: any TranscriptionProvider]
     private var entryLookup: @MainActor (UUID) -> HistoryEntry?
     private var persistEntry: @MainActor (HistoryEntry) throws -> Void
+    private var onCompletion: @MainActor (HistoryEntry) -> Void
+    private var onFailure: @MainActor (UUID, String) -> Void
     private var queuedRequests: [QueuedTranscriptionRequest] = []
     private var currentTask: Task<Void, Never>?
 
     public init(
         providers: [any TranscriptionProvider],
         entryLookup: @escaping @MainActor (UUID) -> HistoryEntry? = { _ in nil },
-        persistEntry: @escaping @MainActor (HistoryEntry) throws -> Void = { _ in }
+        persistEntry: @escaping @MainActor (HistoryEntry) throws -> Void = { _ in },
+        onCompletion: @escaping @MainActor (HistoryEntry) -> Void = { _ in },
+        onFailure: @escaping @MainActor (UUID, String) -> Void = { _, _ in }
     ) {
         self.providersByID = Dictionary(
             uniqueKeysWithValues: providers.map { provider in
@@ -62,6 +66,8 @@ public final class TranscriptionQueueController {
         )
         self.entryLookup = entryLookup
         self.persistEntry = persistEntry
+        self.onCompletion = onCompletion
+        self.onFailure = onFailure
     }
 
     public func replaceEntryLookup(_ entryLookup: @escaping @MainActor (UUID) -> HistoryEntry?) {
@@ -70,6 +76,14 @@ public final class TranscriptionQueueController {
 
     public func replacePersistEntry(_ persistEntry: @escaping @MainActor (HistoryEntry) throws -> Void) {
         self.persistEntry = persistEntry
+    }
+
+    public func replaceOnCompletion(_ onCompletion: @escaping @MainActor (HistoryEntry) -> Void) {
+        self.onCompletion = onCompletion
+    }
+
+    public func replaceOnFailure(_ onFailure: @escaping @MainActor (UUID, String) -> Void) {
+        self.onFailure = onFailure
     }
 
     public func replaceProviders(_ providers: [any TranscriptionProvider]) {
@@ -237,6 +251,7 @@ public final class TranscriptionQueueController {
             latestEntry.errorMessage = nil
 
             try persistEntry(latestEntry)
+            onCompletion(latestEntry)
         } catch is CancellationError {
             restoreAfterFailure(
                 for: request.entryID,
@@ -294,6 +309,7 @@ public final class TranscriptionQueueController {
         }
 
         lastErrorByEntryID[entryID] = message
+        onFailure(entryID, message)
     }
 
     private func fail(_ entryID: UUID, message: String, originalEntry: HistoryEntry) {

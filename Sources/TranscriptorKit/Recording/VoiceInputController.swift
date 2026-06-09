@@ -17,12 +17,14 @@ public final class VoiceInputController {
     private var recordingModeProvider: @MainActor () -> RecordingMode
     private var elapsedTask: Task<Void, Never>?
     private var recordingStartedAt: Date?
+    private var onRecordingStarted: @MainActor () -> Void
     private var onRecordingFinished: @MainActor (RecordedAudioAsset) -> Void
 
     public init(
         recorder: AudioRecorderServing,
         pendingStateDuration: Duration = .seconds(1),
         recordingModeProvider: @escaping @MainActor () -> RecordingMode = { .holdToTalk },
+        onRecordingStarted: @escaping @MainActor () -> Void = {},
         onRecordingFinished: @escaping @MainActor (RecordedAudioAsset) -> Void = { _ in },
         sleep: @escaping @Sendable (Duration) async -> Void = { duration in
             try? await Task.sleep(for: duration)
@@ -31,6 +33,7 @@ public final class VoiceInputController {
         self.recorder = recorder
         self.pendingStateDuration = pendingStateDuration
         self.recordingModeProvider = recordingModeProvider
+        self.onRecordingStarted = onRecordingStarted
         self.onRecordingFinished = onRecordingFinished
         self.sleep = sleep
         self.permissionStatus = recorder.authorizationStatus()
@@ -48,6 +51,10 @@ public final class VoiceInputController {
 
     public func replaceOnRecordingFinished(_ handler: @escaping @MainActor (RecordedAudioAsset) -> Void) {
         onRecordingFinished = handler
+    }
+
+    public func replaceOnRecordingStarted(_ handler: @escaping @MainActor () -> Void) {
+        onRecordingStarted = handler
     }
 
     public func replaceRecordingModeProvider(_ provider: @escaping @MainActor () -> RecordingMode) {
@@ -133,6 +140,7 @@ public final class VoiceInputController {
 
         do {
             _ = try recorder.startRecording()
+            onRecordingStarted()
             state = .recording
             recordingStartedAt = .now
             startElapsedTimer()

@@ -25,6 +25,7 @@ public struct SettingsHomeView: View {
                         title: "Recording",
                         lines: [
                             "Mode: \(appState.recordingState.mode.title)",
+                            "Auto-insert: \(appState.generalSettings.insertTranscriptIntoActiveApp ? "On" : "Off")",
                             "Save original audio: \(appState.recordingState.savesAudioLocally ? "On" : "Off")",
                             "Mic permission: \(appState.voiceInputController.permissionStatus.rawValue.capitalized)",
                             "Launch at login: \(appState.generalSettings.launchAtLoginEnabled ? "Requested" : "Off")",

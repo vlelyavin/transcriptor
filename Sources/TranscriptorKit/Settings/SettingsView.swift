@@ -108,6 +108,37 @@ public struct SettingsView: View {
                         appState.openMicrophonePrivacySettings()
                     }
                 }
+
+                Section("Transcript Insertion") {
+                    Toggle("Insert transcript into active app", isOn: $appState.generalSettings.insertTranscriptIntoActiveApp)
+                    Toggle("Also copy transcript to clipboard", isOn: $appState.generalSettings.alsoCopyTranscriptToClipboard)
+                    Toggle("Restore previous clipboard after insertion", isOn: $appState.generalSettings.restoreClipboardAfterInsertion)
+                        .disabled(appState.generalSettings.alsoCopyTranscriptToClipboard)
+
+                    LabeledContent("Accessibility") {
+                        Text(appState.accessibilityPermissionStatus.rawValue)
+                    }
+
+                    HStack {
+                        Button("Request Accessibility Access") {
+                            appState.requestAccessibilityPermissionPrompt()
+                        }
+
+                        Button("Open Accessibility Settings") {
+                            appState.openAccessibilityPrivacySettings()
+                        }
+                    }
+
+                    Text("Accessibility access is only required for inserting dictated text into other apps. If access is unavailable, Transcriptor still saves the transcript to history and can copy it to the clipboard instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if appState.generalSettings.insertTranscriptIntoActiveApp {
+                        Text("Live dictation is transcribed immediately when this setting is on so the transcript can be inserted back into the original app.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         case .keyboardShortcut:
             settingsForm(pane: .keyboardShortcut) {

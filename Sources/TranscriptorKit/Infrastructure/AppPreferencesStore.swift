@@ -3,6 +3,10 @@ import Foundation
 
 public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var launchAtLoginEnabled: Bool
+    public var showMenuBarIcon: Bool
+    public var insertTranscriptIntoActiveApp: Bool
+    public var alsoCopyTranscriptToClipboard: Bool
+    public var restoreClipboardAfterInsertion: Bool
     public var recordingModeRawValue: String
     public var hotkeyKeyCode: UInt32
     public var hotkeyCarbonModifiers: UInt32
@@ -27,6 +31,10 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
 
     public init(
         launchAtLoginEnabled: Bool = false,
+        showMenuBarIcon: Bool = true,
+        insertTranscriptIntoActiveApp: Bool = true,
+        alsoCopyTranscriptToClipboard: Bool = false,
+        restoreClipboardAfterInsertion: Bool = true,
         recordingModeRawValue: String = RecordingMode.holdToTalk.rawValue,
         hotkeyKeyCode: UInt32 = UInt32(kVK_Space),
         hotkeyCarbonModifiers: UInt32 = UInt32(optionKey | shiftKey),
@@ -50,6 +58,10 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         groqPrivacyAcknowledged: Bool = false
     ) {
         self.launchAtLoginEnabled = launchAtLoginEnabled
+        self.showMenuBarIcon = showMenuBarIcon
+        self.insertTranscriptIntoActiveApp = insertTranscriptIntoActiveApp
+        self.alsoCopyTranscriptToClipboard = alsoCopyTranscriptToClipboard
+        self.restoreClipboardAfterInsertion = restoreClipboardAfterInsertion
         self.recordingModeRawValue = recordingModeRawValue
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyCarbonModifiers = hotkeyCarbonModifiers
@@ -76,6 +88,10 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
 
 private struct CodableAppPreferencesSnapshot: Codable {
     var launchAtLoginEnabled: Bool
+    var showMenuBarIcon: Bool?
+    var insertTranscriptIntoActiveApp: Bool?
+    var alsoCopyTranscriptToClipboard: Bool?
+    var restoreClipboardAfterInsertion: Bool?
     var recordingModeRawValue: String
     var hotkeyKeyCode: UInt32
     var hotkeyCarbonModifiers: UInt32
@@ -122,6 +138,10 @@ public final class AppPreferencesStore {
 
         return AppPreferencesSnapshot(
             launchAtLoginEnabled: decoded.launchAtLoginEnabled,
+            showMenuBarIcon: decoded.showMenuBarIcon ?? true,
+            insertTranscriptIntoActiveApp: decoded.insertTranscriptIntoActiveApp ?? true,
+            alsoCopyTranscriptToClipboard: decoded.alsoCopyTranscriptToClipboard ?? false,
+            restoreClipboardAfterInsertion: decoded.restoreClipboardAfterInsertion ?? true,
             recordingModeRawValue: decoded.recordingModeRawValue,
             hotkeyKeyCode: decoded.hotkeyKeyCode,
             hotkeyCarbonModifiers: decoded.hotkeyCarbonModifiers,
@@ -149,6 +169,10 @@ public final class AppPreferencesStore {
     public func save(_ snapshot: AppPreferencesSnapshot) {
         let codableSnapshot = CodableAppPreferencesSnapshot(
             launchAtLoginEnabled: snapshot.launchAtLoginEnabled,
+            showMenuBarIcon: snapshot.showMenuBarIcon,
+            insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
+            alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
+            restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion,
             recordingModeRawValue: snapshot.recordingModeRawValue,
             hotkeyKeyCode: snapshot.hotkeyKeyCode,
             hotkeyCarbonModifiers: snapshot.hotkeyCarbonModifiers,

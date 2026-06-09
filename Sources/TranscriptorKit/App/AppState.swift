@@ -43,6 +43,7 @@ public final class AppState {
     public var storageWarningMessage: String?
     public var importFeedbackMessage: String?
     public var historyActionMessage: String?
+    public var overlaySupplementalPhase: OverlaySupplementalPhase?
     public let modelCatalog: ModelCatalog
     public let providerCatalog: ProviderCatalog
     public let voiceInputController: VoiceInputController
@@ -56,6 +57,7 @@ public final class AppState {
     public private(set) var storedAPIKeyProviderIDs: Set<String>
     public private(set) var providerCredentialValidationStates: [String: ProviderCredentialValidationState]
     public private(set) var hotkeyRegistrationErrorMessage: String?
+    public private(set) var accessibilityPermissionStatus: AccessibilityPermissionStatus
     @ObservationIgnored private let hotkeyManager: GlobalHotkeyManager
     @ObservationIgnored private let recordingOverlayManager: RecordingOverlayManager
     @ObservationIgnored private let preferencesStore: AppPreferencesStore
@@ -64,8 +66,11 @@ public final class AppState {
     @ObservationIgnored private let importService: AudioImportService
     @ObservationIgnored private let storageQuotaService: StorageQuotaService
     @ObservationIgnored private let transcriptExportService: TranscriptExportService
+    @ObservationIgnored private let transcriptInsertionService: any TranscriptInsertionServing
     @ObservationIgnored private let secretStore: any SecretStore
     @ObservationIgnored private var isEnforcingStorageCap = false
+    @ObservationIgnored private var overlaySupplementalClearTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingInsertionEntryID: UUID?
 
     public init(
         selectedScreen: NavigationScreen = .overview,
@@ -77,6 +82,7 @@ public final class AppState {
         storageLayout: AppStorageLayout = AppStorageLayout(),
         historyRepository: HistoryRepository? = nil,
         audioPlaybackService: AudioPlaybackService = AudioPlaybackService(),
+        transcriptInsertionService: any TranscriptInsertionServing = TranscriptInsertionService(),
         secretStore: any SecretStore = KeychainSecretStore()
     ) {
         let snapshot = preferencesStore.load()
@@ -137,10 +143,15 @@ public final class AppState {
         self.importService = AudioImportService(layout: storageLayout)
         self.storageQuotaService = StorageQuotaService(layout: storageLayout)
         self.transcriptExportService = TranscriptExportService()
+        self.transcriptInsertionService = transcriptInsertionService
         self.secretStore = secretStore
         self.selectedScreen = selectedScreen
         self.generalSettings = GeneralSettings(
-            launchAtLoginEnabled: snapshot.launchAtLoginEnabled
+            launchAtLoginEnabled: snapshot.launchAtLoginEnabled,
+            showMenuBarIcon: snapshot.showMenuBarIcon,
+            insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
+            alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
+            restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion
         )
         self.recordingState = RecordingState(
             mode: recordingMode,
@@ -187,7 +198,11 @@ public final class AppState {
         self.storedAPIKeyProviderIDs = storedAPIKeyProviderIDs
         self.providerCredentialValidationStates = providerCredentialValidationStates
         self.hotkeyRegistrationErrorMessage = nil
+        self.accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
 
+        voiceInputController.replaceOnRecordingStarted { [weak self] in
+            self?.beginVoiceInputCapture()
+        }
         voiceInputController.replaceOnRecordingFinished { [weak self] recording in
             self?.appendPendingRecording(recording)
         }
@@ -209,6 +224,9 @@ public final class AppState {
             },
             recordingModeProvider: { [weak self] in
                 self?.recordingState.mode ?? .holdToTalk
+            },
+            supplementalPhaseProvider: { [weak self] in
+                self?.overlaySupplementalPhase
             }
         )
 
@@ -220,6 +238,12 @@ public final class AppState {
                 return
             }
             try self.persistHistoryEntry(entry)
+        }
+        transcriptionQueueController.replaceOnCompletion { [weak self] entry in
+            self?.handleCompletedTranscription(for: entry)
+        }
+        transcriptionQueueController.replaceOnFailure { [weak self] entryID, message in
+            self?.handleFailedTranscription(for: entryID, message: message)
         }
 
         refreshStorageState()
@@ -363,6 +387,12 @@ public final class AppState {
             historyActionMessage = "Queued \(entry.displayName) for \(plan.providerName) transcription."
         } catch {
             historyActionMessage = error.localizedDescription
+            if entry.id == pendingInsertionEntryID {
+                pendingInsertionEntryID = nil
+                transcriptInsertionService.clearCapturedTarget()
+                setOverlaySupplementalPhase(.error(error.localizedDescription))
+                scheduleOverlaySupplementalClear(after: .seconds(2))
+            }
         }
     }
 
@@ -524,6 +554,21 @@ public final class AppState {
         NSWorkspace.shared.open(url)
     }
 
+    public func requestAccessibilityPermissionPrompt() {
+        transcriptInsertionService.requestAccessibilityPermissionPrompt()
+        refreshAccessibilityPermissionStatus()
+    }
+
+    public func openAccessibilityPrivacySettings() {
+        transcriptInsertionService.openAccessibilitySettings()
+        refreshAccessibilityPermissionStatus()
+    }
+
+    public func refreshAccessibilityPermissionStatus() {
+        transcriptInsertionService.refreshPermissionStatus()
+        accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
+    }
+
     public func resetHotkeyToRecommendedDefault() {
         recordingState.hotkey = HotkeyConfiguration()
     }
@@ -547,6 +592,10 @@ public final class AppState {
         preferencesStore.save(
             AppPreferencesSnapshot(
                 launchAtLoginEnabled: generalSettings.launchAtLoginEnabled,
+                showMenuBarIcon: generalSettings.showMenuBarIcon,
+                insertTranscriptIntoActiveApp: generalSettings.insertTranscriptIntoActiveApp,
+                alsoCopyTranscriptToClipboard: generalSettings.alsoCopyTranscriptToClipboard,
+                restoreClipboardAfterInsertion: generalSettings.restoreClipboardAfterInsertion,
                 recordingModeRawValue: recordingState.mode.rawValue,
                 hotkeyKeyCode: recordingState.hotkey.keyCode,
                 hotkeyCarbonModifiers: recordingState.hotkey.carbonModifiers,
@@ -581,9 +630,17 @@ public final class AppState {
 
         do {
             try persistHistoryEntry(entry)
-            queueAutomaticTranscriptionIfNeeded(for: entry)
+            if generalSettings.insertTranscriptIntoActiveApp {
+                pendingInsertionEntryID = entry.id
+                setOverlaySupplementalPhase(.transcribing("Transcribing your dictation before insertion."))
+                transcribe(entry)
+            } else {
+                queueAutomaticTranscriptionIfNeeded(for: entry)
+            }
         } catch {
             historyActionMessage = error.localizedDescription
+            setOverlaySupplementalPhase(.error(error.localizedDescription))
+            scheduleOverlaySupplementalClear(after: .seconds(2))
         }
     }
 
@@ -668,6 +725,70 @@ public final class AppState {
         }
 
         transcribe(entry)
+    }
+
+    private func beginVoiceInputCapture() {
+        guard generalSettings.insertTranscriptIntoActiveApp else {
+            pendingInsertionEntryID = nil
+            transcriptInsertionService.clearCapturedTarget()
+            return
+        }
+
+        refreshAccessibilityPermissionStatus()
+        transcriptInsertionService.captureCurrentTargetIfNeeded()
+    }
+
+    private func handleCompletedTranscription(for entry: HistoryEntry) {
+        guard entry.id == pendingInsertionEntryID else {
+            return
+        }
+
+        pendingInsertionEntryID = nil
+
+        Task { @MainActor in
+            setOverlaySupplementalPhase(.inserting("Restoring the previous app and inserting your transcript."))
+            let outcome = await transcriptInsertionService.insertCapturedTranscript(
+                entry.transcriptText,
+                settings: generalSettings
+            )
+            historyActionMessage = outcome.message
+
+            switch outcome {
+            case let .inserted(message), let .copiedToClipboard(message), let .savedOnly(message):
+                setOverlaySupplementalPhase(.saved(message))
+                scheduleOverlaySupplementalClear(after: .seconds(1.6))
+            case let .failed(message):
+                setOverlaySupplementalPhase(.error(message))
+                scheduleOverlaySupplementalClear(after: .seconds(2))
+            }
+        }
+    }
+
+    private func handleFailedTranscription(for entryID: UUID, message: String) {
+        guard entryID == pendingInsertionEntryID else {
+            return
+        }
+
+        pendingInsertionEntryID = nil
+        transcriptInsertionService.clearCapturedTarget()
+        historyActionMessage = message
+        setOverlaySupplementalPhase(.error(message))
+        scheduleOverlaySupplementalClear(after: .seconds(2))
+    }
+
+    private func setOverlaySupplementalPhase(_ phase: OverlaySupplementalPhase?) {
+        overlaySupplementalClearTask?.cancel()
+        overlaySupplementalPhase = phase
+        recordingOverlayManager.refreshPresentation()
+    }
+
+    private func scheduleOverlaySupplementalClear(after duration: Duration) {
+        overlaySupplementalClearTask?.cancel()
+        overlaySupplementalClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: duration)
+            self?.overlaySupplementalPhase = nil
+            self?.recordingOverlayManager.refreshPresentation()
+        }
     }
 
     private func cloudProvider(for providerID: String) -> (any CloudTranscriptionProvider)? {
