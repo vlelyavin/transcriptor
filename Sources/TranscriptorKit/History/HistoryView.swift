@@ -14,62 +14,27 @@ public struct HistoryView: View {
     }
 
     public var body: some View {
-        HSplitView {
-            VStack(alignment: .leading, spacing: 0) {
-                headerControls
+        GeometryReader { proxy in
+            let compact = proxy.size.width < 980
 
-                Group {
-                    if filteredEntries.isEmpty {
-                        emptyState
+            Group {
+                if compact {
+                    if selectedEntry != nil {
+                        detailPane(isCompact: true)
                     } else {
-                        List(filteredEntries, selection: $selectedEntryID) { entry in
-                            historyRow(entry)
-                                .tag(entry.id)
-                                .contextMenu {
-                                    if canTriggerTranscription(for: entry) {
-                                        Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
-                                            appState.transcribe(entry)
-                                        }
-                                    }
+                        historyListPane(isCompact: true)
+                    }
+                } else {
+                    HSplitView {
+                        historyListPane(isCompact: false)
+                            .frame(minWidth: 320, idealWidth: 380, maxWidth: 460, maxHeight: .infinity)
 
-                                    if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
-                                        Button("Cancel Transcription") {
-                                            appState.cancelTranscription(for: entry)
-                                        }
-                                    }
-
-                                    Button("Play / Pause") {
-                                        appState.togglePlayback(for: entry)
-                                    }
-                                    .disabled(!hasPlayableAudioFile(entry))
-
-                                    Button("Copy Transcript") {
-                                        appState.copyTranscript(for: entry)
-                                    }
-                                    .disabled(!entry.canCopyTranscript)
-
-                                    Button("Export Transcript") {
-                                        appState.exportTranscript(for: entry)
-                                    }
-                                    .disabled(!entry.canExportTranscript)
-
-                                    Divider()
-
-                                    Button("Delete", role: .destructive) {
-                                        entryPendingDeletion = entry
-                                    }
-                                }
-                        }
-                        .listStyle(.inset(alternatesRowBackgrounds: true))
+                        detailPane(isCompact: false)
+                            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
-                .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
             }
-
-            detailPane
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+            .background(Color(nsColor: .underPageBackgroundColor))
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
@@ -104,7 +69,66 @@ public struct HistoryView: View {
         }
     }
 
-    private var headerControls: some View {
+    private func historyListPane(isCompact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            headerControls(isCompact: isCompact)
+
+            Group {
+                if filteredEntries.isEmpty {
+                    emptyState
+                } else {
+                    List(filteredEntries, selection: isCompact ? .constant(nil) : $selectedEntryID) { entry in
+                        Button {
+                            selectedEntryID = entry.id
+                        } label: {
+                            historyRow(entry)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .tag(entry.id)
+                        .contextMenu {
+                            if canTriggerTranscription(for: entry) {
+                                Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
+                                    appState.transcribe(entry)
+                                }
+                            }
+
+                            if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
+                                Button("Cancel Transcription") {
+                                    appState.cancelTranscription(for: entry)
+                                }
+                            }
+
+                            Button("Play / Pause") {
+                                appState.togglePlayback(for: entry)
+                            }
+                            .disabled(!hasPlayableAudioFile(entry))
+
+                            Button("Copy Transcript") {
+                                appState.copyTranscript(for: entry)
+                            }
+                            .disabled(!entry.canCopyTranscript)
+
+                            Button("Export Transcript") {
+                                appState.exportTranscript(for: entry)
+                            }
+                            .disabled(!entry.canExportTranscript)
+
+                            Divider()
+
+                            Button("Delete", role: .destructive) {
+                                entryPendingDeletion = entry
+                            }
+                        }
+                    }
+                    .listStyle(.inset(alternatesRowBackgrounds: true))
+                }
+            }
+            .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
+        }
+    }
+
+    private func headerControls(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("History")
                 .font(.title2.weight(.semibold))
@@ -133,10 +157,12 @@ public struct HistoryView: View {
 
                 Spacer()
 
-                Button("Delete All", role: .destructive) {
-                    showDeleteAllConfirmation = true
+                if !isCompact {
+                    Button("Delete All", role: .destructive) {
+                        showDeleteAllConfirmation = true
+                    }
+                    .disabled(appState.historyStore.entries.isEmpty)
                 }
-                .disabled(appState.historyStore.entries.isEmpty)
             }
         }
         .padding(.horizontal, 20)
@@ -152,11 +178,20 @@ public struct HistoryView: View {
         )
     }
 
-    private var detailPane: some View {
+    private func detailPane(isCompact: Bool) -> some View {
         Group {
             if let entry = selectedEntry {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
+                        if isCompact {
+                            Button {
+                                selectedEntryID = nil
+                            } label: {
+                                Label("Back to History", systemImage: "chevron.left")
+                            }
+                            .buttonStyle(.link)
+                        }
+
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(entry.displayName)
@@ -169,14 +204,13 @@ public struct HistoryView: View {
                                 Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
                                     .foregroundStyle(.secondary)
 
-                                HStack(spacing: 8) {
-                                    detailTag(entry.transcriptionStatus.title)
-                                    detailTag(entry.sourceType.title)
-                                    if let modelName = entry.modelName {
-                                        detailTag(modelName)
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 8) {
+                                        detailTags(for: entry)
                                     }
-                                    if let providerName = entry.providerName {
-                                        detailTag(providerName)
+
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        detailTags(for: entry)
                                     }
                                 }
                             }
@@ -184,7 +218,7 @@ public struct HistoryView: View {
                             Spacer()
                         }
 
-                        actionBar(for: entry)
+                        actionBar(for: entry, isCompact: isCompact)
 
                         if let progress = appState.transcriptionQueueController.progress(for: entry.id) {
                             progressCard(progress)
@@ -220,8 +254,6 @@ public struct HistoryView: View {
                             UnavailableActionBanner(message: "This history item completed without transcript text, so copy and export remain disabled.")
                         }
 
-                        Divider()
-
                         SectionCard(
                             title: "Transcript",
                             subtitle: "Latest saved transcript text for this history item."
@@ -235,16 +267,24 @@ public struct HistoryView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
-                        SectionCard(
-                            title: "Details",
-                            subtitle: "Saved metadata, audio paths, and file information."
-                        ) {
-                            metadataGrid(for: entry)
+                        if isCompact {
+                            DisclosureGroup("Details") {
+                                metadataGrid(for: entry)
+                                    .padding(.top, 8)
+                            }
+                        } else {
+                            SectionCard(
+                                title: "Details",
+                                subtitle: "Saved metadata, audio paths, and file information."
+                            ) {
+                                metadataGrid(for: entry)
+                            }
                         }
 
                         transcriptVersionSection(for: entry)
                     }
-                    .padding(24)
+                    .padding(.horizontal, isCompact ? 20 : 24)
+                    .padding(.vertical, isCompact ? 18 : 24)
                 }
             } else {
                 ContentUnavailableView(
@@ -256,7 +296,28 @@ public struct HistoryView: View {
         }
     }
 
-    private func actionBar(for entry: HistoryEntry) -> some View {
+    @ViewBuilder
+    private func detailTags(for entry: HistoryEntry) -> some View {
+        detailTag(entry.transcriptionStatus.title)
+        detailTag(entry.sourceType.title)
+        if let modelName = entry.modelName {
+            detailTag(modelName)
+        }
+        if let providerName = entry.providerName {
+            detailTag(providerName)
+        }
+    }
+
+    private func actionBar(for entry: HistoryEntry, isCompact: Bool) -> some View {
+        ViewThatFits(in: .horizontal) {
+            actionButtonsRow(for: entry)
+            VStack(alignment: .leading, spacing: 10) {
+                actionButtonsRow(for: entry)
+            }
+        }
+    }
+
+    private func actionButtonsRow(for entry: HistoryEntry) -> some View {
         HStack(spacing: 10) {
             if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
                 Button("Cancel") {
@@ -270,9 +331,9 @@ public struct HistoryView: View {
 
             if !availableRetranscriptionPlans.isEmpty {
                 Menu("Re-transcribe") {
-                    if !downloadedWhisperModels.isEmpty {
+                    if !downloadedLocalModels.isEmpty {
                         Section("Local Models") {
-                            ForEach(downloadedWhisperModels) { model in
+                            ForEach(downloadedLocalModels) { model in
                                 Button(model.name) {
                                     appState.retranscribe(entry, using: model.id)
                                 }
@@ -421,8 +482,8 @@ public struct HistoryView: View {
         filteredEntries.first { $0.id == selectedEntryID } ?? filteredEntries.first
     }
 
-    private var downloadedWhisperModels: [ModelDescriptor] {
-        appState.whisperModelManager.downloadedWhisperModels()
+    private var downloadedLocalModels: [ModelDescriptor] {
+        appState.modelCatalog.localModels.filter { appState.readyLocalModelIDs.contains($0.id) }
     }
 
     private var availableRetranscriptionPlans: [TranscriptionExecutionPlan] {
@@ -496,7 +557,7 @@ public struct HistoryView: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 
     private func displayTranscriptText(for entry: HistoryEntry) -> String {

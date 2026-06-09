@@ -9,6 +9,7 @@ Transcriptor is a free local-first macOS speech-to-text app for fast dictation, 
 - Global voice input shortcut
 - Hold-to-talk and toggle-to-talk modes
 - Local Whisper transcription with downloadable on-device models
+- Parakeet Local beta on Apple Silicon through a real local Core ML backend
 - Transcript history with search, playback, re-transcription, copy, and export
 - Audio import for `.mp3`, `.m4a`, and `.wav`
 - Automatic insertion into the active text field after transcription
@@ -35,8 +36,8 @@ Unsigned local builds may show a Gatekeeper warning until the app is signed and 
 ## First Run
 
 1. Grant microphone access when macOS asks.
-2. Open `Models` and download a local Whisper model such as `Tiny`.
-3. Open `Settings > Keyboard Shortcut` and choose your voice input shortcut.
+2. Open `Models` and download a local model such as `Tiny`.
+3. Open `Settings` in the main sidebar and choose your voice input shortcut in `Keyboard Shortcut`.
 4. If you want automatic text insertion into other apps, grant Accessibility access in `Settings > Recording`.
 5. Start dictating with the toolbar button, menu bar item, or global shortcut.
 
@@ -52,6 +53,7 @@ Unsigned local builds may show a Gatekeeper warning until the app is signed and 
 ### Transcription
 
 - Local WhisperKit-backed transcription
+- Local Parakeet beta for Apple Silicon, with in-app model management
 - Download, load, delete, and switch models from the app
 - Re-transcribe saved history items with a different provider or model
 - Optional OpenAI and Groq cloud transcription with explicit consent
@@ -85,7 +87,7 @@ Open `History`, select an item, and use the delete action. There is also a delet
 
 ### Why might NVIDIA Parakeet or WebM import be unavailable?
 
-Parakeet remains disabled until a validated native macOS runtime is integrated. `.webm` import remains blocked until the app ships a real decoder or transcoder instead of pretending support exists.
+Parakeet Local is a beta Apple Silicon-only path in the current build, and it still needs a large first-run model download before it is usable. `.webm` import remains blocked until the app ships a real decoder or transcoder instead of pretending support exists.
 
 ### Why can launch at login say “Needs Packaged App”?
 

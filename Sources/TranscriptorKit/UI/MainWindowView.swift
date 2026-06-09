@@ -1,7 +1,6 @@
 import SwiftUI
 
 public struct MainWindowView: View {
-    @Environment(\.openSettings) private var openSettings
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
 
@@ -15,37 +14,48 @@ public struct MainWindowView: View {
             VStack(spacing: 0) {
                 SidebarHeaderView()
 
-                Divider()
-
                 List(selection: $appState.selectedScreen) {
-                    Section("Library") {
-                        ForEach(NavigationScreen.allCases) { screen in
-                            HStack(spacing: 10) {
-                                Image(systemName: screen.systemImage)
-                                    .frame(width: 18)
-                                    .foregroundStyle(.secondary)
-
-                                Text(screen.title)
-                                    .lineLimit(1)
-
-                                Spacer(minLength: 0)
-                            }
-                            .contentShape(Rectangle())
+                    ForEach(NavigationScreen.allCases) { screen in
+                        Label(screen.title, systemImage: screen.systemImage)
                             .tag(screen)
-                        }
+                            .help(screen.title)
                     }
                 }
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Divider()
+
+                        HStack(spacing: 8) {
+                            Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
+                                .foregroundStyle(voiceInputController.isRecording ? .red : .secondary)
+
+                            Text(voiceInputController.isRecording ? "Recording" : "Ready")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(appState.recordingState.hotkey.displayString)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+            .background {
+                NativeSidebarMaterial()
+                    .ignoresSafeArea()
+            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 270)
         } detail: {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color(nsColor: .underPageBackgroundColor))
         }
-        .frame(minWidth: 1080, minHeight: 720)
+        .frame(minWidth: 800, minHeight: 620)
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup {
@@ -65,10 +75,11 @@ public struct MainWindowView: View {
                 .help(voiceInputController.failureMessage ?? "Use this button or your configured global shortcut to control dictation.")
 
                 Button {
-                    openSettings()
+                    appState.openSettings()
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .help("Open Settings")
             }
         }
     }
@@ -85,7 +96,7 @@ public struct MainWindowView: View {
         case .models:
             ModelsView(appState: appState)
         case .settings:
-            SettingsHomeView(appState: appState)
+            SettingsView(appState: appState)
         }
     }
 }

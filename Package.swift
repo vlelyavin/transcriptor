@@ -13,6 +13,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.2"),
     ],
     targets: [
         .executableTarget(
@@ -27,6 +28,7 @@ let package = Package(
             name: "TranscriptorKit",
             dependencies: [
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ]
         ),
         .testTarget(

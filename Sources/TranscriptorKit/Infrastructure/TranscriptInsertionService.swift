@@ -25,10 +25,30 @@ public enum TranscriptInsertionOutcome: Equatable, Sendable {
     }
 }
 
+public struct TranscriptInsertionDebugSnapshot: Equatable, Sendable {
+    public var capturedAppName: String?
+    public var targetSummary: String
+    public var lastOutcome: TranscriptInsertionOutcome?
+    public var lastUpdatedAt: Date?
+
+    public init(
+        capturedAppName: String? = nil,
+        targetSummary: String = "No insertion target captured yet.",
+        lastOutcome: TranscriptInsertionOutcome? = nil,
+        lastUpdatedAt: Date? = nil
+    ) {
+        self.capturedAppName = capturedAppName
+        self.targetSummary = targetSummary
+        self.lastOutcome = lastOutcome
+        self.lastUpdatedAt = lastUpdatedAt
+    }
+}
+
 @MainActor
 public protocol TranscriptInsertionServing: AnyObject {
     var accessibilityPermissionStatus: AccessibilityPermissionStatus { get }
     var hasCapturedTarget: Bool { get }
+    var debugSnapshot: TranscriptInsertionDebugSnapshot { get }
 
     func refreshPermissionStatus()
     func requestAccessibilityPermissionPrompt()
@@ -47,6 +67,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
     public var hasCapturedTarget: Bool {
         capturedTarget != nil
     }
+
+    public private(set) var debugSnapshot = TranscriptInsertionDebugSnapshot()
 
     private let platform: any TranscriptInsertionPlatform
     private var capturedTarget: CapturedTextTarget?
@@ -70,12 +92,18 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
     }
 
     public func captureCurrentTargetIfNeeded() {
+        let appName = platform.frontmostApplicationName()
+
         guard accessibilityPermissionStatus == .granted else {
             capturedTarget = nil
+            debugSnapshot.capturedAppName = appName
+            debugSnapshot.targetSummary = "Accessibility access is not granted, so Transcriptor cannot capture the active text field."
             return
         }
 
         capturedTarget = platform.captureFocusedTarget()
+        debugSnapshot.capturedAppName = capturedTarget?.appName ?? appName
+        debugSnapshot.targetSummary = captureSummary(for: capturedTarget)
     }
 
     public func clearCapturedTarget() {
@@ -88,43 +116,67 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
         }
 
         guard !text.isEmpty else {
-            return .failed("No transcript text was available to insert.")
+            return finish(.failed("No transcript text was available to insert."))
         }
 
         guard settings.insertTranscriptIntoActiveApp else {
             if settings.alsoCopyTranscriptToClipboard {
                 platform.copyTextToPasteboard(text)
-                return .copiedToClipboard("Transcript copied to the clipboard.")
+                return finish(.copiedToClipboard("Transcript copied to the clipboard."))
             }
 
-            return .savedOnly("Transcript saved to history.")
+            return finish(.savedOnly("Transcript saved to history."))
         }
 
         guard accessibilityPermissionStatus == .granted else {
-            if settings.alsoCopyTranscriptToClipboard {
-                platform.copyTextToPasteboard(text)
-                return .copiedToClipboard("Accessibility access is off. Transcript copied to the clipboard so you can paste it manually.")
-            }
-
-            return .savedOnly("Accessibility access is off. Transcript saved to history. Paste manually.")
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "Accessibility access is off. Transcript copied to the clipboard so you can paste it manually.",
+                savedMessage: "Accessibility access is off. Transcript saved to history. Paste manually."
+            ))
         }
 
         guard let target = capturedTarget ?? platform.captureFocusedTarget() else {
-            if settings.alsoCopyTranscriptToClipboard {
-                platform.copyTextToPasteboard(text)
-                return .copiedToClipboard("The original text field is no longer available. Transcript copied to the clipboard.")
-            }
-
-            return .savedOnly("The original text field is no longer available. Transcript saved to history.")
+            debugSnapshot.targetSummary = "The original text field is no longer available."
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "The original text field is no longer available. Transcript copied to the clipboard.",
+                savedMessage: "The original text field is no longer available. Transcript saved to history."
+            ))
         }
 
         if target.isSecureField {
-            if settings.alsoCopyTranscriptToClipboard {
-                platform.copyTextToPasteboard(text)
-                return .copiedToClipboard("Secure text field detected. Transcript copied to the clipboard instead of being inserted.")
-            }
+            debugSnapshot.targetSummary = "Secure text field detected."
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "Secure text field detected. Transcript copied to the clipboard instead of being inserted.",
+                savedMessage: "Secure text field detected. Transcript saved to history. Paste manually."
+            ))
+        }
 
-            return .savedOnly("Secure text field detected. Transcript saved to history. Paste manually.")
+        do {
+            try await platform.activateApplication(for: target)
+        } catch {
+            debugSnapshot.targetSummary = "The original app is no longer available."
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
+                savedMessage: "The original app is no longer available. Transcript saved to history."
+            ))
+        }
+
+        guard platform.isTargetStillFocused(target) else {
+            debugSnapshot.targetSummary = "The original insertion target lost focus before Transcriptor could insert the transcript."
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "The original text field changed before insertion finished. Transcript copied to the clipboard.",
+                savedMessage: "The original text field changed before insertion finished. Transcript saved to history."
+            ))
         }
 
         do {
@@ -132,24 +184,27 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 if settings.alsoCopyTranscriptToClipboard {
                     platform.copyTextToPasteboard(text)
                 }
-                return .inserted("Transcript inserted into the active app.")
+                debugSnapshot.targetSummary = "Transcript inserted into \(target.appName)."
+                return finish(.inserted("Transcript inserted into the active app."))
             }
         } catch let error as TranscriptInsertionPlatformError {
             switch error {
             case .targetUnavailable:
-                if settings.alsoCopyTranscriptToClipboard {
-                    platform.copyTextToPasteboard(text)
-                    return .copiedToClipboard("The original app is no longer available. Transcript copied to the clipboard.")
-                }
-
-                return .savedOnly("The original app is no longer available. Transcript saved to history.")
+                debugSnapshot.targetSummary = "The original app is no longer available."
+                return finish(copyOrSaveOnly(
+                    text: text,
+                    settings: settings,
+                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
+                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                ))
             case .secureField:
-                if settings.alsoCopyTranscriptToClipboard {
-                    platform.copyTextToPasteboard(text)
-                    return .copiedToClipboard("Secure text field detected. Transcript copied to the clipboard instead of being inserted.")
-                }
-
-                return .savedOnly("Secure text field detected. Transcript saved to history. Paste manually.")
+                debugSnapshot.targetSummary = "Secure text field detected."
+                return finish(copyOrSaveOnly(
+                    text: text,
+                    settings: settings,
+                    copiedMessage: "Secure text field detected. Transcript copied to the clipboard instead of being inserted.",
+                    savedMessage: "Secure text field detected. Transcript saved to history. Paste manually."
+                ))
             case .unsupportedTarget, .pasteFailed:
                 break
             }
@@ -166,39 +221,76 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 platform.copyTextToPasteboard(text)
             }
 
-            return .inserted("Transcript inserted into the active app.")
+            debugSnapshot.targetSummary = "Transcript inserted into \(target.appName)."
+            return finish(.inserted("Transcript inserted into the active app."))
         } catch let error as TranscriptInsertionPlatformError {
             switch error {
             case .targetUnavailable:
-                if settings.alsoCopyTranscriptToClipboard {
-                    platform.copyTextToPasteboard(text)
-                    return .copiedToClipboard("The original app is no longer available. Transcript copied to the clipboard.")
-                }
-
-                return .savedOnly("The original app is no longer available. Transcript saved to history.")
+                debugSnapshot.targetSummary = "The original app is no longer available."
+                return finish(copyOrSaveOnly(
+                    text: text,
+                    settings: settings,
+                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
+                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                ))
             case .secureField:
-                if settings.alsoCopyTranscriptToClipboard {
-                    platform.copyTextToPasteboard(text)
-                    return .copiedToClipboard("Secure text field detected. Transcript copied to the clipboard instead of being inserted.")
-                }
-
-                return .savedOnly("Secure text field detected. Transcript saved to history. Paste manually.")
+                debugSnapshot.targetSummary = "Secure text field detected."
+                return finish(copyOrSaveOnly(
+                    text: text,
+                    settings: settings,
+                    copiedMessage: "Secure text field detected. Transcript copied to the clipboard instead of being inserted.",
+                    savedMessage: "Secure text field detected. Transcript saved to history. Paste manually."
+                ))
             case .pasteFailed, .unsupportedTarget:
-                if settings.alsoCopyTranscriptToClipboard {
-                    platform.copyTextToPasteboard(text)
-                    return .copiedToClipboard("Automatic insertion failed. Transcript copied to the clipboard so you can paste it manually.")
-                }
-
-                return .savedOnly("Automatic insertion failed. Transcript saved to history. Paste manually.")
+                debugSnapshot.targetSummary = "Automatic insertion failed for the captured target."
+                return finish(copyOrSaveOnly(
+                    text: text,
+                    settings: settings,
+                    copiedMessage: "Automatic insertion failed. Transcript copied to the clipboard so you can paste it manually.",
+                    savedMessage: "Automatic insertion failed. Transcript saved to history. Paste manually."
+                ))
             }
         } catch {
-            if settings.alsoCopyTranscriptToClipboard {
-                platform.copyTextToPasteboard(text)
-                return .copiedToClipboard("Automatic insertion failed. Transcript copied to the clipboard so you can paste it manually.")
-            }
-
-            return .savedOnly("Automatic insertion failed. Transcript saved to history. Paste manually.")
+            debugSnapshot.targetSummary = "Automatic insertion failed for the captured target."
+            return finish(copyOrSaveOnly(
+                text: text,
+                settings: settings,
+                copiedMessage: "Automatic insertion failed. Transcript copied to the clipboard so you can paste it manually.",
+                savedMessage: "Automatic insertion failed. Transcript saved to history. Paste manually."
+            ))
         }
+    }
+
+    private func captureSummary(for target: CapturedTextTarget?) -> String {
+        guard let target else {
+            return "No focused text field was captured."
+        }
+
+        if target.isSecureField {
+            return "Focused secure text field captured in \(target.appName)."
+        }
+
+        return "Focused text field captured in \(target.appName)."
+    }
+
+    private func copyOrSaveOnly(
+        text: String,
+        settings: GeneralSettings,
+        copiedMessage: String,
+        savedMessage: String
+    ) -> TranscriptInsertionOutcome {
+        if settings.alsoCopyTranscriptToClipboard {
+            platform.copyTextToPasteboard(text)
+            return .copiedToClipboard(copiedMessage)
+        }
+
+        return .savedOnly(savedMessage)
+    }
+
+    private func finish(_ outcome: TranscriptInsertionOutcome) -> TranscriptInsertionOutcome {
+        debugSnapshot.lastOutcome = outcome
+        debugSnapshot.lastUpdatedAt = .now
+        return outcome
     }
 }
 
@@ -206,9 +298,12 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
 protocol TranscriptInsertionPlatform {
     var isAccessibilityTrusted: Bool { get }
 
+    func frontmostApplicationName() -> String?
     func requestAccessibilityPermissionPrompt() -> Bool
     func openAccessibilitySettings()
     func captureFocusedTarget() -> CapturedTextTarget?
+    func activateApplication(for target: CapturedTextTarget) async throws
+    func isTargetStillFocused(_ target: CapturedTextTarget) -> Bool
     func insertViaAccessibility(_ text: String, into target: CapturedTextTarget) throws -> Bool
     func pasteViaClipboard(_ text: String, into target: CapturedTextTarget, restorePreviousClipboard: Bool) async throws
     func copyTextToPasteboard(_ text: String)
@@ -252,6 +347,10 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         AXIsProcessTrusted()
     }
 
+    func frontmostApplicationName() -> String? {
+        NSWorkspace.shared.frontmostApplication?.localizedName
+    }
+
     func requestAccessibilityPermissionPrompt() -> Bool {
         openAccessibilitySettings()
         return isAccessibilityTrusted
@@ -292,6 +391,30 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
             appElement: appElement,
             focusedElement: focusedElement
         )
+    }
+
+    func activateApplication(for target: CapturedTextTarget) async throws {
+        guard let app = NSRunningApplication(processIdentifier: target.processIdentifier) else {
+            throw TranscriptInsertionPlatformError.targetUnavailable
+        }
+
+        _ = app.activate()
+        try? await Task.sleep(for: .milliseconds(120))
+    }
+
+    func isTargetStillFocused(_ target: CapturedTextTarget) -> Bool {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier else {
+            return false
+        }
+
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(target.appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue) == .success,
+              let focusedValue else {
+            return false
+        }
+
+        let focusedElement = focusedValue as! AXUIElement
+        return CFEqual(focusedElement, target.focusedElement)
     }
 
     func insertViaAccessibility(_ text: String, into target: CapturedTextTarget) throws -> Bool {

@@ -53,7 +53,7 @@ public struct TranscriptionTargetResolver: Sendable {
     ) throws -> TranscriptionExecutionPlan {
         switch selection {
         case .preferred:
-            if preferences.preferredProviderID == "whisperkit-local" {
+            if localProviderIDs.contains(preferences.preferredProviderID) {
                 return try resolveLocalModel(
                     modelID: preferences.selectedModelID,
                     readyLocalModelIDs: readyLocalModelIDs
@@ -81,12 +81,12 @@ public struct TranscriptionTargetResolver: Sendable {
         readyLocalModelIDs: Set<String>,
         providerStatesByID: [String: ProviderRuntimeState]
     ) -> [TranscriptionExecutionPlan] {
-        let localPlans = modelCatalog.whisperModels
+        let localPlans = modelCatalog.localModels
             .filter { readyLocalModelIDs.contains($0.id) }
             .map {
                 TranscriptionExecutionPlan(
-                    providerID: "whisperkit-local",
-                    providerName: "WhisperKit Local",
+                    providerID: $0.localProviderID ?? "whisperkit-local",
+                    providerName: providerDisplayName(for: $0.localProviderID ?? "whisperkit-local"),
                     kind: .local,
                     modelID: $0.id,
                     modelName: $0.name
@@ -114,8 +114,8 @@ public struct TranscriptionTargetResolver: Sendable {
         modelID: String,
         readyLocalModelIDs: Set<String>
     ) throws -> TranscriptionExecutionPlan {
-        guard let model = modelCatalog.model(id: modelID), model.isWhisperKitLocalModel else {
-            throw TranscriptionError.unsupportedModel("Choose a supported local Whisper model before transcribing.")
+        guard let model = modelCatalog.model(id: modelID), model.supportsLocalTranscription, let localProviderID = model.localProviderID else {
+            throw TranscriptionError.unsupportedModel("Choose a supported local model before transcribing.")
         }
 
         guard readyLocalModelIDs.contains(modelID) else {
@@ -123,12 +123,25 @@ public struct TranscriptionTargetResolver: Sendable {
         }
 
         return TranscriptionExecutionPlan(
-            providerID: "whisperkit-local",
-            providerName: "WhisperKit Local",
+            providerID: localProviderID,
+            providerName: providerDisplayName(for: localProviderID),
             kind: .local,
             modelID: model.id,
             modelName: model.name
         )
+    }
+
+    private var localProviderIDs: Set<String> {
+        ["whisperkit-local", "parakeet-local"]
+    }
+
+    private func providerDisplayName(for providerID: String) -> String {
+        switch providerID {
+        case "parakeet-local":
+            "Parakeet Local"
+        default:
+            "WhisperKit Local"
+        }
     }
 
     private func resolveProvider(
