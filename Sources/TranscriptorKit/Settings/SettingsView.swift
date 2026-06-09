@@ -1,7 +1,6 @@
 import SwiftUI
 
 public struct SettingsView: View {
-    @State private var selectedPane: SettingsPane? = .general
     @State private var searchText = ""
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
@@ -12,33 +11,102 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
+        GeometryReader { proxy in
+            let compact = proxy.size.width < 920
+
+            Group {
+                if compact {
+                    compactSettingsLayout
+                } else {
+                    wideSettingsLayout
+                }
+            }
+            .background(Color(nsColor: .underPageBackgroundColor))
+            .onAppear {
+                if !compact, appState.selectedSettingsPane == nil {
+                    appState.selectedSettingsPane = .general
+                }
+            }
+        }
+        .onChange(of: filteredPanes) { _, panes in
+            guard let selectedPane = appState.selectedSettingsPane else {
+                return
+            }
+
+            if panes.contains(selectedPane) {
+                return
+            }
+
+            appState.selectedSettingsPane = panes.first
+        }
+        .navigationTitle("Settings")
+    }
+
+    private var compactSettingsLayout: some View {
+        Group {
+            if let pane = appState.selectedSettingsPane, filteredPanes.contains(pane) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Button {
+                            appState.selectedSettingsPane = nil
+                        } label: {
+                            Label("All Settings", systemImage: "chevron.left")
+                        }
+                        .buttonStyle(.link)
+
+                        currentPaneView(for: pane)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+                }
+            } else if filteredPanes.isEmpty {
+                ContentUnavailableView(
+                    "No Matching Settings",
+                    systemImage: "magnifyingglass",
+                    description: Text("Try a different search term.")
+                )
+            } else {
+                VStack(spacing: 0) {
+                    settingsSearchHeader
+
+                    List(filteredPanes) { pane in
+                        Button {
+                            appState.selectedSettingsPane = pane
+                        } label: {
+                            Label(pane.title, systemImage: pane.systemImage)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.inset(alternatesRowBackgrounds: false))
+                }
+            }
+        }
+    }
+
+    private var wideSettingsLayout: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("Search Settings", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
+                settingsSearchHeader
 
-                    Text("Transcriptor Settings")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
-
-                List(filteredPanes, selection: $selectedPane) { pane in
+                List(filteredPanes, selection: $appState.selectedSettingsPane) { pane in
                     Label(pane.title, systemImage: pane.systemImage)
-                        .tag(pane)
+                        .tag(Optional(pane))
                 }
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
             }
-            .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 280)
+            .background {
+                NativeSidebarMaterial()
+                    .ignoresSafeArea()
+            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 270)
         } detail: {
             Group {
                 if let pane = resolvedPane {
                     ScrollView {
                         currentPaneView(for: pane)
-                            .padding(.horizontal, 32)
+                            .padding(.horizontal, 28)
                             .padding(.vertical, 24)
                     }
                 } else {
@@ -49,14 +117,22 @@ public struct SettingsView: View {
                     )
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Color(nsColor: .underPageBackgroundColor))
         }
-        .onChange(of: filteredPanes) { _, panes in
-            if let selectedPane, panes.contains(selectedPane) {
-                return
-            }
-            self.selectedPane = panes.first
+    }
+
+    private var settingsSearchHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Search Settings", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Text("Settings")
+                .font(.headline)
+                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -275,7 +351,7 @@ public struct SettingsView: View {
                         Text("WhisperKit Local").tag("whisperkit-local")
                     }
 
-                    Text("WhisperKit is the only implemented local provider in this build. NVIDIA Parakeet remains unavailable until a validated native macOS runtime exists.")
+                    Text("WhisperKit is the current local provider. Parakeet support is being promoted into a real local backend instead of a permanent unavailable placeholder.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -357,27 +433,29 @@ public struct SettingsView: View {
             }
         case .cloudProviders:
             settingsForm(pane: .cloudProviders) {
-                Section("Provider Preferences") {
-                    Toggle("Enable OpenAI", isOn: $appState.providerSettings.openAIEnabled)
+                Section("Providers") {
                     if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-                        providerConfigurationView(
+                        providerConfigurationDisclosure(
                             provider: provider,
+                            isEnabled: $appState.providerSettings.openAIEnabled,
                             modelID: $appState.providerSettings.openAIModelID,
                             privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
                             apiKeyInput: $openAIAPIKeyInput
                         )
                     }
 
-                    Toggle("Enable Groq", isOn: $appState.providerSettings.groqEnabled)
                     if let provider = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-                        providerConfigurationView(
+                        providerConfigurationDisclosure(
                             provider: provider,
+                            isEnabled: $appState.providerSettings.groqEnabled,
                             modelID: $appState.providerSettings.groqModelID,
                             privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
                             apiKeyInput: $groqAPIKeyInput
                         )
                     }
+                }
 
+                Section {
                     Button("Reset Cloud Provider Defaults") {
                         appState.resetCloudProviderDefaults()
                     }
@@ -387,11 +465,10 @@ public struct SettingsView: View {
             settingsForm(pane: .privacy) {
                 Section("Current Behavior") {
                     Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
-                    Label("Model downloads come from Argmax's public WhisperKit model repository and are stored under Application Support.", systemImage: "square.and.arrow.down")
+                    Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
                     Label("OpenAI and Groq only send audio after you enable the provider, store an API key in Keychain, and acknowledge the privacy warning.", systemImage: "key")
                     Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
-                    Label("WebM import is stored as a failed item because this build does not yet include a reliable WebM decoder/transcoder.", systemImage: "exclamationmark.triangle")
-                    Label("NVIDIA Parakeet remains disabled because this repo does not yet have a validated native macOS runtime for official Parakeet models.", systemImage: "bolt.slash")
+                    Label("WebM import is still blocked until a reliable decoder/transcoder is integrated.", systemImage: "exclamationmark.triangle")
                 }
             }
         }
@@ -402,22 +479,12 @@ public struct SettingsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: pane.systemImage)
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 42, height: 42)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
+            VStack(alignment: .leading, spacing: 6) {
+                Text(pane.title)
+                    .font(.largeTitle.weight(.semibold))
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(pane.title)
-                        .font(.title.weight(.semibold))
-
-                    Text(pane.subtitle)
-                        .foregroundStyle(.secondary)
-                }
+                Text(pane.subtitle)
+                    .foregroundStyle(.secondary)
             }
 
             Form {
@@ -425,7 +492,7 @@ public struct SettingsView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(maxWidth: 820, alignment: .leading)
+        .frame(maxWidth: 760, alignment: .leading)
     }
 
     private var filteredPanes: [SettingsPane] {
@@ -441,15 +508,16 @@ public struct SettingsView: View {
     }
 
     private var resolvedPane: SettingsPane? {
-        if let selectedPane, filteredPanes.contains(selectedPane) {
+        if let selectedPane = appState.selectedSettingsPane, filteredPanes.contains(selectedPane) {
             return selectedPane
         }
 
         return filteredPanes.first
     }
 
-    private func providerConfigurationView(
+    private func providerConfigurationDisclosure(
         provider: ProviderDescriptor,
+        isEnabled: Binding<Bool>,
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
         apiKeyInput: Binding<String>
@@ -457,11 +525,68 @@ public struct SettingsView: View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Enable \(provider.name)", isOn: isEnabled)
+
+                LabeledContent("Model ID") {
+                    TextField("Model ID", text: modelID)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 240)
+                }
+
+                Toggle("I understand audio is sent to \(provider.name)", isOn: privacyConsent)
+
+                HStack(spacing: 10) {
+                    SecureField("API key", text: apiKeyInput)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button("Save") {
+                        appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                        apiKeyInput.wrappedValue = ""
+                    }
+                    .disabled(apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button("Remove", role: .destructive) {
+                        appState.removeAPIKey(for: provider.id)
+                    }
+                    .disabled(!appState.hasStoredAPIKey(for: provider.id))
+
+                    Button("Test") {
+                        appState.testAPIKey(for: provider.id)
+                    }
+                    .disabled(!appState.hasStoredAPIKey(for: provider.id))
+                }
+
+                if appState.hasStoredAPIKey(for: provider.id) {
+                    Label("API key stored in Keychain", systemImage: "checkmark.shield")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("No API key stored", systemImage: "key.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(runtimeState.message)
+                    .font(.caption)
+                    .foregroundStyle(providerRuntimeColor(runtimeState))
+
+                if let validationMessage = validationState.message {
+                    Text(validationMessage)
+                        .font(.caption)
+                        .foregroundStyle(validationColor(validationState))
+                }
+            }
+            .padding(.top, 8)
+        } label: {
             HStack {
-                Text(provider.modelLabel)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(provider.name)
+                    Text(provider.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
@@ -471,56 +596,6 @@ public struct SettingsView: View {
                     .padding(.vertical, 4)
                     .background(providerRuntimeColor(runtimeState).opacity(0.15), in: Capsule())
                     .foregroundStyle(providerRuntimeColor(runtimeState))
-            }
-
-            Text(provider.summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            TextField("Model ID", text: modelID)
-                .textFieldStyle(.roundedBorder)
-
-            Toggle("I understand audio is sent to \(provider.name) when this provider is used", isOn: privacyConsent)
-
-            HStack {
-                SecureField("API key", text: apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
-
-                Button("Save") {
-                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
-                    apiKeyInput.wrappedValue = ""
-                }
-                .disabled(apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("Remove", role: .destructive) {
-                    appState.removeAPIKey(for: provider.id)
-                }
-                .disabled(!appState.hasStoredAPIKey(for: provider.id))
-
-                Button("Test Key") {
-                    appState.testAPIKey(for: provider.id)
-                }
-                .disabled(!appState.hasStoredAPIKey(for: provider.id))
-            }
-
-            if appState.hasStoredAPIKey(for: provider.id) {
-                Label("API key stored in Keychain", systemImage: "checkmark.shield")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Label("No API key stored yet", systemImage: "key.slash")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(runtimeState.message)
-                .font(.caption)
-                .foregroundStyle(providerRuntimeColor(runtimeState))
-
-            if let validationMessage = validationState.message {
-                Text(validationMessage)
-                    .font(.caption)
-                    .foregroundStyle(validationColor(validationState))
             }
         }
     }

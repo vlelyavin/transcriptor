@@ -136,7 +136,7 @@ final class MenuBarStatusItemController: NSObject {
 
         menu.addItem(menuItem(title: "Open Transcriptor", action: #selector(openTranscriptor)))
         menu.addItem(menuItem(title: "Open History", action: #selector(openHistory)))
-        menu.addItem(menuItem(title: "Open Settings", action: #selector(openSettingsWindow)))
+        menu.addItem(menuItem(title: "Open Settings", action: #selector(openSettingsView)))
 
         menu.addItem(.separator())
 
@@ -214,9 +214,17 @@ final class MenuBarStatusItemController: NSObject {
     }
 
     @objc
-    private func openSettingsWindow() {
+    private func openSettingsView() {
+        appState.openSettings()
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+
+        for window in NSApp.windows {
+            guard window.canBecomeMain else {
+                continue
+            }
+
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     @objc

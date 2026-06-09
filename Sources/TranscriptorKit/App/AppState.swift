@@ -6,6 +6,7 @@ import Observation
 @Observable
 public final class AppState {
     public var selectedScreen: NavigationScreen
+    public var selectedSettingsPane: SettingsPane?
     public var generalSettings: GeneralSettings {
         didSet { persistPreferences() }
     }
@@ -151,6 +152,7 @@ public final class AppState {
         self.launchAtLoginService = launchAtLoginService
         self.secretStore = secretStore
         self.selectedScreen = selectedScreen
+        self.selectedSettingsPane = nil
         self.generalSettings = GeneralSettings(
             launchAtLoginEnabled: launchAtLoginStatus.toggleValue,
             showMenuBarIcon: snapshot.showMenuBarIcon,
@@ -288,6 +290,11 @@ public final class AppState {
 
     public func historyEntry(id: UUID) -> HistoryEntry? {
         historyStore.entries.first(where: { $0.id == id })
+    }
+
+    public func openSettings(pane: SettingsPane? = .general) {
+        selectedScreen = .settings
+        selectedSettingsPane = pane
     }
 
     public func importAudio(from sourceURLs: [URL]) {

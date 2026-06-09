@@ -75,7 +75,7 @@ public struct MainWindowView: View {
                 .help(voiceInputController.failureMessage ?? "Use this button or your configured global shortcut to control dictation.")
 
                 Button {
-                    appState.selectedScreen = .settings
+                    appState.openSettings()
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                 }

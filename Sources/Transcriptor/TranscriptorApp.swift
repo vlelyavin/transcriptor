@@ -18,6 +18,14 @@ struct TranscriptorApp: App {
             MainWindowView(appState: appState)
         }
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    appState.openSettings()
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+
             CommandMenu("Transcriptor") {
                 Button("Import Audio") {
                     appState.selectedScreen = .importAudio
@@ -45,17 +53,7 @@ struct TranscriptorApp: App {
                 )
 
                 Divider()
-
-                Button("Open Settings…") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                }
-                .keyboardShortcut(",", modifiers: [.command])
             }
-        }
-
-        Settings {
-            SettingsView(appState: appState)
-                .frame(minWidth: 820, minHeight: 560)
         }
     }
 }
