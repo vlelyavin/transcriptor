@@ -55,6 +55,14 @@ public struct HotkeyConfiguration: Equatable, Sendable {
             return "This conflicts with Transcriptor's Import Audio command."
         }
 
+        if carbonModifiers == UInt32(cmdKey), keyCode == UInt32(kVK_ANSI_F) {
+            return "This conflicts with Transcriptor's Search History command."
+        }
+
+        if carbonModifiers == UInt32(cmdKey), keyCode == UInt32(kVK_ANSI_Comma) {
+            return "This conflicts with Transcriptor's Settings command."
+        }
+
         if carbonModifiers == UInt32(cmdKey), keyCode == UInt32(kVK_Space) {
             return "Command-Space often conflicts with Spotlight."
         }

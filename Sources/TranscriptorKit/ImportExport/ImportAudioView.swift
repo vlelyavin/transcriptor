@@ -76,6 +76,10 @@ public struct ImportAudioView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+
+                        Text("Finder imports use standard user-selected file access. Once copied into Application Support, the app no longer depends on the original file staying in place.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -117,14 +121,14 @@ public struct ImportAudioView: View {
         VStack(spacing: 16) {
             Image(systemName: "square.and.arrow.up")
                 .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(.yellow)
+                .foregroundStyle(isDropTargeted ? .blue : .yellow)
                 .frame(width: 88, height: 88)
-                .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .background((isDropTargeted ? Color.blue : Color.yellow).opacity(0.12), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-            Text("Drop audio files here")
+            Text(isDropTargeted ? "Release to import audio" : "Drop audio files here")
                 .font(.title2.weight(.semibold))
 
-            Text("or click to browse")
+            Text(isDropTargeted ? "Files will be copied into Transcriptor-managed storage" : "or click to browse")
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
@@ -135,6 +139,7 @@ public struct ImportAudioView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 380)
         .padding(28)
+        .background((isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -244,6 +249,11 @@ public struct ImportAudioView: View {
     }
 
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
+        guard providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
+            appState.importFeedbackMessage = "Drop .mp3, .m4a, .wav, or .webm files from Finder."
+            return false
+        }
+
         let group = DispatchGroup()
         let collector = DroppedURLCollector()
 

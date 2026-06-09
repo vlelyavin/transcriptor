@@ -41,7 +41,7 @@ public struct HistoryView: View {
                                     Button("Play / Pause") {
                                         appState.togglePlayback(for: entry)
                                     }
-                                    .disabled(entry.preferredPlaybackPath == nil)
+                                    .disabled(!hasPlayableAudioFile(entry))
 
                                     Button("Copy Transcript") {
                                         appState.copyTranscript(for: entry)
@@ -70,6 +70,9 @@ public struct HistoryView: View {
             detailPane
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
                 .background(.regularMaterial)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
+            appState.selectedScreen = .history
         }
         .navigationTitle("History")
         .alert("Delete History Item", isPresented: Binding(
@@ -120,7 +123,7 @@ public struct HistoryView: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                 } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s")")
+                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes)) / \(appState.storageSettings.capMegabytes) MB")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -188,6 +191,10 @@ public struct HistoryView: View {
                             UnavailableActionBanner(message: historyActionMessage)
                         }
 
+                        if hasMissingAudioFile(entry) {
+                            UnavailableActionBanner(message: "The original audio file is missing from disk. Playback and re-transcription stay disabled until the file is restored.")
+                        }
+
                         if let queueError = appState.transcriptionQueueController.lastErrorByEntryID[entry.id] {
                             UnavailableActionBanner(message: queueError)
                         }
@@ -200,6 +207,10 @@ public struct HistoryView: View {
                             UnavailableActionBanner(
                                 message: "This item has not been transcribed yet. Download a local Whisper model, then start transcription from this pane."
                             )
+                        }
+
+                        if entry.transcriptionStatus == .completed && !entry.canCopyTranscript {
+                            UnavailableActionBanner(message: "This history item completed without transcript text, so copy and export remain disabled.")
                         }
 
                         Divider()
@@ -279,7 +290,7 @@ public struct HistoryView: View {
             Button(playbackButtonTitle(for: entry)) {
                 appState.togglePlayback(for: entry)
             }
-            .disabled(entry.preferredPlaybackPath == nil)
+            .disabled(!hasPlayableAudioFile(entry))
 
             Spacer()
 
@@ -429,7 +440,7 @@ public struct HistoryView: View {
     }
 
     private func canTriggerTranscription(for entry: HistoryEntry) -> Bool {
-        guard entry.preferredPlaybackPath != nil else {
+        guard hasPlayableAudioFile(entry) else {
             return false
         }
 
@@ -518,6 +529,18 @@ public struct HistoryView: View {
         return entry.transcriptionStatus.title
     }
 
+    private func hasPlayableAudioFile(_ entry: HistoryEntry) -> Bool {
+        guard let playbackPath = entry.preferredPlaybackPath else {
+            return false
+        }
+
+        return FileManager.default.fileExists(atPath: playbackPath)
+    }
+
+    private func hasMissingAudioFile(_ entry: HistoryEntry) -> Bool {
+        entry.preferredPlaybackPath != nil && !hasPlayableAudioFile(entry)
+    }
+
     private func playbackButtonTitle(for entry: HistoryEntry) -> String {
         if appState.audioPlaybackService.isPlaying,
            appState.audioPlaybackService.currentlyPlayingEntryID == entry.id {
@@ -549,6 +572,10 @@ public struct HistoryView: View {
         let minutes = durationSeconds / 60
         let seconds = durationSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func megabyteString(for bytes: Int64) -> String {
+        String(format: "%.2f", Double(bytes) / 1_048_576)
     }
 
     private var byteCountFormatter: ByteCountFormatter {

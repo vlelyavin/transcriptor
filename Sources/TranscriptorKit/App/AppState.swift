@@ -325,7 +325,7 @@ public final class AppState {
 
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = entry.displayName.replacingOccurrences(of: ".", with: "-") + ".txt"
+        panel.nameFieldStringValue = transcriptExportService.suggestedFilename(for: entry)
         panel.allowedContentTypes = [.plainText]
 
         guard panel.runModal() == .OK, let destinationURL = panel.url else {
@@ -511,6 +511,33 @@ public final class AppState {
                 }
             }
         }
+    }
+
+    public func openMicrophonePrivacySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
+    }
+
+    public func resetHotkeyToRecommendedDefault() {
+        recordingState.hotkey = HotkeyConfiguration()
+    }
+
+    public func resetOverlayDefaults() {
+        overlayState = OverlayState()
+    }
+
+    public func resetStorageDefaults() {
+        storageSettings = StorageSettings()
+    }
+
+    public func resetCloudProviderDefaults() {
+        providerSettings.openAIModelID = "gpt-4o-mini-transcribe"
+        providerSettings.groqModelID = "whisper-large-v3-turbo"
+        providerSettings.openAIPrivacyAcknowledged = false
+        providerSettings.groqPrivacyAcknowledged = false
     }
 
     private func persistPreferences() {

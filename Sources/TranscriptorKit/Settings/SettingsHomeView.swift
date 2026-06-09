@@ -27,6 +27,7 @@ public struct SettingsHomeView: View {
                         lines: [
                             "Mode: \(appState.recordingState.mode.title)",
                             "Save original audio: \(appState.recordingState.savesAudioLocally ? "On" : "Off")",
+                            "Mic permission: \(appState.voiceInputController.permissionStatus.rawValue.capitalized)",
                             "Launch at login: \(appState.generalSettings.launchAtLoginEnabled ? "Requested" : "Off")",
                         ]
                     )
@@ -44,9 +45,9 @@ public struct SettingsHomeView: View {
                     summaryCard(
                         title: "Providers",
                         lines: [
-                            "OpenAI enabled: \(appState.providerSettings.openAIEnabled ? "Yes" : "No")",
-                            "Groq enabled: \(appState.providerSettings.groqEnabled ? "Yes" : "No")",
-                            "API keys: Not accepted yet",
+                            "Preferred provider: \(appState.transcriptionPreferences.preferredProviderID == "whisperkit-local" ? "WhisperKit Local" : appState.preferredCloudProvider?.name ?? "WhisperKit Local")",
+                            "OpenAI key stored: \(appState.hasStoredAPIKey(for: "openai") ? "Yes" : "No")",
+                            "Groq key stored: \(appState.hasStoredAPIKey(for: "groq") ? "Yes" : "No")",
                         ]
                     )
                 }
@@ -61,7 +62,7 @@ public struct SettingsHomeView: View {
                         }
                         .keyboardShortcut(",", modifiers: .command)
 
-                        Text("The launch-at-login toggle is a placeholder preference only and is not wired to Service Management yet.")
+                        Text("Launch at login still persists as a preference only. Service Management integration is a follow-up.")
                             .foregroundStyle(.secondary)
                     }
 

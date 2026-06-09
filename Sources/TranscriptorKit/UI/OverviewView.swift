@@ -33,7 +33,7 @@ public struct OverviewView: View {
                     title: "Transcription Stack",
                     subtitle: "Local Whisper transcription is live, while unsupported runtimes still stay visibly unavailable."
                 ) {
-                    Text("WhisperKit-backed local models can now be downloaded, loaded, and used for on-device transcription. Parakeet and cloud providers remain visible as future work, not working features.")
+                    Text("WhisperKit-backed local models can be downloaded, loaded, and used for on-device transcription. OpenAI and Groq are available once you add an API key in Keychain and acknowledge cloud privacy. Parakeet remains visibly blocked until a validated native macOS runtime exists.")
                         .foregroundStyle(.secondary)
 
                     if let selectedModel = appState.selectedModel {

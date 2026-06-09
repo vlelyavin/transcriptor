@@ -34,7 +34,7 @@ public struct SettingsView: View {
                 Section("Application") {
                     Toggle("Launch at login", isOn: $appState.generalSettings.launchAtLoginEnabled)
 
-                    Text("This is a placeholder preference only. Service Management integration is not implemented yet.")
+                    Text("This preference persists locally, but Service Management integration is still a follow-up.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -49,6 +49,12 @@ public struct SettingsView: View {
                     }
 
                     Toggle("Save original audio", isOn: $appState.recordingState.savesAudioLocally)
+
+                    if !appState.recordingState.savesAudioLocally {
+                        Text("This preference is currently partial. Dictation audio is still kept locally for pending transcription and reliable re-transcription until cleanup rules are fully implemented.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Section("Microphone") {
@@ -64,6 +70,10 @@ public struct SettingsView: View {
                     Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Button("Open Microphone Privacy Settings") {
+                        appState.openMicrophonePrivacySettings()
+                    }
                 }
             }
         case .keyboardShortcut:
@@ -91,11 +101,34 @@ public struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
+
+                    LabeledContent("Accessibility Permission") {
+                        Text("Not Required")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Transcriptor uses Carbon hotkey registration, so it normally does not need Accessibility permission just to start or stop recording.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Restore Recommended Shortcut") {
+                        appState.resetHotkeyToRecommendedDefault()
+                    }
                 }
 
                 Section("Menu Shortcuts") {
                     LabeledContent("Import Audio") {
                         Text("Cmd + Shift + I")
+                            .font(.system(.body, design: .monospaced))
+                    }
+
+                    LabeledContent("Search History") {
+                        Text("Cmd + F")
+                            .font(.system(.body, design: .monospaced))
+                    }
+
+                    LabeledContent("Settings") {
+                        Text("Cmd + ,")
                             .font(.system(.body, design: .monospaced))
                     }
                 }
@@ -111,6 +144,14 @@ public struct SettingsView: View {
                         ForEach(OverlayPosition.allCases) { position in
                             Text(position.title).tag(position)
                         }
+                    }
+
+                    Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Restore Overlay Defaults") {
+                        appState.resetOverlayDefaults()
                     }
                 }
             }
@@ -191,6 +232,10 @@ public struct SettingsView: View {
 
                     Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
                     Toggle("Exclude downloaded model files from cap", isOn: $appState.storageSettings.excludesDownloadedModels)
+
+                    Button("Restore Storage Defaults") {
+                        appState.resetStorageDefaults()
+                    }
                 }
 
                 Section("Usage") {
@@ -242,6 +287,10 @@ public struct SettingsView: View {
                             apiKeyInput: $groqAPIKeyInput
                         )
                     }
+
+                    Button("Reset Cloud Provider Defaults") {
+                        appState.resetCloudProviderDefaults()
+                    }
                 }
             }
         case .privacy:
@@ -250,6 +299,7 @@ public struct SettingsView: View {
                     Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
                     Label("Model downloads come from Argmax's public WhisperKit model repository and are stored under Application Support.", systemImage: "square.and.arrow.down")
                     Label("OpenAI and Groq only send audio after you enable the provider, store an API key in Keychain, and acknowledge the privacy warning.", systemImage: "key")
+                    Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
                     Label("WebM import is stored as a failed item because this build does not yet include a reliable WebM decoder/transcoder.", systemImage: "exclamationmark.triangle")
                     Label("NVIDIA Parakeet remains disabled because this repo does not yet have a validated native macOS runtime for official Parakeet models.", systemImage: "bolt.slash")
                 }

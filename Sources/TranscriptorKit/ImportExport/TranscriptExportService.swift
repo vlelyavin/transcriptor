@@ -14,6 +14,19 @@ public enum TranscriptExportError: Error, LocalizedError {
 public struct TranscriptExportService {
     public init() {}
 
+    public func suggestedFilename(for entry: HistoryEntry) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+
+        let baseName = entry.displayName
+            .replacingOccurrences(of: ".", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        return "transcript-\(formatter.string(from: entry.createdAt))-\(baseName).txt"
+    }
+
     public func formattedText(for entry: HistoryEntry) throws -> String {
         guard entry.canExportTranscript else {
             throw TranscriptExportError.transcriptUnavailable

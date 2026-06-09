@@ -45,7 +45,7 @@ public struct MainWindowView: View {
                     )
                 }
                 .disabled(voiceInputController.state == .requestingPermission || voiceInputController.state == .stopping)
-                .help(voiceInputController.failureMessage ?? "Use this button or a future global shortcut to control dictation.")
+                .help(voiceInputController.failureMessage ?? "Use this button or your configured global shortcut to control dictation.")
 
                 Button("Buy") {
                     appState.selectedScreen = .overview

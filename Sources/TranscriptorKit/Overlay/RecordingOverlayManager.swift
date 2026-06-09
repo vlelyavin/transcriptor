@@ -7,6 +7,7 @@ public final class RecordingOverlayManager {
     private var panel: NSPanel?
     private var voiceInputController: VoiceInputController?
     private var overlayStateProvider: (() -> OverlayState)?
+    private var hideTask: Task<Void, Never>?
 
     public init() {}
 
@@ -30,17 +31,20 @@ public final class RecordingOverlayManager {
 
         let overlayState = overlayStateProvider()
         let shouldShow = overlayState.isEnabled && [
+            VoiceInputControllerState.requestingPermission,
             VoiceInputControllerState.recording,
             .stopping,
             .pendingTranscription,
+            .failed,
         ].contains(voiceInputController.state)
 
         guard shouldShow else {
-            panel?.orderOut(nil)
+            hidePanel(animated: true)
             return
         }
 
         let panel = makePanelIfNeeded()
+        hideTask?.cancel()
         panel.contentViewController = NSHostingController(
             rootView: RecordingOverlayView(
                 voiceInputController: voiceInputController,
@@ -49,7 +53,11 @@ public final class RecordingOverlayManager {
         )
         panel.setContentSize(NSSize(width: 340, height: 132))
         position(panel: panel, using: overlayState.position)
-        panel.orderFrontRegardless()
+        showPanel(panel)
+
+        if voiceInputController.state == .failed {
+            scheduleHide(after: .seconds(2))
+        }
     }
 
     private func observeChanges() {
@@ -85,6 +93,8 @@ public final class RecordingOverlayManager {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.ignoresMouseEvents = true
+        panel.alphaValue = 0
+        panel.animationBehavior = .utilityWindow
         self.panel = panel
         return panel
     }
@@ -108,5 +118,46 @@ public final class RecordingOverlayManager {
         }
 
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
+    }
+
+    private func showPanel(_ panel: NSPanel) {
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    private func hidePanel(animated: Bool) {
+        hideTask?.cancel()
+        guard let panel else {
+            return
+        }
+
+        guard animated, panel.isVisible else {
+            panel.orderOut(nil)
+            panel.alphaValue = 0
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 0
+        } completionHandler: {
+            Task { @MainActor in
+                panel.orderOut(nil)
+            }
+        }
+    }
+
+    private func scheduleHide(after duration: Duration) {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: duration)
+            self?.hidePanel(animated: true)
+        }
     }
 }

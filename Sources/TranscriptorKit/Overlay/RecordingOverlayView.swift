@@ -35,12 +35,17 @@ public struct RecordingOverlayView: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     ForEach(Array(voiceInputController.liveLevels.bars.enumerated()), id: \.offset) { _, value in
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(.green.gradient)
+                            .fill(indicatorGradient)
                             .frame(width: 16, height: max(10, CGFloat(value) * 56))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.easeOut(duration: 0.12), value: voiceInputController.liveLevels.bars)
             }
+
+            Text(statusSubtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
                 metricPill(title: "RMS", value: String(format: "%.2f", voiceInputController.liveLevels.rms))
@@ -63,7 +68,7 @@ public struct RecordingOverlayView: View {
         case .stopping:
             "Stopping"
         case .pendingTranscription:
-            "Saved locally"
+            "Queued Locally"
         case .requestingPermission:
             "Requesting permission"
         case .failed:
@@ -77,12 +82,31 @@ public struct RecordingOverlayView: View {
         switch voiceInputController.state {
         case .recording:
             .red
+        case .requestingPermission:
+            .yellow
         case .pendingTranscription:
             .green
         case .failed:
             .orange
         default:
             .secondary
+        }
+    }
+
+    private var statusSubtitle: String {
+        switch voiceInputController.state {
+        case .recording:
+            "Voice input is live. The overlay stays above other windows without stealing focus."
+        case .stopping:
+            "Finishing the current capture and saving it locally."
+        case .pendingTranscription:
+            "The recording is saved locally and ready for transcription."
+        case .requestingPermission:
+            "macOS is asking for microphone access before recording can start."
+        case .failed:
+            voiceInputController.failureMessage ?? "Recording stopped because of an error."
+        case .idle:
+            "Ready"
         }
     }
 
@@ -104,5 +128,18 @@ public struct RecordingOverlayView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var indicatorGradient: LinearGradient {
+        switch voiceInputController.state {
+        case .recording:
+            LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
+        case .pendingTranscription:
+            LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
+        case .failed:
+            LinearGradient(colors: [.orange, .yellow], startPoint: .bottom, endPoint: .top)
+        default:
+            LinearGradient(colors: [.gray, .secondary], startPoint: .bottom, endPoint: .top)
+        }
     }
 }

@@ -2,6 +2,26 @@
 
 This document tracks the intended scope for the initial Transcriptor desktop product. Checked items below are implemented in the current native macOS build unless a follow-up note says otherwise.
 
+## Final QA status matrix
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Global voice-input shortcut | Done | Carbon-based global hotkey with configurable capture and conflict warnings. |
+| Hold-to-talk and toggle-to-talk | Done | Both modes record through the same voice input state machine. |
+| Recording overlay | Done | Non-activating overlay now covers permission, recording, save, and error states without lingering after failures. |
+| Local recording save | Done | Recordings are saved under Application Support and queued into history. |
+| Import audio: `.mp3`, `.m4a`, `.wav` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. |
+| Import audio: `.webm` | Blocked | Stored as a failed import until a real WebM decoder/transcoder is integrated. |
+| Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
+| Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
+| Launch at login | Partial | The preference persists, but Service Management integration is not implemented yet. |
+| Save original audio toggle | Partial | The preference persists, but dictation audio is still retained for safe pending/re-transcription workflows. |
+| Input device selection | Partial | The app currently records from the system default input device only. |
+| Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
+| OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |
+| NVIDIA Parakeet local provider | Blocked | No validated native macOS Swift/Core ML runtime has been integrated for official Parakeet models. |
+| Native Settings window | Done | Settings persist locally and cover recording, shortcut, overlay, models, storage, cloud providers, and privacy. |
+
 ## Core interaction
 
 - [x] Global voice-input shortcut
@@ -63,8 +83,12 @@ This document tracks the intended scope for the initial Transcriptor desktop pro
 
 - [x] Sidebar-based main navigation for Transcriptor
 - [x] Import Audio command with `Cmd+Shift+I`
-- [x] UserDefaults-backed preferences for recording mode, model selection, storage settings, provider toggles, and launch-at-login placeholder state
+- [x] UserDefaults-backed preferences for recording mode, model selection, storage settings, provider toggles, and cloud privacy state
+- [ ] Launch-at-login Service Management integration
 - [x] Buy button placeholder kept visibly non-functional
+- [x] Search History command with `Cmd+F`
+- [x] Voice Input start/stop menu command
+- [x] Open Settings command with `Cmd+,`
 
 ## Voice input completion
 
@@ -116,10 +140,13 @@ This document tracks the intended scope for the initial Transcriptor desktop pro
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
+- The app exposes a direct shortcut to the macOS Microphone privacy pane when access is denied.
 - Global hotkeys are registered while Transcriptor is running and do not require the main window to stay focused.
+- Carbon hotkeys do not normally require Accessibility permission for this use case.
 - Local model downloads require network access to Argmax's public WhisperKit model repository.
 - Input device selection is a documented follow-up. The current build records from the system default microphone.
 - Imported audio is copied into Transcriptor-managed local storage under Application Support so history survives app restarts.
+- Finder imports rely on standard user-granted file access from the open panel or drag and drop before files are copied into app-managed storage.
 
 ## Current blockers
 
