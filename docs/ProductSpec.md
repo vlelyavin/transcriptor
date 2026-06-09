@@ -101,7 +101,6 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] Import Audio command with `Cmd+Shift+I`
 - [x] UserDefaults-backed preferences for recording mode, model selection, storage settings, provider toggles, and cloud privacy state
 - [ ] Launch-at-login Service Management integration
-- [x] Buy button placeholder kept visibly non-functional
 - [x] Search History command with `Cmd+F`
 - [x] Voice Input start/stop menu command
 - [x] Open Settings command with `Cmd+,`

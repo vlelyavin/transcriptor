@@ -191,4 +191,3 @@ Cloud provider manual steps once you have your own keys:
 - No secrets are committed.
 - `docs/ProductSpec.md` contains the implementation checklist and roadmap.
 - `AGENTS.md` contains repo-specific working rules for future contributors and coding agents.
-- The Buy button remains a non-functional placeholder.
