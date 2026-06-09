@@ -19,6 +19,13 @@ swift build
 xcodebuild -scheme Transcriptor -destination 'platform=macOS' build
 ```
 
+Unsigned release-style local app build:
+
+```bash
+xcodebuild -scheme Transcriptor -configuration Release -derivedDataPath ./Build -destination 'platform=macOS' build
+open ./Build/Build/Products/Release/Transcriptor.app
+```
+
 ## Run
 
 ```bash
@@ -59,6 +66,8 @@ RUN_MANUAL_WHISPER_INTEGRATION=1 swift test --filter WhisperKitManualIntegration
 - OpenAI cloud transcription: implemented with Keychain-backed API key storage, configurable model ID, and explicit privacy consent
 - Groq cloud transcription: implemented with Keychain-backed API key storage, configurable model ID, and explicit privacy consent
 - NVIDIA Parakeet section: visible and truthfully blocked pending a validated native macOS runtime
+- Launch at login: preference-only for now; Service Management wiring is still pending
+- Save original audio toggle: preference persists, but dictation audio is still retained for safe pending and re-transcription flows
 
 ## Supported local models
 
@@ -118,24 +127,41 @@ Transcriptor currently manages these WhisperKit-backed local models:
 - Apple Swift 6.3 or newer
 - Full Xcode is required for `xcodebuild`
 - macOS will ask for Microphone permission the first time recording starts
+- If Microphone access was denied earlier, re-enable it in `System Settings > Privacy & Security > Microphone`
 - Global hotkeys use Carbon registration and work while Transcriptor is running, even when the main window is not focused
+- Carbon hotkeys do not normally require Accessibility permission for this build
 - Input device selection is not wired yet; recording currently uses the system default input device
 - Audio imports are copied into `~/Library/Application Support/Transcriptor`
 - `.webm` import is not fully supported because this build does not yet ship a reliable WebM decoder/transcoder
 - OpenAI and Groq require working internet access, a provider API key stored in Keychain, and an explicit privacy acknowledgment before audio upload is allowed
 - Direct cloud upload is currently limited to 25 MB per file in this build
 
-## Manual test steps
+## Manual QA checklist
 
-1. Run `swift run Transcriptor`.
-2. Open `Models` and download `Tiny`.
-3. Load `Tiny`, then set it as the preferred model if it is not already selected.
-4. In `Settings > Models`, optionally enable `Auto-transcribe after recording or import`.
-5. Record a short dictation or import a `.mp3`, `.m4a`, or `.wav`.
-6. Open the item in `History` and click `Transcribe Now`.
-7. Confirm the status changes from pending to transcribing to completed, and that transcript text plus model/provider metadata appear in the detail pane.
-8. Use `Re-transcribe` with another downloaded Whisper model and confirm the transcript updates while older transcript versions remain listed below.
-9. Use `Copy Transcript`, `Export .txt`, and `Play` to verify transcript actions and playback.
+1. First launch:
+   Run `swift run Transcriptor` and confirm the main window opens with Overview, History, Import Audio, Models, and Settings navigation.
+2. Microphone permission:
+   Start voice input once and confirm macOS prompts for microphone access. If denied, verify `Settings > Recording` shows the denied state and the button to open Microphone privacy settings.
+3. Set shortcut:
+   Open `Settings > Keyboard Shortcut`, record a new global shortcut, and confirm obvious conflicts show warnings.
+4. Hold-to-talk:
+   Set `Hold to Talk`, hold the shortcut, and confirm recording only continues while the shortcut is held.
+5. Toggle-to-talk:
+   Set `Toggle to Talk`, press once to start and once again to stop, and confirm the state changes cleanly.
+6. Overlay:
+   Confirm the overlay does not steal focus, reacts to live mic levels, shows elapsed time, and dismisses after save or error.
+7. Record and transcribe:
+   Download and load `Tiny`, record a short dictation, and confirm the history row moves from pending to transcribing to completed.
+8. Import audio:
+   Drag in or pick a `.mp3`, `.m4a`, or `.wav`, confirm the hover state, recent imports row, and durable history entry.
+9. Copy and export transcript:
+   Open a completed history item, use `Copy Transcript` and `Export .txt`, and confirm the default export filename includes the date and title.
+10. Re-transcribe:
+   Use `Re-transcribe` with another downloaded Whisper model and confirm the current transcript updates while older transcript versions remain listed.
+11. Storage cap pruning:
+   Lower the storage cap in `Settings > Storage`, confirm usage is displayed, and verify pruning or warning behavior matches the auto-delete toggle.
+12. Cloud provider missing-key behavior:
+   Set OpenAI or Groq as preferred without a stored key and confirm Transcriptor shows a missing-key or privacy-consent message instead of pretending the provider is ready.
 
 Cloud provider manual steps once you have your own keys:
 
@@ -146,6 +172,19 @@ Cloud provider manual steps once you have your own keys:
 5. In `Settings > Models`, set that provider as the preferred transcription provider.
 6. Record or import an audio file under 25 MB, then transcribe it from `History`.
 7. Verify the resulting history item shows the cloud provider name and configured model ID.
+
+## Packaging notes
+
+- Unsigned local app:
+  Use the Release `xcodebuild` command above, then open `./Build/Build/Products/Release/Transcriptor.app`.
+- Signing still needed for distribution:
+  A distributable build still needs an Apple Developer signing identity, a proper bundle identifier strategy, hardened runtime review, notarization, and staple/upload workflow.
+- Permissions and entitlements to plan for:
+  Microphone usage description is required for shipping builds.
+  If you sandbox the app, you will likely need audio input plus outgoing network access for model downloads and cloud providers.
+  Sandboxed import/export flows should continue using user-selected file access rather than broad filesystem entitlements.
+- Not yet distribution-ready:
+  Launch at login is still preference-only, `.webm` remains blocked, and NVIDIA Parakeet remains unavailable pending a validated native runtime.
 
 ## Notes
 
