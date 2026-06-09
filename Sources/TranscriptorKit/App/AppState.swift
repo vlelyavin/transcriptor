@@ -206,6 +206,9 @@ public final class AppState {
             voiceInputController: voiceInputController,
             overlayStateProvider: { [weak self] in
                 self?.overlayState ?? OverlayState()
+            },
+            recordingModeProvider: { [weak self] in
+                self?.recordingState.mode ?? .holdToTalk
             }
         )
 

@@ -4,19 +4,23 @@ import SwiftUI
 
 @MainActor
 public final class RecordingOverlayManager {
+    private var dimmingPanel: NSPanel?
     private var panel: NSPanel?
     private var voiceInputController: VoiceInputController?
     private var overlayStateProvider: (() -> OverlayState)?
+    private var recordingModeProvider: (() -> RecordingMode)?
     private var hideTask: Task<Void, Never>?
 
     public init() {}
 
     public func bind(
         voiceInputController: VoiceInputController,
-        overlayStateProvider: @escaping () -> OverlayState
+        overlayStateProvider: @escaping () -> OverlayState,
+        recordingModeProvider: @escaping () -> RecordingMode
     ) {
         self.voiceInputController = voiceInputController
         self.overlayStateProvider = overlayStateProvider
+        self.recordingModeProvider = recordingModeProvider
         observeChanges()
         refreshPresentation()
     }
@@ -24,7 +28,8 @@ public final class RecordingOverlayManager {
     public func refreshPresentation() {
         guard
             let voiceInputController,
-            let overlayStateProvider
+            let overlayStateProvider,
+            let recordingModeProvider
         else {
             return
         }
@@ -39,24 +44,44 @@ public final class RecordingOverlayManager {
         ].contains(voiceInputController.state)
 
         guard shouldShow else {
-            hidePanel(animated: true)
+            hidePanels(animated: true)
             return
         }
 
+        let screen = presentationScreen()
+        let dimmingPanel = makeDimmingPanelIfNeeded()
         let panel = makePanelIfNeeded()
         hideTask?.cancel()
+        dimmingPanel.contentViewController = NSHostingController(
+            rootView: Color.black.opacity(0.16)
+                .ignoresSafeArea()
+        )
         panel.contentViewController = NSHostingController(
             rootView: RecordingOverlayView(
                 voiceInputController: voiceInputController,
-                overlayState: overlayState
+                overlayState: overlayState,
+                recordingMode: recordingModeProvider(),
+                stopAction: {
+                    voiceInputController.stopFromToolbar()
+                },
+                cancelAction: {
+                    Task {
+                        await voiceInputController.cancelRecording()
+                    }
+                }
             )
         )
-        panel.setContentSize(NSSize(width: 340, height: 132))
-        position(panel: panel, using: overlayState.position)
+        dimmingPanel.setFrame(screen.frame, display: false)
+        panel.setContentSize(NSSize(width: 430, height: 286))
+        position(panel: panel, screen: screen, using: overlayState.position)
+        showPanel(dimmingPanel)
         showPanel(panel)
+        panel.ignoresMouseEvents = !allowsInteraction(for: voiceInputController.state, mode: recordingModeProvider())
 
         if voiceInputController.state == .failed {
             scheduleHide(after: .seconds(2))
+        } else if voiceInputController.state == .pendingTranscription {
+            scheduleHide(after: .seconds(1.2))
         }
     }
 
@@ -66,6 +91,7 @@ public final class RecordingOverlayManager {
             _ = overlayStateProvider?().isEnabled
             _ = overlayStateProvider?().position
             _ = overlayStateProvider?().showsLiveAudioIndicator
+            _ = recordingModeProvider?()
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.observeChanges()
@@ -79,8 +105,8 @@ public final class RecordingOverlayManager {
             return panel
         }
 
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 132),
+        let panel = FloatingOverlayPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 430, height: 286),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -92,19 +118,38 @@ public final class RecordingOverlayManager {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = false
         panel.alphaValue = 0
         panel.animationBehavior = .utilityWindow
         self.panel = panel
         return panel
     }
 
-    private func position(panel: NSPanel, using position: OverlayPosition) {
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main
-        guard let screen else {
-            return
+    private func makeDimmingPanelIfNeeded() -> NSPanel {
+        if let dimmingPanel {
+            return dimmingPanel
         }
 
+        let dimmingPanel = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        dimmingPanel.isFloatingPanel = true
+        dimmingPanel.hidesOnDeactivate = false
+        dimmingPanel.level = .floating
+        dimmingPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        dimmingPanel.backgroundColor = .clear
+        dimmingPanel.isOpaque = false
+        dimmingPanel.hasShadow = false
+        dimmingPanel.ignoresMouseEvents = true
+        dimmingPanel.alphaValue = 0
+        self.dimmingPanel = dimmingPanel
+        return dimmingPanel
+    }
+
+    private func position(panel: NSPanel, screen: NSScreen, using position: OverlayPosition) {
         let visibleFrame = screen.visibleFrame
         let size = panel.frame.size
         let originX = visibleFrame.midX - size.width / 2
@@ -112,9 +157,9 @@ public final class RecordingOverlayManager {
 
         switch position {
         case .topCenter:
-            originY = visibleFrame.maxY - size.height - 24
+            originY = visibleFrame.midY - size.height / 2
         case .bottomCenter:
-            originY = visibleFrame.minY + 24
+            originY = visibleFrame.midY - size.height / 2 - 80
         }
 
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
@@ -131,24 +176,28 @@ public final class RecordingOverlayManager {
         }
     }
 
-    private func hidePanel(animated: Bool) {
+    private func hidePanels(animated: Bool) {
         hideTask?.cancel()
-        guard let panel else {
+        guard let panel, let dimmingPanel else {
             return
         }
 
-        guard animated, panel.isVisible else {
+        guard animated, panel.isVisible || dimmingPanel.isVisible else {
             panel.orderOut(nil)
+            dimmingPanel.orderOut(nil)
             panel.alphaValue = 0
+            dimmingPanel.alphaValue = 0
             return
         }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             panel.animator().alphaValue = 0
+            dimmingPanel.animator().alphaValue = 0
         } completionHandler: {
             Task { @MainActor in
                 panel.orderOut(nil)
+                dimmingPanel.orderOut(nil)
             }
         }
     }
@@ -157,7 +206,20 @@ public final class RecordingOverlayManager {
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)
-            self?.hidePanel(animated: true)
+            self?.hidePanels(animated: true)
         }
     }
+
+    private func allowsInteraction(for state: VoiceInputControllerState, mode: RecordingMode) -> Bool {
+        state == .recording && mode == .toggleToTalk
+    }
+
+    private func presentationScreen() -> NSScreen {
+        NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens[0]
+    }
+}
+
+private final class FloatingOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }

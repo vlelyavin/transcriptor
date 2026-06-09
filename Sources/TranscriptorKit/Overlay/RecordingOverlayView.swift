@@ -3,76 +3,104 @@ import SwiftUI
 public struct RecordingOverlayView: View {
     @Bindable private var voiceInputController: VoiceInputController
     private let overlayState: OverlayState
+    private let recordingMode: RecordingMode
+    private let stopAction: () -> Void
+    private let cancelAction: () -> Void
 
     public init(
         voiceInputController: VoiceInputController,
-        overlayState: OverlayState
+        overlayState: OverlayState,
+        recordingMode: RecordingMode,
+        stopAction: @escaping () -> Void,
+        cancelAction: @escaping () -> Void
     ) {
         self.voiceInputController = voiceInputController
         self.overlayState = overlayState
+        self.recordingMode = recordingMode
+        self.stopAction = stopAction
+        self.cancelAction = cancelAction
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 10, height: 10)
+        VStack(spacing: 18) {
+            Image(systemName: statusSymbol)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(statusColor)
+                .frame(width: 64, height: 64)
+                .background(statusColor.opacity(0.14), in: Circle())
 
-                    Text(statusTitle)
-                        .font(.headline)
-                }
+            VStack(spacing: 6) {
+                Text(statusTitle)
+                    .font(.title3.weight(.semibold))
 
-                Spacer()
-
-                Text(durationLabel)
-                    .font(.system(.headline, design: .monospaced))
+                Text(statusSubtitle)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Text(durationLabel)
+                .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.primary)
 
             if overlayState.showsLiveAudioIndicator {
-                HStack(alignment: .bottom, spacing: 6) {
-                    ForEach(Array(voiceInputController.liveLevels.bars.enumerated()), id: \.offset) { _, value in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                HStack(alignment: .bottom, spacing: 8) {
+                    ForEach(Array(indicatorValues.enumerated()), id: \.offset) { _, value in
+                        Capsule(style: .continuous)
                             .fill(indicatorGradient)
-                            .frame(width: 16, height: max(10, CGFloat(value) * 56))
+                            .frame(width: 12, height: max(14, CGFloat(value) * 72))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.12), value: voiceInputController.liveLevels.bars)
+                .frame(height: 80)
+                .animation(.easeInOut(duration: 0.16), value: indicatorValues)
             }
 
-            Text(statusSubtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let hintText {
+                Text(hintText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+            }
 
-            HStack(spacing: 12) {
-                metricPill(title: "RMS", value: String(format: "%.2f", voiceInputController.liveLevels.rms))
-                metricPill(title: "Peak", value: String(format: "%.2f", voiceInputController.liveLevels.peak))
+            if showsDoneControls {
+                HStack(spacing: 12) {
+                    Button("Cancel", role: .cancel) {
+                        cancelAction()
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Button("Done") {
+                        stopAction()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                }
             }
         }
-        .padding(18)
-        .frame(width: 340)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(28)
+        .frame(width: 430)
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(.white.opacity(0.14), lineWidth: 1)
         )
     }
 
     private var statusTitle: String {
         switch voiceInputController.state {
         case .recording:
-            "Recording"
+            "Listening"
         case .stopping:
-            "Stopping"
+            "Finishing"
         case .pendingTranscription:
-            "Queued Locally"
+            "Saved"
         case .requestingPermission:
-            "Requesting permission"
+            "Microphone Access"
         case .failed:
-            "Recording failed"
+            "Voice Input Failed"
         case .idle:
             "Idle"
         }
@@ -83,11 +111,11 @@ public struct RecordingOverlayView: View {
         case .recording:
             .red
         case .requestingPermission:
-            .yellow
+            .orange
         case .pendingTranscription:
             .green
         case .failed:
-            .orange
+            .red
         default:
             .secondary
         }
@@ -96,13 +124,13 @@ public struct RecordingOverlayView: View {
     private var statusSubtitle: String {
         switch voiceInputController.state {
         case .recording:
-            "Voice input is live. The overlay stays above other windows without stealing focus."
+            recordingMode == .holdToTalk ? "Release the shortcut to finish dictation." : "Speak naturally, then click Done or press the shortcut again."
         case .stopping:
-            "Finishing the current capture and saving it locally."
+            "Finishing the current capture and preparing it for transcription."
         case .pendingTranscription:
-            "The recording is saved locally and ready for transcription."
+            "Your recording was saved locally and will stay in history even if transcription finishes later."
         case .requestingPermission:
-            "macOS is asking for microphone access before recording can start."
+            "macOS is requesting microphone access before Transcriptor can start listening."
         case .failed:
             voiceInputController.failureMessage ?? "Recording stopped because of an error."
         case .idle:
@@ -117,29 +145,58 @@ public struct RecordingOverlayView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private func metricPill(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.body, design: .monospaced))
+    private var showsDoneControls: Bool {
+        voiceInputController.state == .recording && recordingMode == .toggleToTalk
+    }
+
+    private var hintText: String? {
+        switch voiceInputController.state {
+        case .recording:
+            return recordingMode == .holdToTalk ? "Hold to Talk" : "Toggle to Talk"
+        case .pendingTranscription:
+            return "Saved to local history"
+        default:
+            return nil
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var indicatorValues: [Double] {
+        if voiceInputController.state == .recording {
+            return voiceInputController.liveLevels.bars.map(Double.init)
+        }
+
+        return Array(repeating: 0.18, count: max(voiceInputController.liveLevels.bars.count, 10))
+    }
+
+    private var statusSymbol: String {
+        switch voiceInputController.state {
+        case .recording:
+            "mic.fill"
+        case .stopping:
+            "hourglass"
+        case .pendingTranscription:
+            "checkmark.circle.fill"
+        case .requestingPermission:
+            "lock.shield"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        case .idle:
+            "mic"
+        }
     }
 
     private var indicatorGradient: LinearGradient {
         switch voiceInputController.state {
         case .recording:
-            LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
+            LinearGradient(colors: [.red, .pink], startPoint: .bottom, endPoint: .top)
         case .pendingTranscription:
             LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
         case .failed:
+            LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
+        case .requestingPermission:
             LinearGradient(colors: [.orange, .yellow], startPoint: .bottom, endPoint: .top)
         default:
-            LinearGradient(colors: [.gray, .secondary], startPoint: .bottom, endPoint: .top)
+            LinearGradient(colors: [.gray.opacity(0.6), .secondary], startPoint: .bottom, endPoint: .top)
         }
     }
 }
