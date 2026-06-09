@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Git tag to create or update
+        required: false
+        type: string
+      create_release:
+        description: Publish a GitHub Release with the DMG
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  package:
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x scripts/build_release.sh scripts/package_dmg.sh
+
+      - name: Build DMG
+        run: scripts/package_dmg.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Transcriptor-dmg
+          path: dist/Transcriptor.dmg
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.create_release && inputs.tag_name != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: Transcriptor ${{ inputs.tag_name }}
+          files: dist/Transcriptor.dmg

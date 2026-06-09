@@ -6,17 +6,17 @@ This document tracks the intended scope for the initial Transcriptor desktop pro
 
 This branch focuses on the final product-facing pass needed before broader distribution:
 
-- [ ] Redesign the main window to feel closer to a native macOS sidebar/detail app
-- [ ] Redesign the dedicated Settings window to feel closer to macOS System Settings
-- [ ] Remove the Buy placeholder from all user-facing surfaces
-- [ ] Redesign the voice input overlay into a centered dictation experience
-- [ ] Add automatic transcript insertion into the active text field with Accessibility-aware fallback behavior
-- [ ] Add a menu bar status item that reflects idle, recording, transcribing, and failed states
-- [ ] Replace the launch-at-login preference placeholder with real Service Management support or an honest packaged-app limitation state
-- [ ] Rewrite README.md as a user-facing install and usage guide
-- [ ] Move developer and packaging details into dedicated docs
-- [ ] Add DMG packaging scripts and release-distribution documentation
-- [ ] Add a GitHub Pages landing page and distribution workflows if repository permissions allow
+- [x] Redesign the main window to feel closer to a native macOS sidebar/detail app
+- [x] Redesign the dedicated Settings window to feel closer to macOS System Settings
+- [x] Remove the Buy placeholder from all user-facing surfaces
+- [x] Redesign the voice input overlay into a centered dictation experience
+- [x] Add automatic transcript insertion into the active text field with Accessibility-aware fallback behavior
+- [x] Add a menu bar status item that reflects idle, recording, transcribing, and failed states
+- [x] Replace the launch-at-login preference placeholder with real Service Management support or an honest packaged-app limitation state
+- [x] Rewrite README.md as a user-facing install and usage guide
+- [x] Move developer and packaging details into dedicated docs
+- [x] Add DMG packaging scripts and release-distribution documentation
+- [x] Add a GitHub Pages landing page and distribution workflows if repository permissions allow
 
 ## Final QA status matrix
 
@@ -24,19 +24,21 @@ This branch focuses on the final product-facing pass needed before broader distr
 | --- | --- | --- |
 | Global voice-input shortcut | Done | Carbon-based global hotkey with configurable capture and conflict warnings. |
 | Hold-to-talk and toggle-to-talk | Done | Both modes record through the same voice input state machine. |
-| Recording overlay | Done | Non-activating overlay now covers permission, recording, save, and error states without lingering after failures. |
+| Recording overlay | Done | The overlay is centered, dimmed, and covers listening, finishing, transcribing, inserting, saved, and error states. |
 | Local recording save | Done | Recordings are saved under Application Support and queued into history. |
 | Import audio: `.mp3`, `.m4a`, `.wav` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. |
 | Import audio: `.webm` | Blocked | Stored as a failed import until a real WebM decoder/transcoder is integrated. |
 | Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
 | Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
-| Launch at login | Partial | The preference persists, but Service Management integration is not implemented yet. |
+| Automatic transcript insertion | Done | Accessibility-aware insertion targets the previous app, with clipboard and history fallback when direct insertion is unavailable. |
+| Menu bar status item | Done | A native menu bar item reflects voice input state and exposes quick actions. |
+| Launch at login | Partial | Packaged `Transcriptor.app` builds can use Service Management. Raw `swift run` and command-line development builds truthfully report “Needs Packaged App”. |
 | Save original audio toggle | Partial | The preference persists, but dictation audio is still retained for safe pending/re-transcription workflows. |
 | Input device selection | Partial | The app currently records from the system default input device only. |
 | Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
 | OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |
 | NVIDIA Parakeet local provider | Blocked | No validated native macOS Swift/Core ML runtime has been integrated for official Parakeet models. |
-| Native Settings window | Done | Settings persist locally and cover recording, shortcut, overlay, models, storage, cloud providers, and privacy. |
+| Native Settings window | Done | Settings persist locally and use a native sidebar/detail layout with grouped preference sections. |
 
 ## Core interaction
 
@@ -104,6 +106,9 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] Search History command with `Cmd+F`
 - [x] Voice Input start/stop menu command
 - [x] Open Settings command with `Cmd+,`
+- [x] Menu bar status item with voice input controls
+- [x] Automatic transcript insertion into the active app with Accessibility-aware fallback
+- [x] Launch-at-login status surfaced honestly in Settings
 
 ## Voice input completion
 
@@ -155,13 +160,16 @@ This branch focuses on the final product-facing pass needed before broader distr
 ## Permissions and follow-up notes
 
 - Microphone access is required before audio recording can start.
+- Accessibility access is required only when Transcriptor inserts text into another app.
 - The app exposes a direct shortcut to the macOS Microphone privacy pane when access is denied.
+- The app exposes direct shortcuts to the macOS Accessibility and Login Items settings panes.
 - Global hotkeys are registered while Transcriptor is running and do not require the main window to stay focused.
 - Carbon hotkeys do not normally require Accessibility permission for this use case.
 - Local model downloads require network access to Argmax's public WhisperKit model repository.
 - Input device selection is a documented follow-up. The current build records from the system default microphone.
 - Imported audio is copied into Transcriptor-managed local storage under Application Support so history survives app restarts.
 - Finder imports rely on standard user-granted file access from the open panel or drag and drop before files are copied into app-managed storage.
+- Launch at login works only from a packaged `Transcriptor.app`. Development executables still show an honest blocked state instead of pretending registration succeeded.
 
 ## Current blockers
 

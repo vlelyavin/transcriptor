@@ -1,6 +1,33 @@
 import Foundation
 import ServiceManagement
 
+@MainActor
+protocol LaunchAtLoginControlling: AnyObject {
+    var status: SMAppService.Status { get }
+
+    func register() throws
+    func unregister() throws
+    func openSystemSettings()
+}
+
+final class MainAppLaunchAtLoginController: LaunchAtLoginControlling {
+    var status: SMAppService.Status {
+        SMAppService.mainApp.status
+    }
+
+    func register() throws {
+        try SMAppService.mainApp.register()
+    }
+
+    func unregister() throws {
+        try SMAppService.mainApp.unregister()
+    }
+
+    func openSystemSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+}
+
 public enum LaunchAtLoginStatus: Equatable, Sendable {
     case enabled
     case disabled
@@ -64,8 +91,21 @@ public protocol LaunchAtLoginServing: AnyObject {
 @MainActor
 public final class LaunchAtLoginService: LaunchAtLoginServing {
     public private(set) var status: LaunchAtLoginStatus = .disabled
+    private let controller: any LaunchAtLoginControlling
+    private let bundleURL: URL
 
     public init() {
+        self.controller = MainAppLaunchAtLoginController()
+        self.bundleURL = Bundle.main.bundleURL
+        status = refreshStatus()
+    }
+
+    init(
+        controller: any LaunchAtLoginControlling,
+        bundleURL: URL
+    ) {
+        self.controller = controller
+        self.bundleURL = bundleURL
         status = refreshStatus()
     }
 
@@ -75,7 +115,7 @@ public final class LaunchAtLoginService: LaunchAtLoginServing {
             return status
         }
 
-        status = mapStatus(SMAppService.mainApp.status)
+        status = mapStatus(controller.status)
         return status
     }
 
@@ -87,9 +127,9 @@ public final class LaunchAtLoginService: LaunchAtLoginServing {
 
         do {
             if enabled {
-                try SMAppService.mainApp.register()
+                try controller.register()
             } else {
-                try SMAppService.mainApp.unregister()
+                try controller.unregister()
             }
             return refreshStatus()
         } catch {
@@ -99,11 +139,11 @@ public final class LaunchAtLoginService: LaunchAtLoginServing {
     }
 
     public func openSystemSettings() {
-        SMAppService.openSystemSettingsLoginItems()
+        controller.openSystemSettings()
     }
 
     private var isPackagedApp: Bool {
-        Bundle.main.bundleURL.pathExtension.lowercased() == "app"
+        bundleURL.pathExtension.lowercased() == "app"
     }
 
     private func mapStatus(_ serviceStatus: SMAppService.Status) -> LaunchAtLoginStatus {

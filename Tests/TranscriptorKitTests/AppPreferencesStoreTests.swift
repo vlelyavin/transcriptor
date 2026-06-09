@@ -10,6 +10,10 @@ final class AppPreferencesStoreTests: XCTestCase {
 
         let snapshot = AppPreferencesSnapshot(
             launchAtLoginEnabled: true,
+            showMenuBarIcon: false,
+            insertTranscriptIntoActiveApp: false,
+            alsoCopyTranscriptToClipboard: true,
+            restoreClipboardAfterInsertion: false,
             recordingModeRawValue: RecordingMode.toggleToTalk.rawValue,
             hotkeyKeyCode: 15,
             hotkeyCarbonModifiers: 2,
