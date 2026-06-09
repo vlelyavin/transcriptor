@@ -12,23 +12,40 @@ public struct MainWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            List(selection: $appState.selectedScreen) {
-                Section {
-                    ForEach(NavigationScreen.allCases) { screen in
-                        Label(screen.title, systemImage: screen.systemImage)
+            VStack(spacing: 0) {
+                SidebarHeaderView()
+
+                Divider()
+
+                List(selection: $appState.selectedScreen) {
+                    Section("Library") {
+                        ForEach(NavigationScreen.allCases) { screen in
+                            HStack(spacing: 10) {
+                                Image(systemName: screen.systemImage)
+                                    .frame(width: 18)
+                                    .foregroundStyle(.secondary)
+
+                                Text(screen.title)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
                             .tag(screen)
+                        }
                     }
                 }
+                .listStyle(.sidebar)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .safeAreaInset(edge: .top) {
-                SidebarHeaderView()
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
             contentView
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(minWidth: 960, minHeight: 640)
+        .frame(minWidth: 1080, minHeight: 720)
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup {
@@ -41,16 +58,11 @@ public struct MainWindowView: View {
                 } label: {
                     Label(
                         voiceInputController.isRecording ? "Stop Voice Input" : "Start Voice Input",
-                        systemImage: voiceInputController.isRecording ? "stop.fill" : "mic.fill"
+                        systemImage: voiceInputController.isRecording ? "stop.circle.fill" : "mic.circle"
                     )
                 }
                 .disabled(voiceInputController.state == .requestingPermission || voiceInputController.state == .stopping)
                 .help(voiceInputController.failureMessage ?? "Use this button or your configured global shortcut to control dictation.")
-
-                Button("Buy") {
-                    appState.selectedScreen = .overview
-                }
-                .help("Placeholder only. Licensing is not implemented.")
 
                 Button {
                     openSettings()
@@ -82,7 +94,7 @@ public struct MainWindowView: View {
 struct MainWindowView_Previews: PreviewProvider {
     static var previews: some View {
         MainWindowView(appState: .preview)
-            .frame(width: 1280, height: 860)
+            .frame(width: 1320, height: 840)
     }
 }
 #endif

@@ -53,4 +53,46 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "hand.raised"
         }
     }
+
+    public var subtitle: String {
+        switch self {
+        case .general:
+            "App-wide behavior and launch defaults."
+        case .recording:
+            "Voice capture behavior, microphone access, and local recording defaults."
+        case .keyboardShortcut:
+            "Configure the global shortcut Transcriptor listens for while it is running."
+        case .overlay:
+            "Control the voice input overlay that appears during dictation."
+        case .models:
+            "Choose default transcription providers, local models, and automation behavior."
+        case .storage:
+            "Manage retained local history, audio files, and storage limits."
+        case .cloudProviders:
+            "Store API keys in Keychain and review cloud privacy controls."
+        case .privacy:
+            "Review what stays local, what requires permission, and what remains blocked."
+        }
+    }
+
+    public var searchTokens: [String] {
+        switch self {
+        case .general:
+            ["launch", "login", "defaults", "startup"]
+        case .recording:
+            ["microphone", "audio", "recording", "save", "input"]
+        case .keyboardShortcut:
+            ["shortcut", "hotkey", "keyboard", "global"]
+        case .overlay:
+            ["overlay", "indicator", "position", "done"]
+        case .models:
+            ["whisper", "provider", "auto-transcribe", "model"]
+        case .storage:
+            ["history", "storage", "cap", "prune", "delete"]
+        case .cloudProviders:
+            ["openai", "groq", "api", "keychain", "privacy"]
+        case .privacy:
+            ["accessibility", "microphone", "permissions", "local", "cloud"]
+        }
+    }
 }

@@ -11,13 +11,12 @@ public struct SettingsHomeView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Settings")
-                        .font(.system(size: 32, weight: .semibold))
+                        .font(.title.weight(.semibold))
 
-                    Text("Preferences live in the native macOS Settings window. The summary below reflects your current lightweight local state.")
-                        .font(.title3)
+                    Text("Open the dedicated macOS Settings window to manage recording, models, storage, providers, and privacy. This summary reflects the current local configuration.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -54,7 +53,7 @@ public struct SettingsHomeView: View {
 
                 SectionCard(
                     title: "Native Settings Window",
-                    subtitle: "The app uses a dedicated macOS Settings scene instead of an in-window preferences form."
+                    subtitle: "Transcriptor uses a dedicated Settings window so preferences stay organized like a native macOS app."
                 ) {
                     HStack(spacing: 12) {
                         Button("Open Settings") {
@@ -65,10 +64,6 @@ public struct SettingsHomeView: View {
                         Text("Launch at login still persists as a preference only. Service Management integration is a follow-up.")
                             .foregroundStyle(.secondary)
                     }
-
-                    Text("The Buy button in the toolbar is also a non-functional placeholder kept only for screenshot parity.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
 
                     if let storageWarningMessage = appState.storageWarningMessage {
                         Text(storageWarningMessage)
@@ -96,10 +91,13 @@ public struct SettingsHomeView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.quaternary, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         )
     }
 

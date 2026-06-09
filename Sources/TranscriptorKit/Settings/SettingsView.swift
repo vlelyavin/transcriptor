@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct SettingsView: View {
     @State private var selectedPane: SettingsPane? = .general
+    @State private var searchText = ""
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
     @Bindable private var appState: AppState
@@ -12,35 +13,67 @@ public struct SettingsView: View {
 
     public var body: some View {
         NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                Label(pane.title, systemImage: pane.systemImage)
-                    .tag(pane)
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Search Settings", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Transcriptor Settings")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+                List(filteredPanes, selection: $selectedPane) { pane in
+                    Label(pane.title, systemImage: pane.systemImage)
+                        .tag(pane)
+                }
+                .listStyle(.sidebar)
             }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220)
+            .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 280)
         } detail: {
-            ScrollView {
-                currentPaneView
-                    .padding(24)
+            Group {
+                if let pane = resolvedPane {
+                    ScrollView {
+                        currentPaneView(for: pane)
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 24)
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "No Matching Settings",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search term.")
+                    )
+                }
             }
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+        .onChange(of: filteredPanes) { _, panes in
+            if let selectedPane, panes.contains(selectedPane) {
+                return
+            }
+            self.selectedPane = panes.first
         }
     }
 
     @ViewBuilder
-    private var currentPaneView: some View {
-        switch selectedPane ?? .general {
+    private func currentPaneView(for pane: SettingsPane) -> some View {
+        switch pane {
         case .general:
-            settingsForm(title: "General", subtitle: "App-wide preferences that persist locally on this Mac.") {
+            settingsForm(pane: .general) {
                 Section("Application") {
                     Toggle("Launch at login", isOn: $appState.generalSettings.launchAtLoginEnabled)
 
-                    Text("This preference persists locally, but Service Management integration is still a follow-up.")
+                    Text("Launch at login is managed from this Settings window. Transcriptor will show a clear status if the current app bundle cannot register yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         case .recording:
-            settingsForm(title: "Recording", subtitle: "Voice input behavior and local capture defaults.") {
+            settingsForm(pane: .recording) {
                 Section("Input Mode") {
                     Picker("Voice Input Mode", selection: $appState.recordingState.mode) {
                         ForEach(RecordingMode.allCases) { mode in
@@ -77,7 +110,7 @@ public struct SettingsView: View {
                 }
             }
         case .keyboardShortcut:
-            settingsForm(title: "Keyboard Shortcut", subtitle: "The global voice-input shortcut works while Transcriptor is running and does not require the main window to stay focused.") {
+            settingsForm(pane: .keyboardShortcut) {
                 Section("Global Voice Input") {
                     LabeledContent("Current Shortcut") {
                         Text(appState.recordingState.hotkey.displayString)
@@ -134,7 +167,7 @@ public struct SettingsView: View {
                 }
             }
         case .overlay:
-            settingsForm(title: "Overlay", subtitle: "Preferences for the live non-activating recording overlay.") {
+            settingsForm(pane: .overlay) {
                 Section("Appearance") {
                     Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
                     Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
@@ -156,7 +189,7 @@ public struct SettingsView: View {
                 }
             }
         case .models:
-            settingsForm(title: "Models", subtitle: "Choose which local Whisper model Transcriptor should use and whether new audio should transcribe automatically.") {
+            settingsForm(pane: .models) {
                 Section("Preferred Transcription Provider") {
                     providerSelectionRow(
                         title: "WhisperKit Local",
@@ -224,7 +257,7 @@ public struct SettingsView: View {
                 }
             }
         case .storage:
-            settingsForm(title: "Storage", subtitle: "Control how much history data Transcriptor keeps locally.") {
+            settingsForm(pane: .storage) {
                 Section("Retention") {
                     Stepper(value: $appState.storageSettings.capMegabytes, in: 256...10_240, step: 256) {
                         Text("History storage limit: \(appState.storageSettings.capMegabytes) MB")
@@ -266,7 +299,7 @@ public struct SettingsView: View {
                 }
             }
         case .cloudProviders:
-            settingsForm(title: "Cloud Providers", subtitle: "Store API keys in Keychain, choose provider model IDs, and explicitly confirm cloud privacy before audio leaves this Mac.") {
+            settingsForm(pane: .cloudProviders) {
                 Section("Provider Preferences") {
                     Toggle("Enable OpenAI", isOn: $appState.providerSettings.openAIEnabled)
                     if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
@@ -294,7 +327,7 @@ public struct SettingsView: View {
                 }
             }
         case .privacy:
-            settingsForm(title: "Privacy", subtitle: "Truthful notes about what this build does and does not do yet.") {
+            settingsForm(pane: .privacy) {
                 Section("Current Behavior") {
                     Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
                     Label("Model downloads come from Argmax's public WhisperKit model repository and are stored under Application Support.", systemImage: "square.and.arrow.down")
@@ -308,17 +341,26 @@ public struct SettingsView: View {
     }
 
     private func settingsForm<Content: View>(
-        title: String,
-        subtitle: String,
+        pane: SettingsPane,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.largeTitle.weight(.semibold))
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: pane.systemImage)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                    )
 
-                Text(subtitle)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(pane.title)
+                        .font(.title.weight(.semibold))
+
+                    Text(pane.subtitle)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Form {
@@ -326,7 +368,27 @@ public struct SettingsView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(maxWidth: 720, alignment: .leading)
+        .frame(maxWidth: 820, alignment: .leading)
+    }
+
+    private var filteredPanes: [SettingsPane] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return SettingsPane.allCases
+        }
+
+        return SettingsPane.allCases.filter { pane in
+            let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
+            return haystack.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
+    private var resolvedPane: SettingsPane? {
+        if let selectedPane, filteredPanes.contains(selectedPane) {
+            return selectedPane
+        }
+
+        return filteredPanes.first
     }
 
     private func providerConfigurationView(
