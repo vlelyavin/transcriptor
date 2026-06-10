@@ -18,19 +18,35 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] Add DMG packaging scripts and release-distribution documentation
 - [x] Add a GitHub Pages landing page and distribution workflows if repository permissions allow
 
+## Native polish pass (claude/native-macos-hostile-polish)
+
+A hostile design review (`docs/NATIVE_MACOS_HOSTILE_REVIEW.md`) drove a second
+polish pass focused on removing self-invented chrome:
+
+- [x] Sidebar brand header removed; sidebar starts with navigation, compact one-line status footer
+- [x] Minimum window size reduced to 780×600 with adaptive layouts instead of clipping
+- [x] In-app Settings rebuilt as a flat adaptive two-pane layout (no nested split view, native `.searchable`)
+- [x] History rows and detail rebuilt with plain secondary metadata text, an ellipsis action `Menu`, and collapsed disclosure sections for paths/versions
+- [x] Import Audio rebuilt as a single-column grouped utility form (no hero, cards, or chips)
+- [x] Models rebuilt as a grouped form with compact rows, per-model `Details` disclosures, and calm status text
+- [x] Overlay shrunk to a 340 pt panel with single-tint level bars and a distinct `Setup Required` state
+- [x] `SectionCard` and `AvailabilityBadge` deleted; remaining banner flattened to a plain label
+- [x] AppState-level tests cover insertion-enabled auto-transcription, completed-transcription insertion, and missing-setup fallback
+- [x] QA notes at `docs/review/native-polish-after/QA_NOTES.md` (screenshots blocked by missing Screen Recording permission in the automation environment)
+
 ## Final QA status matrix
 
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Global voice-input shortcut | Done | Carbon-based global hotkey with configurable capture and conflict warnings. |
 | Hold-to-talk and toggle-to-talk | Done | Both modes record through the same voice input state machine. |
-| Recording overlay | Done | The overlay is centered, dimmed, and covers listening, finishing, transcribing, inserting, saved, and error states. |
+| Recording overlay | Done | The overlay is centered, dimmed, and covers listening, finishing, transcribing, inserting, saved, error, and setup-required states. |
 | Local recording save | Done | Recordings are saved under Application Support and queued into history. |
 | Import audio: `.mp3`, `.m4a`, `.wav` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. |
 | Import audio: `.webm` | Blocked | Stored as a failed import until a real WebM decoder/transcoder is integrated. |
 | Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
 | Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
-| Automatic transcript insertion | Partial | The insertion service now captures the original app and focused target, blocks wrong-target insertion, and falls back to clipboard/history safely. Unit coverage is in place, but this branch still needs a final manual cross-app QA pass with Accessibility permission granted. |
+| Automatic transcript insertion | Partial | The insertion service captures the original app and focused target, blocks wrong-target and secure-field insertion, and falls back to clipboard/history safely. Unit coverage now includes AppState-level flow tests (auto-transcribe on insertion, completion-triggered insertion, setup-required fallback). A final manual cross-app QA pass with Accessibility permission granted is still pending. |
 | Menu bar status item | Done | A native menu bar item reflects voice input state and exposes quick actions. |
 | Launch at login | Partial | Packaged `Transcriptor.app` builds can use Service Management. Raw `swift run` and command-line development builds truthfully report “Needs Packaged App”. |
 | Save original audio toggle | Partial | The preference persists, but dictation audio is still retained for safe pending/re-transcription workflows. |
@@ -92,7 +108,7 @@ This branch focuses on the final product-facing pass needed before broader distr
 - [x] Native in-app Settings surface
 - [x] Main window shell
 - [x] History screen with search, filters, real persisted rows, progress, and detail pane
-- [x] Import Audio screen with drag-and-drop zone, supported format chips, shortcut display, and recent persisted imports
+- [x] Import Audio screen as a single-column grouped utility: drop zone, supported-format rows, and recent persisted imports
 - [x] Models screen with WhisperKit, Parakeet, and Cloud Models sections
 - [x] Settings hub entry in the main window
 - [x] In-app Settings with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
