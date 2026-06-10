@@ -217,7 +217,7 @@ public struct ModelCatalog: Equatable, Sendable {
             ModelSection(
                 id: "parakeet",
                 title: "NVIDIA Parakeet Models",
-                description: "Parakeet v2 and v3 use a real local Core ML backend through FluidAudio on macOS 14+ Apple Silicon.",
+                description: "Beta. Parakeet v2 and v3 run locally through the FluidAudio Core ML backend. Requires Apple Silicon; models are downloaded from Hugging Face (over 1 GB each).",
                 models: [
                     ModelDescriptor(
                         id: "parakeet-v2-en",
@@ -226,14 +226,15 @@ public struct ModelCatalog: Equatable, Sendable {
                         localProviderID: "parakeet-local",
                         engineLabel: "Parakeet Local",
                         notes: "English-only local Parakeet model with strong recall for dictation and transcription.",
-                        downloadSizeDescription: "~1+ GB",
-                        speedDescription: "Very Fast",
-                        accuracyDescription: "Best",
+                        downloadSizeDescription: "Over 1 GB",
+                        speedDescription: "Fast on Apple Silicon",
+                        accuracyDescription: "High (English)",
                         intendedUseLabel: "High-accuracy English dictation",
                         languageScopeLabel: "English",
                         supportsLocalTranscription: true,
+                        accentBadgeLabel: "Beta",
                         availability: .available(
-                            note: "Downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
+                            note: "Beta: downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
                         )
                     ),
                     ModelDescriptor(
@@ -243,15 +244,15 @@ public struct ModelCatalog: Equatable, Sendable {
                         localProviderID: "parakeet-local",
                         engineLabel: "Parakeet Local",
                         notes: "Multilingual local Parakeet model with automatic language detection across 25 European languages.",
-                        downloadSizeDescription: "~1+ GB",
-                        speedDescription: "Very Fast",
-                        accuracyDescription: "Best",
+                        downloadSizeDescription: "Over 1 GB",
+                        speedDescription: "Fast on Apple Silicon",
+                        accuracyDescription: "High (25 languages)",
                         intendedUseLabel: "Multilingual local dictation",
                         languageScopeLabel: "Multilingual",
                         supportsLocalTranscription: true,
                         accentBadgeLabel: "Beta",
                         availability: .available(
-                            note: "Downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
+                            note: "Beta: downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
                         )
                     ),
                 ]
