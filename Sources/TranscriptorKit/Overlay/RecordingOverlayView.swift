@@ -25,19 +25,19 @@ public struct RecordingOverlayView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 12) {
             Image(systemName: statusSymbol)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(statusColor)
-                .frame(width: 64, height: 64)
-                .background(statusColor.opacity(0.14), in: Circle())
+                .frame(width: 44, height: 44)
+                .background(statusColor.opacity(0.12), in: Circle())
 
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Text(statusTitle)
-                    .font(.title3.weight(.semibold))
+                    .font(.headline)
 
                 Text(statusSubtitle)
-                    .font(.callout)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -45,36 +45,27 @@ public struct RecordingOverlayView: View {
 
             if showsDuration {
                 Text(durationLabel)
-                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
+                    .font(.system(.body, design: .monospaced).weight(.medium))
+                    .foregroundStyle(.secondary)
             }
 
             if showsProgressIndicator {
                 ProgressView()
-                    .controlSize(.large)
+                    .controlSize(.regular)
             } else if overlayState.showsLiveAudioIndicator {
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .center, spacing: 5) {
                     ForEach(Array(indicatorValues.enumerated()), id: \.offset) { _, value in
                         Capsule(style: .continuous)
-                            .fill(indicatorGradient)
-                            .frame(width: 12, height: max(14, CGFloat(value) * 72))
+                            .fill(indicatorColor)
+                            .frame(width: 5, height: max(6, CGFloat(value) * 36))
                     }
                 }
-                .frame(height: 80)
+                .frame(height: 40)
                 .animation(.easeInOut(duration: 0.16), value: indicatorValues)
             }
 
-            if let hintText {
-                Text(hintText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
-            }
-
             if showsDoneControls {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button("Cancel", role: .cancel) {
                         cancelAction()
                     }
@@ -86,14 +77,15 @@ public struct RecordingOverlayView: View {
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                 }
+                .controlSize(.regular)
             }
         }
-        .padding(28)
-        .frame(width: 430)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(20)
+        .frame(width: 340)
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(.white.opacity(0.14), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.separator, lineWidth: 1)
         )
     }
 
@@ -108,6 +100,8 @@ public struct RecordingOverlayView: View {
                 return "Saved"
             case .error:
                 return "Voice Input Failed"
+            case .setupRequired:
+                return "Setup Required"
             }
         }
 
@@ -136,6 +130,8 @@ public struct RecordingOverlayView: View {
                 return .green
             case .error:
                 return .red
+            case .setupRequired:
+                return .orange
             }
         }
 
@@ -159,7 +155,8 @@ public struct RecordingOverlayView: View {
             case let .transcribing(message),
                  let .inserting(message),
                  let .saved(message),
-                 let .error(message):
+                 let .error(message),
+                 let .setupRequired(message):
                 return message
             }
         }
@@ -193,21 +190,6 @@ public struct RecordingOverlayView: View {
         supplementalPhase == nil && voiceInputController.state == .recording && recordingMode == .toggleToTalk
     }
 
-    private var hintText: String? {
-        guard supplementalPhase == nil else {
-            return nil
-        }
-
-        switch voiceInputController.state {
-        case .recording:
-            return recordingMode == .holdToTalk ? "Hold to Talk" : "Toggle to Talk"
-        case .pendingTranscription:
-            return "Saved to local history"
-        default:
-            return nil
-        }
-    }
-
     private var indicatorValues: [Double] {
         guard supplementalPhase == nil else {
             return Array(repeating: 0.18, count: max(voiceInputController.liveLevels.bars.count, 10))
@@ -231,6 +213,8 @@ public struct RecordingOverlayView: View {
                 return "checkmark.circle.fill"
             case .error:
                 return "exclamationmark.triangle.fill"
+            case .setupRequired:
+                return "gearshape.fill"
             }
         }
 
@@ -250,30 +234,12 @@ public struct RecordingOverlayView: View {
         }
     }
 
-    private var indicatorGradient: LinearGradient {
-        if let supplementalPhase {
-            switch supplementalPhase {
-            case .transcribing, .inserting:
-                return LinearGradient(colors: [.blue, .mint], startPoint: .bottom, endPoint: .top)
-            case .saved:
-                return LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
-            case .error:
-                return LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
-            }
+    private var indicatorColor: Color {
+        guard supplementalPhase == nil, voiceInputController.state == .recording else {
+            return .secondary.opacity(0.4)
         }
 
-        switch voiceInputController.state {
-        case .recording:
-            return LinearGradient(colors: [.red, .pink], startPoint: .bottom, endPoint: .top)
-        case .pendingTranscription:
-            return LinearGradient(colors: [.green, .mint], startPoint: .bottom, endPoint: .top)
-        case .failed:
-            return LinearGradient(colors: [.red, .orange], startPoint: .bottom, endPoint: .top)
-        case .requestingPermission:
-            return LinearGradient(colors: [.orange, .yellow], startPoint: .bottom, endPoint: .top)
-        default:
-            return LinearGradient(colors: [.gray.opacity(0.6), .secondary], startPoint: .bottom, endPoint: .top)
-        }
+        return .accentColor
     }
 
     private var showsDuration: Bool {
@@ -288,7 +254,7 @@ public struct RecordingOverlayView: View {
         switch supplementalPhase {
         case .transcribing, .inserting:
             return true
-        case .saved, .error:
+        case .saved, .error, .setupRequired:
             return false
         }
     }

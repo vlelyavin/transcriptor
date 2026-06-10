@@ -5,4 +5,5 @@ public enum OverlaySupplementalPhase: Equatable, Sendable {
     case inserting(String)
     case saved(String)
     case error(String)
+    case setupRequired(String)
 }
