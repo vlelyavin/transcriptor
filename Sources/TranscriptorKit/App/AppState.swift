@@ -340,13 +340,21 @@ public final class AppState {
         isPerformingHistoryNavigation = false
     }
 
+    /// Bridge to SwiftUI's `\.openSettings` environment action, registered by
+    /// the main window so non-view code (menu bar, toolbar) can open Settings.
+    public var openSettingsWindowAction: (() -> Void)?
+
     /// Opens the standalone Settings window, optionally pre-selecting a pane.
     public func openSettings(pane: SettingsPane? = .general) {
         if let pane {
             selectedSettingsPane = pane
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
-        NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if let openSettingsWindowAction {
+            openSettingsWindowAction()
+        } else {
+            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
     }
 
     public func selectLocalModel(_ modelID: String) {
@@ -561,7 +569,7 @@ public final class AppState {
         }
 
         guard providerSettings.isEnabled(providerID: provider.id) else {
-            return .disabled(message: "Enable \(provider.name) in Settings before using this provider.")
+            return .disabled(message: "Turn on “Enable \(provider.name)” to use this provider.")
         }
 
         guard hasStoredAPIKey(for: provider.id) else {

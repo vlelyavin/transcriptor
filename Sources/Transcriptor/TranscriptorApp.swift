@@ -46,6 +46,35 @@ struct TranscriptorApp: App {
                 appState.openSettings(pane: nil)
             }
         }
+
+        if let snapshotPathPrefix = environment["TRANSCRIPTOR_QA_SNAPSHOT"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                Self.writeWindowSnapshots(pathPrefix: snapshotPathPrefix)
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
+    /// Renders each visible window's view hierarchy in-process (no Screen
+    /// Recording permission required) and writes PNGs for QA review.
+    @MainActor
+    private static func writeWindowSnapshots(pathPrefix: String) {
+        for (index, window) in NSApp.windows.enumerated() where window.isVisible {
+            guard let contentView = window.contentView else {
+                continue
+            }
+            let view = contentView.superview ?? contentView
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                continue
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let data = bitmap.representation(using: .png, properties: [:]) else {
+                continue
+            }
+            let suffix = NSApp.windows.count > 1 ? "-w\(index)" : ""
+            try? data.write(to: URL(fileURLWithPath: "\(pathPrefix)\(suffix).png"))
+        }
     }
 
     var body: some Scene {

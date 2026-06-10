@@ -34,6 +34,21 @@ polish pass focused on removing self-invented chrome:
 - [x] AppState-level tests cover insertion-enabled auto-transcription, completed-transcription insertion, and missing-setup fallback
 - [x] QA notes at `docs/review/native-polish-after/QA_NOTES.md` (screenshots blocked by missing Screen Recording permission in the automation environment)
 
+## Native polish round 2 (user-driven review)
+
+`docs/NATIVE_MACOS_REVIEW_ROUND2.md` compares the build against real System
+Settings/Finder/Mail references and drove these changes:
+
+- [x] Settings moved out of the main window into a standalone `Settings` scene window (Cmd+, and the gear button), styled like System Settings with a searchable category sidebar
+- [x] Colored rounded-square sidebar icons in the main window and Settings window
+- [x] Sidebar search field that filters app screens and settings panes (settings results open the Settings window); filtering covered by `SettingsPaneSearchTests`
+- [x] Back/forward toolbar navigation over visited screens
+- [x] Main window minimum reduced to 640×460 with explicit `.windowResizability(.contentMinSize)`
+- [x] Overview rebuilt as an inset grouped form
+- [x] `.ogg`/`.oga`/`.opus` import support (Telegram voice messages) with CoreAudio decoding and WAV working-file conversion, covered by `AudioImportServiceTests` with committed fixtures
+- [x] All `.webm` special-casing removed from UI, errors, and import flow
+- [x] Round-2 screenshots and QA notes at `docs/review/native-polish-round2/`
+
 ## Final QA status matrix
 
 | Feature | Status | Notes |
@@ -42,8 +57,7 @@ polish pass focused on removing self-invented chrome:
 | Hold-to-talk and toggle-to-talk | Done | Both modes record through the same voice input state machine. |
 | Recording overlay | Done | The overlay is centered, dimmed, and covers listening, finishing, transcribing, inserting, saved, error, and setup-required states. |
 | Local recording save | Done | Recordings are saved under Application Support and queued into history. |
-| Import audio: `.mp3`, `.m4a`, `.wav` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. |
-| Import audio: `.webm` | Blocked | Stored as a failed import until a real WebM decoder/transcoder is integrated. |
+| Import audio: `.mp3`, `.m4a`, `.wav`, `.ogg`, `.oga`, `.opus` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. Ogg audio (Telegram voice messages) is converted to WAV working files at import. |
 | Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
 | Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
 | Automatic transcript insertion | Partial | The insertion service captures the original app and focused target, blocks wrong-target and secure-field insertion, and falls back to clipboard/history safely. Unit coverage now includes AppState-level flow tests (auto-transcribe on insertion, completion-triggered insertion, setup-required fallback). A final manual cross-app QA pass with Accessibility permission granted is still pending. |
@@ -54,7 +68,7 @@ polish pass focused on removing self-invented chrome:
 | Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
 | OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |
 | NVIDIA Parakeet local provider | Partial | A real local FluidAudio/Core ML provider is integrated for Apple Silicon, with model management and transcription wiring. It should be treated as beta until a full v2/v3 manual smoke transcription is completed in this branch. |
-| In-app Settings | Done | Settings now live directly inside the main window with a native sidebar/detail layout and grouped preference sections. |
+| Settings window | Done | Settings open in a standalone native Settings window (Cmd+, / gear) with a System Settings-style searchable category sidebar. |
 
 ## Core interaction
 
@@ -67,7 +81,7 @@ polish pass focused on removing self-invented chrome:
 ## Audio import and export
 
 - [x] Import audio: `.mp3`, `.m4a`, `.wav`
-- [ ] Import audio: `.webm`
+- [x] Import audio: `.ogg`, `.oga`, `.opus` (Ogg Opus/Vorbis, converted to WAV at import)
 - [x] Export transcript to `.txt`
 
 ## Transcript history
@@ -105,13 +119,12 @@ polish pass focused on removing self-invented chrome:
 
 ## App surfaces
 
-- [x] Native in-app Settings surface
+- [x] Native standalone Settings window
 - [x] Main window shell
 - [x] History screen with search, filters, real persisted rows, progress, and detail pane
 - [x] Import Audio screen as a single-column grouped utility: drop zone, supported-format rows, and recent persisted imports
 - [x] Models screen with WhisperKit, Parakeet, and Cloud Models sections
-- [x] Settings hub entry in the main window
-- [x] In-app Settings with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
+- [x] Settings window with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
 
 ## UI completion
 
@@ -199,7 +212,7 @@ polish pass focused on removing self-invented chrome:
 
 - Parakeet Local currently targets Apple Silicon only because the verified FluidAudio/Core ML backend used here is not a universal Intel plus Apple Silicon packaging story yet.
 - Parakeet Local is still considered beta until a full manual smoke transcription pass is completed with a downloaded v2 or v3 model in this branch.
-- `.webm` import remains blocked because this build does not yet include a reliable WebM decoder/transcoder dependency. WebM files are stored as failed import records instead of being falsely treated as supported.
+- `.webm` is not a supported import format; such files are rejected with an honest unsupported-type error. Ogg audio (`.ogg`, `.oga`, `.opus`) is fully supported via CoreAudio decoding.
 
 ## Cloud transcription completion
 

@@ -4,6 +4,7 @@ public struct MainWindowView: View {
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
     @State private var sidebarSearchText = ""
+    @Environment(\.openSettings) private var openSettingsAction
 
     public init(appState: AppState) {
         self.appState = appState
@@ -82,6 +83,9 @@ public struct MainWindowView: View {
         }
         .frame(minWidth: 640, minHeight: 460)
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            appState.openSettingsWindowAction = { openSettingsAction() }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -148,10 +152,7 @@ public struct MainWindowView: View {
     }
 
     private var matchingSettingsPanes: [SettingsPane] {
-        SettingsPane.allCases.filter { pane in
-            let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
-            return haystack.localizedCaseInsensitiveContains(trimmedSearchText)
-        }
+        SettingsPane.matching(query: trimmedSearchText)
     }
 
     @ViewBuilder

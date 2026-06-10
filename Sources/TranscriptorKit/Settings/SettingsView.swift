@@ -43,6 +43,7 @@ public struct SettingsWindowView: View {
                     .ignoresSafeArea()
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 215, max: 230)
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
                 if let pane = resolvedPane {
@@ -484,15 +485,7 @@ public struct SettingsWindowView: View {
     }
 
     private var filteredPanes: [SettingsPane] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return SettingsPane.allCases
-        }
-
-        return SettingsPane.allCases.filter { pane in
-            let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
-            return haystack.localizedCaseInsensitiveContains(trimmed)
-        }
+        SettingsPane.matching(query: searchText)
     }
 
     private var resolvedPane: SettingsPane? {
