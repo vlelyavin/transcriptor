@@ -4,19 +4,28 @@ Date: June 10, 2026
 
 ## Screenshot status
 
-Programmatic window capture was attempted (app launched headless from the build,
-window ID resolved via `CGWindowListCopyWindowInfo`, capture via
-`screencapture -l`), but the shell running this pass has no Screen Recording
-permission, so `screencapture` fails with "could not create image". AppleScript
-UI scripting also timed out (no Accessibility grant for the host process).
-Per the task brief, this document is the detailed manual QA checklist instead.
+Captured programmatically after Screen Recording permission was granted: the app
+was launched per screen/size with `TRANSCRIPTOR_QA_*` environment overrides (see
+`TranscriptorApp.applyQAOverridesIfRequested`), the window frame was preset via
+the `NSWindow Frame` autosave default, the window ID was resolved with
+`CGWindowListCopyWindowInfo`, and each shot was taken with `screencapture -l`.
 
-To capture the after-screenshots manually:
+Screenshots in this directory:
 
-1. `swift run Transcriptor`
-2. Resize the window to ~780, ~1000, and ~1280 pt widths.
-3. Capture each screen listed below with `Cmd+Shift+4`, `Space`, click window.
-4. Drop the images into this directory.
+- `overview-wide-1280-dark.png`, `overview-narrow-780-dark.png`,
+  `overview-wide-1280-light.png`
+- `history-wide-1280-dark.png`, `history-narrow-780-dark.png`
+- `import-wide-1280-dark.png`, `import-narrow-780-dark.png`
+- `models-wide-1280-dark.png`, `models-narrow-780-dark.png`
+- `settings-general-1280-dark.png`, `settings-recording-1280-dark.png`,
+  `settings-cloud-1280-dark.png`, `settings-narrow-780-dark.png`
+- `overlay-recording-dark.png` (toggle mode: Listening, duration, level bars,
+  Cancel/Done)
+
+Screenshot review found and fixed one real bug: at narrow widths History opened
+directly in the detail pane and the back button bounced straight back to detail
+(`selectedEntry` fell back to the first entry). Compact detail visibility is now
+an explicit navigation state.
 
 ## What was verified without screenshots
 
