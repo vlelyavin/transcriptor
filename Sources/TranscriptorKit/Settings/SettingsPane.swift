@@ -75,6 +75,20 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         }
     }
 
+    /// Panes whose title, subtitle, or search tokens match the query.
+    /// An empty or whitespace-only query returns every pane.
+    public static func matching(query: String) -> [SettingsPane] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return SettingsPane.allCases
+        }
+
+        return SettingsPane.allCases.filter { pane in
+            let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
+            return haystack.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
     public var searchTokens: [String] {
         switch self {
         case .general:
