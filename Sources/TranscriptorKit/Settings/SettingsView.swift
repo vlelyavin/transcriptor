@@ -396,12 +396,9 @@ public struct SettingsView: View {
                     }
 
                     if let selectedModel = appState.selectedModel {
-                        HStack {
-                            AvailabilityBadge(availability: selectedModel.availability)
-                            Text(selectedModel.availability.message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(selectedModel.availability.message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
