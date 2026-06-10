@@ -11,60 +11,54 @@ public struct ImportAudioView: View {
     }
 
     public var body: some View {
-        GeometryReader { proxy in
-            let compact = proxy.size.width < 930
+        Form {
+            Section {
+                dropZone
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Import Audio")
-                            .font(.largeTitle.weight(.semibold))
+            if let importFeedbackMessage = appState.importFeedbackMessage {
+                Section {
+                    Label(importFeedbackMessage, systemImage: "info.circle")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-                        Text("Add audio files from Finder. Imported copies are stored inside Transcriptor so history stays durable after the original file moves.")
-                            .foregroundStyle(.secondary)
-                    }
+            Section("Import Details") {
+                LabeledContent("Supported formats") {
+                    Text(".mp3, .m4a, .wav")
+                }
 
-                    if compact {
-                        VStack(alignment: .leading, spacing: 18) {
-                            dropZone
-                            importFactsPanel
-                        }
-                    } else {
-                        HStack(alignment: .top, spacing: 20) {
-                            dropZone
-                                .frame(maxWidth: .infinity)
+                LabeledContent("Not supported") {
+                    Text(".webm — no decoder in this build")
+                        .foregroundStyle(.secondary)
+                }
 
-                            importFactsPanel
-                                .frame(maxWidth: 340)
-                        }
-                    }
+                LabeledContent("Storage") {
+                    Text("Copied into Transcriptor-managed storage")
+                        .foregroundStyle(.secondary)
+                }
 
-                    SectionCard(
-                        title: "Recent Imports",
-                        subtitle: "These rows come from the real persisted history store."
-                    ) {
-                        if appState.recentImports.isEmpty {
-                            ContentUnavailableView(
-                                "No Imports Yet",
-                                systemImage: "square.and.arrow.down",
-                                description: Text("Choose files or drag audio here to add the first import.")
-                            )
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(Array(appState.recentImports.enumerated()), id: \.element.id) { index, item in
-                                    recentImportRow(item: item)
+                LabeledContent("Auto-transcribe") {
+                    Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-                                    if index < appState.recentImports.count - 1 {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
+            Section("Recent Imports") {
+                if appState.recentImports.isEmpty {
+                    Text("No imports yet. Choose files or drag audio here to add the first import.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(appState.recentImports) { item in
+                        recentImportRow(item: item)
                     }
                 }
-                .padding(24)
             }
         }
+        .formStyle(.grouped)
         .navigationTitle("Import Audio")
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -81,102 +75,34 @@ public struct ImportAudioView: View {
     }
 
     private var dropZone: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "square.and.arrow.up")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(isDropTargeted ? Color.accentColor : .secondary)
-                .frame(width: 64, height: 64)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        VStack(spacing: 10) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 26, weight: .regular))
+                .foregroundStyle(isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
 
             Text(isDropTargeted ? "Release to import audio" : "Drop audio files here")
-                .font(.title3.weight(.semibold))
+                .font(.headline)
 
-            Text(isDropTargeted ? "Files will be copied into Transcriptor-managed storage" : "or choose files from Finder")
+            Text("or")
+                .font(.caption)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
 
-            HStack(spacing: 10) {
-                ForEach([SupportedImportFormat.mp3, .m4a, .wav, .webm]) { format in
-                    formatChip(for: format)
-                }
+            Button("Choose Files…") {
+                isFileImporterPresented = true
             }
-
-            HStack(spacing: 10) {
-                Button("Choose Files…") {
-                    isFileImporterPresented = true
-                }
-                .keyboardShortcut("I", modifiers: [.command, .shift])
-
-                shortcutBadge
-            }
+            .keyboardShortcut("I", modifiers: [.command, .shift])
         }
-        .frame(maxWidth: .infinity, minHeight: 260)
-        .padding(24)
-        .background((isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 160)
+        .padding(16)
+        .background(isDropTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.08)) : AnyShapeStyle(.quaternary.opacity(0.4)), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [8, 8]))
-                .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.35))
-        }
-        .onTapGesture {
-            isFileImporterPresented = true
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                .foregroundStyle(isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
         }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
             handleDroppedProviders(providers)
         }
-    }
-
-    private var importFactsPanel: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SectionCard(
-                title: "Supported Formats",
-                subtitle: "Use the native file picker or drag files directly from Finder."
-            ) {
-                factRow(title: "Ready", detail: "mp3, m4a, wav")
-                Divider()
-                factRow(title: "Blocked", detail: "webm remains visible but cannot be decoded in this build yet")
-            }
-
-            SectionCard(
-                title: "Storage",
-                subtitle: "Imported files are copied into app-managed storage."
-            ) {
-                factRow(title: "Location", detail: "Application Support/Transcriptor/Imports")
-                Divider()
-                factRow(title: "Behavior", detail: "History stays available even if the original Finder file moves")
-            }
-
-            SectionCard(
-                title: "Automation",
-                subtitle: "Import behavior follows your current transcription preferences."
-            ) {
-                factRow(title: "Shortcut", detail: "Cmd + Shift + I")
-                Divider()
-                factRow(title: "Auto-transcribe", detail: appState.transcriptionPreferences.autoTranscribeAfterCapture ? "Enabled" : "Disabled")
-            }
-
-            if let importFeedbackMessage = appState.importFeedbackMessage {
-                UnavailableActionBanner(message: importFeedbackMessage)
-            }
-        }
-    }
-
-    private var shortcutBadge: some View {
-        HStack(spacing: 8) {
-            Text("Shortcut")
-                .foregroundStyle(.secondary)
-
-            Text("Cmd")
-            Text("+")
-            Text("Shift")
-            Text("+")
-            Text("I")
-        }
-        .font(.system(.callout, design: .monospaced))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var supportedImportContentTypes: [UTType] {
@@ -188,26 +114,16 @@ public struct ImportAudioView: View {
         ]
     }
 
-    private func formatChip(for format: SupportedImportFormat) -> some View {
-        let backgroundStyle = format == .webm ? Color.secondary.opacity(0.16) : Color.secondary.opacity(0.12)
-
-        return Text(format.fileExtensionLabel)
-            .font(.system(.caption, design: .monospaced))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(backgroundStyle, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
     private func recentImportRow(item: RecentImportItem) -> some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
-                .foregroundStyle(item.status == .failed ? .yellow : .secondary)
-                .frame(width: 28)
+                .foregroundStyle(item.status == .failed ? AnyShapeStyle(.yellow) : AnyShapeStyle(.secondary))
+                .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.fileName)
-                    .font(.headline)
                     .lineLimit(1)
+                    .truncationMode(.middle)
 
                 Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
                     .font(.caption)
@@ -217,24 +133,10 @@ public struct ImportAudioView: View {
             Spacer()
 
             Text(item.format.fileExtensionLabel)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.quaternary.opacity(0.6), in: Capsule())
-        }
-        .padding(.vertical, 12)
-    }
-
-    private func factRow(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.headline)
-
-            Text(detail)
-                .font(.callout)
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 2)
     }
 
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
