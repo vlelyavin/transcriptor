@@ -27,6 +27,11 @@ public struct OverviewView: View {
                     Text(appState.overlayState.isEnabled ? "Enabled" : "Disabled")
                         .foregroundStyle(.secondary)
                 }
+
+                LabeledContent("Insert into active app") {
+                    Text(insertionStatusText)
+                        .foregroundStyle(.secondary)
+                }
             } header: {
                 Text("Voice Input")
             }
@@ -113,6 +118,16 @@ public struct OverviewView: View {
 
     private func formattedDate(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var insertionStatusText: String {
+        guard appState.generalSettings.insertTranscriptIntoActiveApp else {
+            return "Off"
+        }
+
+        return appState.accessibilityPermissionStatus == .granted
+            ? "On"
+            : "On — needs Accessibility access"
     }
 
     private var preferredProviderTitle: String {

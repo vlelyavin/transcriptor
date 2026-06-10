@@ -11,51 +11,44 @@ public struct MainWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            VStack(spacing: 0) {
-                SidebarHeaderView()
-
-                List(selection: $appState.selectedScreen) {
-                    ForEach(NavigationScreen.allCases) { screen in
-                        Label(screen.title, systemImage: screen.systemImage)
-                            .tag(screen)
-                            .help(screen.title)
-                    }
+            List(selection: $appState.selectedScreen) {
+                ForEach(NavigationScreen.allCases) { screen in
+                    Label(screen.title, systemImage: screen.systemImage)
+                        .tag(screen)
+                        .help(screen.title)
                 }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Divider()
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 6) {
+                    Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
+                        .foregroundStyle(voiceInputController.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
 
-                        HStack(spacing: 8) {
-                            Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
-                                .foregroundStyle(voiceInputController.isRecording ? .red : .secondary)
+                    Text(voiceInputController.isRecording ? "Recording" : "Ready")
+                        .foregroundStyle(.secondary)
 
-                            Text(voiceInputController.isRecording ? "Recording" : "Ready")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    Spacer()
 
-                        Text(appState.recordingState.hotkey.displayString)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    Text(appState.recordingState.hotkey.displayString)
+                        .foregroundStyle(.tertiary)
                 }
+                .font(.caption)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
             }
             .background {
                 NativeSidebarMaterial()
                     .ignoresSafeArea()
             }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 270)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
         } detail: {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Color(nsColor: .underPageBackgroundColor))
         }
-        .frame(minWidth: 800, minHeight: 620)
+        .frame(minWidth: 780, minHeight: 600)
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup {
