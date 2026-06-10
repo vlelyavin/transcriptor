@@ -33,7 +33,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TranscriptorKitTests",
-            dependencies: ["TranscriptorKit"]
+            dependencies: ["TranscriptorKit"],
+            resources: [
+                .copy("Fixtures"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]

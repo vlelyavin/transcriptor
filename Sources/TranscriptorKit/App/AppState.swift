@@ -5,7 +5,18 @@ import Observation
 @MainActor
 @Observable
 public final class AppState {
-    public var selectedScreen: NavigationScreen
+    public var selectedScreen: NavigationScreen {
+        didSet {
+            guard !isPerformingHistoryNavigation, oldValue != selectedScreen else {
+                return
+            }
+            navigationBackStack.append(oldValue)
+            navigationForwardStack.removeAll()
+        }
+    }
+    public private(set) var navigationBackStack: [NavigationScreen] = []
+    public private(set) var navigationForwardStack: [NavigationScreen] = []
+    private var isPerformingHistoryNavigation = false
     public var selectedSettingsPane: SettingsPane?
     public var generalSettings: GeneralSettings {
         didSet { persistPreferences() }
@@ -162,7 +173,7 @@ public final class AppState {
         self.launchAtLoginService = launchAtLoginService
         self.secretStore = secretStore
         self.selectedScreen = selectedScreen
-        self.selectedSettingsPane = nil
+        self.selectedSettingsPane = .general
         self.generalSettings = GeneralSettings(
             launchAtLoginEnabled: launchAtLoginStatus.toggleValue,
             showMenuBarIcon: snapshot.showMenuBarIcon,
@@ -306,9 +317,36 @@ public final class AppState {
         historyStore.entries.first(where: { $0.id == id })
     }
 
+    public var canNavigateBack: Bool { !navigationBackStack.isEmpty }
+    public var canNavigateForward: Bool { !navigationForwardStack.isEmpty }
+
+    public func navigateBack() {
+        guard let target = navigationBackStack.popLast() else {
+            return
+        }
+        navigationForwardStack.append(selectedScreen)
+        isPerformingHistoryNavigation = true
+        selectedScreen = target
+        isPerformingHistoryNavigation = false
+    }
+
+    public func navigateForward() {
+        guard let target = navigationForwardStack.popLast() else {
+            return
+        }
+        navigationBackStack.append(selectedScreen)
+        isPerformingHistoryNavigation = true
+        selectedScreen = target
+        isPerformingHistoryNavigation = false
+    }
+
+    /// Opens the standalone Settings window, optionally pre-selecting a pane.
     public func openSettings(pane: SettingsPane? = .general) {
-        selectedScreen = .settings
-        selectedSettingsPane = pane
+        if let pane {
+            selectedSettingsPane = pane
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     public func selectLocalModel(_ modelID: String) {

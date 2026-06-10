@@ -5,7 +5,6 @@ public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
     case history
     case importAudio
     case models
-    case settings
 
     public var id: String { rawValue }
 
@@ -19,23 +18,19 @@ public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
             "Import Audio"
         case .models:
             "Models"
-        case .settings:
-            "Settings"
         }
     }
 
     public var systemImage: String {
         switch self {
         case .overview:
-            "waveform.circle"
+            "waveform"
         case .history:
             "clock.arrow.circlepath"
         case .importAudio:
-            "square.and.arrow.down"
+            "square.and.arrow.down.fill"
         case .models:
-            "cube.transparent"
-        case .settings:
-            "gearshape"
+            "cpu.fill"
         }
     }
 }
