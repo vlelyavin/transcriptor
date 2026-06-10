@@ -64,6 +64,9 @@ final class MenuBarStatusItemController: NSObject {
             _ = appState.voiceInputController.state
             _ = appState.transcriptionQueueController.activeJob
             _ = appState.overlaySupplementalPhase
+            _ = appState.transcriptionPreferences.selectedModelID
+            _ = appState.whisperModelManager.inventory
+            _ = appState.parakeetModelManager.inventory
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.observeChanges()
@@ -134,6 +137,12 @@ final class MenuBarStatusItemController: NSObject {
 
         menu.addItem(.separator())
 
+        let activeModelItem = NSMenuItem(title: "Active Model", action: nil, keyEquivalent: "")
+        activeModelItem.submenu = buildActiveModelSubmenu()
+        menu.addItem(activeModelItem)
+
+        menu.addItem(.separator())
+
         menu.addItem(menuItem(title: "Open Transcriptor", action: #selector(openTranscriptor)))
         menu.addItem(menuItem(title: "Open History", action: #selector(openHistory)))
         menu.addItem(menuItem(title: "Open Settings", action: #selector(openSettingsView)))
@@ -150,6 +159,39 @@ final class MenuBarStatusItemController: NSObject {
         menu.addItem(.separator())
         menu.addItem(menuItem(title: "Quit Transcriptor", action: #selector(quitApp)))
         return menu
+    }
+
+    /// Lists every downloaded/loaded local model with a checkmark on the
+    /// active one; picking an entry switches and loads that model.
+    private func buildActiveModelSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+        let availableModels = appState.whisperModelManager.downloadedWhisperModels()
+            + appState.parakeetModelManager.downloadedParakeetModels()
+
+        guard !availableModels.isEmpty else {
+            let emptyItem = NSMenuItem(
+                title: "No Downloaded Models",
+                action: nil,
+                keyEquivalent: ""
+            )
+            emptyItem.isEnabled = false
+            submenu.addItem(emptyItem)
+            submenu.addItem(.separator())
+            submenu.addItem(menuItem(title: "Manage Models…", action: #selector(openModels)))
+            return submenu
+        }
+
+        for model in availableModels {
+            let item = NSMenuItem(title: model.name, action: #selector(selectModel(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = model.id
+            item.state = appState.transcriptionPreferences.selectedModelID == model.id ? .on : .off
+            submenu.addItem(item)
+        }
+
+        submenu.addItem(.separator())
+        submenu.addItem(menuItem(title: "Manage Models…", action: #selector(openModels)))
+        return submenu
     }
 
     private func menuItem(title: String, action: Selector) -> NSMenuItem {
@@ -211,6 +253,21 @@ final class MenuBarStatusItemController: NSObject {
     @objc
     private func openHistory() {
         bringAppToFront(screen: .history)
+    }
+
+    @objc
+    private func openModels() {
+        bringAppToFront(screen: .models)
+    }
+
+    @objc
+    private func selectModel(_ sender: NSMenuItem) {
+        guard let modelID = sender.representedObject as? String else {
+            return
+        }
+
+        appState.selectLocalModel(modelID)
+        refresh()
     }
 
     @objc

@@ -83,6 +83,13 @@ struct TranscriptorApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    appState.openSettings()
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+
             CommandMenu("Transcriptor") {
                 Button("Import Audio") {
                     appState.selectedScreen = .importAudio
@@ -110,12 +117,11 @@ struct TranscriptorApp: App {
                 )
 
                 Divider()
+
+                Button("Settings…") {
+                    appState.openSettings()
+                }
             }
         }
-
-        Settings {
-            SettingsWindowView(appState: appState)
-        }
-        .windowResizability(.contentMinSize)
     }
 }

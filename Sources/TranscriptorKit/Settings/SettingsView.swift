@@ -1,105 +1,21 @@
 import SwiftUI
 
-/// The standalone Settings window (Cmd+, / gear button), styled after System
-/// Settings: searchable category sidebar with colored icons + grouped detail.
-public struct SettingsWindowView: View {
-    @State private var searchText = ""
+/// The detail form for one settings pane. Settings live in the main window
+/// sidebar (like System Settings), so this renders inside the main split view.
+public struct SettingsPaneDetailView: View {
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
     @Bindable private var appState: AppState
+    private let pane: SettingsPane
 
-    public init(appState: AppState) {
+    public init(pane: SettingsPane, appState: AppState) {
+        self.pane = pane
         self.appState = appState
     }
 
     public var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                searchField
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
-
-                List(selection: $appState.selectedSettingsPane) {
-                    ForEach(filteredPanes) { pane in
-                        Label {
-                            Text(pane.title)
-                        } icon: {
-                            SidebarIconView(systemImage: pane.sidebarFillSymbol, tint: pane.sidebarTint)
-                        }
-                        .tag(Optional(pane))
-                    }
-
-                    if filteredPanes.isEmpty {
-                        Text("No results")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-            }
-            .background {
-                NativeSidebarMaterial()
-                    .ignoresSafeArea()
-            }
-            .navigationSplitViewColumnWidth(min: 200, ideal: 215, max: 230)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            Group {
-                if let pane = resolvedPane {
-                    currentPaneView(for: pane)
-                        .navigationTitle(pane.title)
-                } else {
-                    ContentUnavailableView(
-                        "No Matching Settings",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try a different search term.")
-                    )
-                    .navigationTitle("Settings")
-                }
-            }
-        }
-        .frame(minWidth: 715, idealWidth: 760, minHeight: 470, idealHeight: 560)
-        .onChange(of: filteredPanes) { _, panes in
-            guard let selectedPane = appState.selectedSettingsPane else {
-                return
-            }
-
-            if !panes.contains(selectedPane) {
-                appState.selectedSettingsPane = panes.first
-            }
-        }
-        .onAppear {
-            if appState.selectedSettingsPane == nil {
-                appState.selectedSettingsPane = .general
-            }
-        }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
-            TextField("Search", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        currentPaneView(for: pane)
+            .navigationTitle(pane.title)
     }
 
     @ViewBuilder
@@ -484,18 +400,6 @@ public struct SettingsWindowView: View {
         .formStyle(.grouped)
     }
 
-    private var filteredPanes: [SettingsPane] {
-        SettingsPane.matching(query: searchText)
-    }
-
-    private var resolvedPane: SettingsPane? {
-        if let selectedPane = appState.selectedSettingsPane, filteredPanes.contains(selectedPane) {
-            return selectedPane
-        }
-
-        return filteredPanes.first
-    }
-
     private func providerConfigurationSection(
         provider: ProviderDescriptor,
         isEnabled: Binding<Bool>,
@@ -652,9 +556,9 @@ public struct SettingsWindowView: View {
 }
 
 #if DEBUG
-struct SettingsWindowView_Previews: PreviewProvider {
+struct SettingsPaneDetailView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingsWindowView(appState: .preview)
+        SettingsPaneDetailView(pane: .general, appState: .preview)
             .frame(width: 760, height: 560)
     }
 }

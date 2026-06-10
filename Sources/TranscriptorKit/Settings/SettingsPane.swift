@@ -1,5 +1,19 @@
 import Foundation
 
+/// A sidebar-search result: the pane that matched plus the individual
+/// settings inside it that matched the query.
+public struct SettingsSearchResult: Hashable, Identifiable, Sendable {
+    public let pane: SettingsPane
+    public let matchedSettingTitles: [String]
+
+    public var id: String { pane.id }
+
+    public init(pane: SettingsPane, matchedSettingTitles: [String]) {
+        self.pane = pane
+        self.matchedSettingTitles = matchedSettingTitles
+    }
+}
+
 public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable {
     case general
     case recording
@@ -86,6 +100,94 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         return SettingsPane.allCases.filter { pane in
             let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
             return haystack.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
+    /// User-visible setting titles inside this pane, used by sidebar search so
+    /// results can point at the individual setting (like System Settings).
+    public var settingTitles: [String] {
+        switch self {
+        case .general:
+            [
+                "Show Transcriptor in menu bar",
+                "Launch at login",
+                "Login items status",
+            ]
+        case .recording:
+            [
+                "Voice input mode",
+                "Save original audio",
+                "Microphone permission",
+                "Insert transcript into active app",
+                "Also copy transcript to clipboard",
+                "Restore previous clipboard after insertion",
+            ]
+        case .keyboardShortcut:
+            [
+                "Global voice input shortcut",
+                "Restore recommended shortcut",
+                "Menu shortcuts",
+            ]
+        case .overlay:
+            [
+                "Show recording overlay",
+                "Use non-activating overlay",
+                "Show live audio indicator",
+                "Overlay position",
+            ]
+        case .models:
+            [
+                "Preferred transcription provider",
+                "Preferred local provider",
+                "Default local model",
+                "Auto-transcribe after recording or import",
+            ]
+        case .storage:
+            [
+                "History storage limit",
+                "Auto-delete oldest history when over limit",
+                "Exclude downloaded model files from cap",
+                "Storage usage",
+            ]
+        case .cloudProviders:
+            [
+                "Enable OpenAI",
+                "OpenAI API key",
+                "OpenAI model ID",
+                "Enable Groq",
+                "Groq API key",
+                "Groq model ID",
+                "Cloud privacy consent",
+            ]
+        case .privacy:
+            [
+                "Local transcription privacy",
+                "Cloud transcription privacy",
+                "Model download sources",
+            ]
+        }
+    }
+
+    /// One search result per pane: whether the pane itself matched, plus the
+    /// individual settings inside it that matched.
+    public static func searchResults(matching query: String) -> [SettingsSearchResult] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return []
+        }
+
+        return SettingsPane.allCases.compactMap { pane in
+            let paneHaystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
+            let paneMatches = paneHaystack.localizedCaseInsensitiveContains(trimmed)
+            let matchedSettings = pane.settingTitles.filter {
+                $0.localizedCaseInsensitiveContains(trimmed)
+            }
+
+            guard paneMatches || !matchedSettings.isEmpty else {
+                return nil
+            }
+
+            return SettingsSearchResult(pane: pane, matchedSettingTitles: matchedSettings)
         }
     }
 

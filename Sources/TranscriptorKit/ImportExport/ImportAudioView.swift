@@ -40,10 +40,10 @@ public struct ImportAudioView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                LabeledContent("Auto-transcribe") {
-                    Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
-                        .foregroundStyle(.secondary)
-                }
+                Toggle(
+                    "Auto-transcribe",
+                    isOn: $appState.transcriptionPreferences.autoTranscribeAfterCapture
+                )
             }
 
             Section("Recent Imports") {
