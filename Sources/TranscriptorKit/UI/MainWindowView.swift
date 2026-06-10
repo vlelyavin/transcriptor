@@ -4,7 +4,6 @@ public struct MainWindowView: View {
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
     @State private var sidebarSearchText = ""
-    @Environment(\.openSettings) private var openSettingsAction
 
     public init(appState: AppState) {
         self.appState = appState
@@ -13,42 +12,21 @@ public struct MainWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            List(selection: $appState.selectedScreen) {
+            List(selection: $appState.sidebarSelection) {
                 if trimmedSearchText.isEmpty {
-                    ForEach(NavigationScreen.allCases) { screen in
-                        sidebarRow(for: screen)
+                    Section {
+                        ForEach(NavigationScreen.allCases) { screen in
+                            screenRow(for: screen)
+                        }
+                    }
+
+                    Section("Settings") {
+                        ForEach(SettingsPane.allCases) { pane in
+                            paneRow(for: pane)
+                        }
                     }
                 } else {
-                    if !matchingScreens.isEmpty {
-                        Section("App") {
-                            ForEach(matchingScreens) { screen in
-                                sidebarRow(for: screen)
-                            }
-                        }
-                    }
-
-                    if !matchingSettingsPanes.isEmpty {
-                        Section("Settings") {
-                            ForEach(matchingSettingsPanes) { pane in
-                                Button {
-                                    appState.openSettings(pane: pane)
-                                    sidebarSearchText = ""
-                                } label: {
-                                    Label {
-                                        Text(pane.title)
-                                    } icon: {
-                                        SidebarIconView(systemImage: pane.sidebarFillSymbol, tint: pane.sidebarTint)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    if matchingScreens.isEmpty, matchingSettingsPanes.isEmpty {
-                        Text("No results for “\(trimmedSearchText)”")
-                            .foregroundStyle(.secondary)
-                    }
+                    searchResultsContent
                 }
             }
             .listStyle(.sidebar)
@@ -71,6 +49,10 @@ public struct MainWindowView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .background {
+                    NativeSidebarMaterial(blending: .withinWindow)
+                        .ignoresSafeArea()
+                }
             }
             .background {
                 NativeSidebarMaterial()
@@ -83,9 +65,6 @@ public struct MainWindowView: View {
         }
         .frame(minWidth: 640, minHeight: 460)
         .navigationSplitViewStyle(.balanced)
-        .onAppear {
-            appState.openSettingsWindowAction = { openSettingsAction() }
-        }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -115,7 +94,7 @@ public struct MainWindowView: View {
                 } label: {
                     Label(
                         voiceInputController.isRecording ? "Stop Voice Input" : "Start Voice Input",
-                        systemImage: voiceInputController.isRecording ? "stop.circle.fill" : "mic.circle"
+                        systemImage: voiceInputController.isRecording ? "stop.fill" : "mic.fill"
                     )
                 }
                 .disabled(voiceInputController.state == .requestingPermission || voiceInputController.state == .stopping)
@@ -131,14 +110,66 @@ public struct MainWindowView: View {
         }
     }
 
-    private func sidebarRow(for screen: NavigationScreen) -> some View {
+    private func screenRow(for screen: NavigationScreen) -> some View {
         Label {
             Text(screen.title)
         } icon: {
-            SidebarIconView(systemImage: screen.systemImage, tint: screen.sidebarTint)
+            SidebarIconView(systemImage: screen.systemImage)
         }
-        .tag(screen)
+        .tag(SidebarItem.screen(screen))
         .help(screen.title)
+    }
+
+    private func paneRow(for pane: SettingsPane) -> some View {
+        Label {
+            Text(pane.title)
+        } icon: {
+            SidebarIconView(systemImage: pane.sidebarFillSymbol)
+        }
+        .tag(SidebarItem.settings(pane))
+        .help(pane.subtitle)
+    }
+
+    /// Search results mirror System Settings: the matching pane appears with
+    /// its icon, followed by each matching individual setting inside it.
+    @ViewBuilder
+    private var searchResultsContent: some View {
+        if !matchingScreens.isEmpty {
+            Section("App") {
+                ForEach(matchingScreens) { screen in
+                    screenRow(for: screen)
+                }
+            }
+        }
+
+        if !settingsSearchResults.isEmpty {
+            Section("Settings") {
+                ForEach(settingsSearchResults) { result in
+                    paneRow(for: result.pane)
+
+                    ForEach(result.matchedSettingTitles, id: \.self) { settingTitle in
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(settingTitle)
+                                Text(result.pane.title)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.turn.down.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(SidebarItem.settings(result.pane))
+                    }
+                }
+            }
+        }
+
+        if matchingScreens.isEmpty, settingsSearchResults.isEmpty {
+            Text("No results for “\(trimmedSearchText)”")
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var trimmedSearchText: String {
@@ -151,76 +182,49 @@ public struct MainWindowView: View {
         }
     }
 
-    private var matchingSettingsPanes: [SettingsPane] {
-        SettingsPane.matching(query: trimmedSearchText)
+    private var settingsSearchResults: [SettingsSearchResult] {
+        SettingsPane.searchResults(matching: trimmedSearchText)
     }
 
     @ViewBuilder
     private var contentView: some View {
-        switch appState.selectedScreen {
-        case .overview:
-            OverviewView(appState: appState)
-        case .history:
-            HistoryView(appState: appState)
-        case .importAudio:
-            ImportAudioView(appState: appState)
-        case .models:
-            ModelsView(appState: appState)
+        switch appState.sidebarSelection {
+        case let .screen(screen):
+            switch screen {
+            case .overview:
+                OverviewView(appState: appState)
+            case .history:
+                HistoryView(appState: appState)
+            case .importAudio:
+                ImportAudioView(appState: appState)
+            case .models:
+                ModelsView(appState: appState)
+            }
+        case let .settings(pane):
+            SettingsPaneDetailView(pane: pane, appState: appState)
         }
     }
 }
 
-/// System Settings-style colored rounded-square sidebar icon.
+/// System Settings-style sidebar icon: black rounded-square tile with a thin
+/// border and a white glyph.
 struct SidebarIconView: View {
     let systemImage: String
-    let tint: Color
 
     var body: some View {
         Image(systemName: systemImage)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.white)
             .frame(width: 21, height: 21)
-            .background(tint.gradient, in: RoundedRectangle(cornerRadius: 5.5, style: .continuous))
-    }
-}
-
-extension NavigationScreen {
-    var sidebarTint: Color {
-        switch self {
-        case .overview:
-            .blue
-        case .history:
-            .orange
-        case .importAudio:
-            .green
-        case .models:
-            .purple
-        }
+            .background(Color.black, in: RoundedRectangle(cornerRadius: 5.5, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+            }
     }
 }
 
 extension SettingsPane {
-    var sidebarTint: Color {
-        switch self {
-        case .general:
-            .gray
-        case .recording:
-            .red
-        case .keyboardShortcut:
-            .indigo
-        case .overlay:
-            .cyan
-        case .models:
-            .purple
-        case .storage:
-            .gray
-        case .cloudProviders:
-            .blue
-        case .privacy:
-            .blue
-        }
-    }
-
     var sidebarFillSymbol: String {
         switch self {
         case .general:

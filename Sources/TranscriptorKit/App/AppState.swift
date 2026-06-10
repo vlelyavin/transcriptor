@@ -5,19 +5,42 @@ import Observation
 @MainActor
 @Observable
 public final class AppState {
-    public var selectedScreen: NavigationScreen {
+    public var sidebarSelection: SidebarItem {
         didSet {
-            guard !isPerformingHistoryNavigation, oldValue != selectedScreen else {
+            guard !isPerformingHistoryNavigation, oldValue != sidebarSelection else {
                 return
             }
             navigationBackStack.append(oldValue)
             navigationForwardStack.removeAll()
         }
     }
-    public private(set) var navigationBackStack: [NavigationScreen] = []
-    public private(set) var navigationForwardStack: [NavigationScreen] = []
+    public private(set) var navigationBackStack: [SidebarItem] = []
+    public private(set) var navigationForwardStack: [SidebarItem] = []
     private var isPerformingHistoryNavigation = false
-    public var selectedSettingsPane: SettingsPane?
+
+    public var selectedScreen: NavigationScreen {
+        get {
+            if case let .screen(screen) = sidebarSelection {
+                return screen
+            }
+            return .overview
+        }
+        set { sidebarSelection = .screen(newValue) }
+    }
+
+    public var selectedSettingsPane: SettingsPane? {
+        get {
+            if case let .settings(pane) = sidebarSelection {
+                return pane
+            }
+            return nil
+        }
+        set {
+            if let newValue {
+                sidebarSelection = .settings(newValue)
+            }
+        }
+    }
     public var generalSettings: GeneralSettings {
         didSet { persistPreferences() }
     }
@@ -172,8 +195,7 @@ public final class AppState {
         self.transcriptInsertionService = transcriptInsertionService
         self.launchAtLoginService = launchAtLoginService
         self.secretStore = secretStore
-        self.selectedScreen = selectedScreen
-        self.selectedSettingsPane = .general
+        self.sidebarSelection = .screen(selectedScreen)
         self.generalSettings = GeneralSettings(
             launchAtLoginEnabled: launchAtLoginStatus.toggleValue,
             showMenuBarIcon: snapshot.showMenuBarIcon,
@@ -279,6 +301,32 @@ public final class AppState {
         }
 
         refreshStorageState()
+
+        Task { [weak self] in
+            await self?.autoLoadSelectedModelOnLaunch()
+        }
+    }
+
+    /// Loads the active local model automatically so transcription is ready
+    /// without a manual "Load" step.
+    public func autoLoadSelectedModelOnLaunch() async {
+        await whisperModelManager.refresh()
+        await parakeetModelManager.refresh()
+        loadSelectedModelIfDownloaded()
+    }
+
+    public func loadSelectedModelIfDownloaded() {
+        guard let model = selectedModel else {
+            return
+        }
+
+        if model.isParakeetLocalModel {
+            if parakeetModelManager.item(for: model.id)?.state == .downloaded {
+                parakeetModelManager.load(model)
+            }
+        } else if whisperModelManager.item(for: model.id)?.state == .downloaded {
+            whisperModelManager.load(model)
+        }
     }
 
     public var selectedModel: ModelDescriptor? {
@@ -324,9 +372,9 @@ public final class AppState {
         guard let target = navigationBackStack.popLast() else {
             return
         }
-        navigationForwardStack.append(selectedScreen)
+        navigationForwardStack.append(sidebarSelection)
         isPerformingHistoryNavigation = true
-        selectedScreen = target
+        sidebarSelection = target
         isPerformingHistoryNavigation = false
     }
 
@@ -334,27 +382,21 @@ public final class AppState {
         guard let target = navigationForwardStack.popLast() else {
             return
         }
-        navigationBackStack.append(selectedScreen)
+        navigationBackStack.append(sidebarSelection)
         isPerformingHistoryNavigation = true
-        selectedScreen = target
+        sidebarSelection = target
         isPerformingHistoryNavigation = false
     }
 
-    /// Bridge to SwiftUI's `\.openSettings` environment action, registered by
-    /// the main window so non-view code (menu bar, toolbar) can open Settings.
-    public var openSettingsWindowAction: (() -> Void)?
-
-    /// Opens the standalone Settings window, optionally pre-selecting a pane.
+    /// Selects a settings pane in the main window sidebar. Settings are part
+    /// of the main window, so this never opens a second window.
     public func openSettings(pane: SettingsPane? = .general) {
         if let pane {
-            selectedSettingsPane = pane
+            sidebarSelection = .settings(pane)
+        } else if selectedSettingsPane == nil {
+            sidebarSelection = .settings(.general)
         }
         NSApplication.shared.activate(ignoringOtherApps: true)
-        if let openSettingsWindowAction {
-            openSettingsWindowAction()
-        } else {
-            NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
     }
 
     public func selectLocalModel(_ modelID: String) {
@@ -366,6 +408,7 @@ public final class AppState {
         transcriptionPreferences.selectedModelID = modelID
         transcriptionPreferences.preferredLocalProviderID = localProviderID
         transcriptionPreferences.preferredProviderID = localProviderID
+        loadSelectedModelIfDownloaded()
     }
 
     public func selectPreferredLocalProvider(_ providerID: String) {

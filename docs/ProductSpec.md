@@ -49,6 +49,20 @@ Settings/Finder/Mail references and drove these changes:
 - [x] All `.webm` special-casing removed from UI, errors, and import flow
 - [x] Round-2 screenshots and QA notes at `docs/review/native-polish-round2/`
 
+## Native polish round 3 (UX & settings consolidation)
+
+The round-3 user brief reversed the standalone Settings window and pushed the
+visual language to the dark System Settings reference:
+
+- [x] Settings consolidated back into the main window: the sidebar gains a "Settings" section, the `Settings` scene is removed, and Cmd+,/gear/app menu all navigate the main sidebar
+- [x] Active local model auto-loads at launch and when switched, removing the manual "Load" step
+- [x] Every Overview row carries a chevron link button to the pane/screen where the value is configured; the Import page's Auto-transcribe row is a live toggle
+- [x] Sidebar darkened relative to content (scrim over the sidebar material); icon tiles are black rounded squares with a thin border and white glyphs
+- [x] Menu bar dropdown gains an Active Model submenu (downloaded models, checkmark on current, Manage Models…)
+- [x] Sidebar search matches individual settings (`SettingsPane.searchResults(matching:)`) and shows the pane icon plus the underlying setting, like System Settings
+- [x] Toolbar mic icon replaced (`mic.fill`/`stop.fill`, no ring)
+- [x] Round-3 screenshots and QA notes at `docs/review/native-polish-round3/`
+
 ## Final QA status matrix
 
 | Feature | Status | Notes |
@@ -68,7 +82,7 @@ Settings/Finder/Mail references and drove these changes:
 | Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
 | OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |
 | NVIDIA Parakeet local provider | Partial | A real local FluidAudio/Core ML provider is integrated for Apple Silicon, with model management and transcription wiring. It should be treated as beta until a full v2/v3 manual smoke transcription is completed in this branch. |
-| Settings window | Done | Settings open in a standalone native Settings window (Cmd+, / gear) with a System Settings-style searchable category sidebar. |
+| Settings in main window | Done | Settings panes live in the main window sidebar (System Settings style). Cmd+,, the gear button, and the app menu select them; sidebar search matches individual settings. |
 
 ## Core interaction
 
@@ -119,12 +133,11 @@ Settings/Finder/Mail references and drove these changes:
 
 ## App surfaces
 
-- [x] Native standalone Settings window
 - [x] Main window shell
 - [x] History screen with search, filters, real persisted rows, progress, and detail pane
 - [x] Import Audio screen as a single-column grouped utility: drop zone, supported-format rows, and recent persisted imports
 - [x] Models screen with WhisperKit, Parakeet, and Cloud Models sections
-- [x] Settings window with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy sections
+- [x] Settings section in the main sidebar with General, Recording, Keyboard Shortcut, Overlay, Models, Storage, Cloud Providers, and Privacy panes
 
 ## UI completion
 

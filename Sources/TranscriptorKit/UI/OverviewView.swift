@@ -10,25 +10,25 @@ public struct OverviewView: View {
     public var body: some View {
         Form {
             Section {
-                LabeledContent("Voice input shortcut") {
+                linkedRow("Voice input shortcut", destination: .settings(.keyboardShortcut)) {
                     Text(appState.recordingState.hotkey.displayString)
                         .font(.system(.body, design: .monospaced))
                 }
 
-                LabeledContent("Input mode") {
+                linkedRow("Input mode", destination: .settings(.recording)) {
                     Text(appState.recordingState.mode.title)
                 }
 
-                LabeledContent("Current state") {
+                linkedRow("Current state", destination: .settings(.recording)) {
                     Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
-                LabeledContent("Overlay") {
+                linkedRow("Overlay", destination: .settings(.overlay)) {
                     Text(appState.overlayState.isEnabled ? "Enabled" : "Disabled")
                         .foregroundStyle(.secondary)
                 }
 
-                LabeledContent("Insert into active app") {
+                linkedRow("Insert into active app", destination: .settings(.recording)) {
                     Text(insertionStatusText)
                         .foregroundStyle(.secondary)
                 }
@@ -37,19 +37,19 @@ public struct OverviewView: View {
             }
 
             Section {
-                LabeledContent("Preferred provider") {
+                linkedRow("Preferred provider", destination: .settings(.models)) {
                     Text(preferredProviderTitle)
                 }
 
-                LabeledContent("Selected local model") {
+                linkedRow("Selected local model", destination: .settings(.models)) {
                     Text(appState.selectedModel?.name ?? "None selected")
                 }
 
-                LabeledContent("Ready local models") {
+                linkedRow("Ready local models", destination: .screen(.models)) {
                     Text("\(appState.readyLocalModelIDs.count)")
                 }
 
-                LabeledContent("Auto-transcribe") {
+                linkedRow("Auto-transcribe", destination: .settings(.models)) {
                     Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
                 }
             } header: {
@@ -57,15 +57,15 @@ public struct OverviewView: View {
             }
 
             Section {
-                LabeledContent("Managed usage") {
+                linkedRow("Managed usage", destination: .settings(.storage)) {
                     Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
                 }
 
-                LabeledContent("History limit") {
+                linkedRow("History limit", destination: .settings(.storage)) {
                     Text("\(appState.storageSettings.capMegabytes) MB")
                 }
 
-                LabeledContent("History items") {
+                linkedRow("History items", destination: .screen(.history)) {
                     Text("\(appState.historyStore.entries.count)")
                 }
 
@@ -103,6 +103,10 @@ public struct OverviewView: View {
                         }
                         .padding(.vertical, 2)
                     }
+
+                    Button("Open History") {
+                        appState.sidebarSelection = .screen(.history)
+                    }
                 }
             } header: {
                 Text("Recent History")
@@ -110,6 +114,41 @@ public struct OverviewView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Overview")
+    }
+
+    /// A status row whose trailing button jumps to the place where the value
+    /// can actually be changed.
+    private func linkedRow(
+        _ title: String,
+        destination: SidebarItem,
+        @ViewBuilder value: () -> some View
+    ) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                value()
+
+                Button {
+                    appState.sidebarSelection = destination
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(.quaternary.opacity(0.7), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help(helpText(for: destination))
+            }
+        }
+    }
+
+    private func helpText(for destination: SidebarItem) -> String {
+        switch destination {
+        case let .screen(screen):
+            "Open \(screen.title)"
+        case let .settings(pane):
+            "Change in Settings › \(pane.title)"
+        }
     }
 
     private func megabyteString(for bytes: Int64) -> String {
