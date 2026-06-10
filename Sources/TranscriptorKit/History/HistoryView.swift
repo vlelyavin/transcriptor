@@ -4,6 +4,7 @@ public struct HistoryView: View {
     @State private var searchText = ""
     @State private var selectedFilter: HistoryFilter = .all
     @State private var selectedEntryID: HistoryEntry.ID?
+    @State private var isCompactDetailVisible = false
     @State private var entryPendingDeletion: HistoryEntry?
     @State private var showDeleteAllConfirmation = false
     @Bindable private var appState: AppState
@@ -19,7 +20,7 @@ public struct HistoryView: View {
 
             Group {
                 if compact {
-                    if selectedEntry != nil {
+                    if isCompactDetailVisible, selectedEntry != nil {
                         detailPane(isCompact: true)
                     } else {
                         historyListPane(isCompact: true)
@@ -80,6 +81,9 @@ public struct HistoryView: View {
                     List(filteredEntries, selection: isCompact ? .constant(nil) : $selectedEntryID) { entry in
                         Button {
                             selectedEntryID = entry.id
+                            if isCompact {
+                                isCompactDetailVisible = true
+                            }
                         } label: {
                             historyRow(entry)
                                 .contentShape(Rectangle())
@@ -121,7 +125,7 @@ public struct HistoryView: View {
                             }
                         }
                     }
-                    .listStyle(.inset(alternatesRowBackgrounds: true))
+                    .listStyle(.inset(alternatesRowBackgrounds: false))
                 }
             }
             .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
@@ -182,7 +186,7 @@ public struct HistoryView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         if isCompact {
                             Button {
-                                selectedEntryID = nil
+                                isCompactDetailVisible = false
                             } label: {
                                 Label("History", systemImage: "chevron.backward")
                             }
