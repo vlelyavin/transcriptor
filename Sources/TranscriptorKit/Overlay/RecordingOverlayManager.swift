@@ -78,7 +78,7 @@ public final class RecordingOverlayManager {
             )
         )
         dimmingPanel.setFrame(screen.frame, display: false)
-        panel.setContentSize(NSSize(width: 430, height: 286))
+        panel.setContentSize(NSSize(width: 340, height: 210))
         position(panel: panel, screen: screen, using: overlayState.position)
         showPanel(dimmingPanel)
         showPanel(panel)
@@ -86,6 +86,8 @@ public final class RecordingOverlayManager {
 
         if case .error = supplementalPhase {
             scheduleHide(after: .seconds(2))
+        } else if case .setupRequired = supplementalPhase {
+            scheduleHide(after: .seconds(3.5))
         } else if case .saved = supplementalPhase {
             scheduleHide(after: .seconds(1.2))
         } else if voiceInputController.state == .failed {
@@ -117,7 +119,7 @@ public final class RecordingOverlayManager {
         }
 
         let panel = FloatingOverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 430, height: 286),
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 210),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false

@@ -186,7 +186,7 @@ final class MenuBarStatusItemController: NSObject {
                 return .transcribing
             case .saved:
                 return .idle
-            case .error:
+            case .error, .setupRequired:
                 return .failed
             }
         }

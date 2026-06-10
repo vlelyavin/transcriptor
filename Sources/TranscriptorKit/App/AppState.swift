@@ -443,8 +443,8 @@ public final class AppState {
                 pendingInsertionEntryID = nil
                 transcriptInsertionService.clearCapturedTarget()
                 refreshTranscriptInsertionDebugSnapshot()
-                setOverlaySupplementalPhase(.error(error.localizedDescription))
-                scheduleOverlaySupplementalClear(after: .seconds(2))
+                setOverlaySupplementalPhase(.setupRequired(error.localizedDescription))
+                scheduleOverlaySupplementalClear(after: .seconds(3.5))
             }
         }
     }
