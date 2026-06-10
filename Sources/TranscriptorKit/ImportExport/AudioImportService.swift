@@ -3,18 +3,18 @@ import Foundation
 
 public enum AudioImportError: Error, LocalizedError {
     case unsupportedFileType(String)
-    case webMNotSupported
     case undecodableAudio
+    case conversionFailed(String)
     case copyFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case let .unsupportedFileType(fileExtension):
             "Transcriptor only accepts \(SupportedImportFormat.allCases.map(\.fileExtensionLabel).joined(separator: ", ")) files. '\(fileExtension)' is not supported."
-        case .webMNotSupported:
-            "WebM import is blocked because this build does not yet include a reliable decoder or transcoder for WebM audio."
         case .undecodableAudio:
             "Transcriptor could not decode this audio file with AVFoundation."
+        case let .conversionFailed(message):
+            "Transcriptor could not convert this audio file to WAV: \(message)"
         case let .copyFailed(message):
             "Transcriptor could not copy the imported file: \(message)"
         }
@@ -64,23 +64,34 @@ public struct AudioImportService {
 
         let fileSizeBytes = (try? fileSize(for: originalFileURL)) ?? 0
 
-        if format == .webm {
-            return ImportedAudioPreparationResult(
-                displayName: sourceURL.lastPathComponent,
-                originalFileURL: originalFileURL,
-                workingFileURL: nil,
-                durationSeconds: 0,
-                fileSizeBytes: fileSizeBytes,
-                status: .failed,
-                errorMessage: AudioImportError.webMNotSupported.localizedDescription
-            )
+        let workingFileURL: URL
+        if format.requiresWAVConversion {
+            do {
+                workingFileURL = try convertToWAV(
+                    sourceURL: originalFileURL,
+                    directory: layout.importWorkingDirectory()
+                )
+            } catch {
+                return ImportedAudioPreparationResult(
+                    displayName: sourceURL.lastPathComponent,
+                    originalFileURL: originalFileURL,
+                    workingFileURL: nil,
+                    durationSeconds: 0,
+                    fileSizeBytes: fileSizeBytes,
+                    status: .failed,
+                    errorMessage: (error as? AudioImportError)?.localizedDescription
+                        ?? AudioImportError.conversionFailed(error.localizedDescription).localizedDescription
+                )
+            }
+        } else {
+            workingFileURL = originalFileURL
         }
 
-        let durationSeconds = try decodableDuration(for: originalFileURL)
+        let durationSeconds = try decodableDuration(for: workingFileURL)
         return ImportedAudioPreparationResult(
             displayName: sourceURL.lastPathComponent,
             originalFileURL: originalFileURL,
-            workingFileURL: originalFileURL,
+            workingFileURL: workingFileURL,
             durationSeconds: durationSeconds,
             fileSizeBytes: fileSizeBytes,
             status: .pending,
@@ -124,5 +135,77 @@ public struct AudioImportService {
         } catch {
             throw AudioImportError.undecodableAudio
         }
+    }
+
+    /// Decodes any CoreAudio-readable file (including Ogg Opus/Vorbis voice
+    /// messages) and writes a 16-bit PCM WAV next to the original so all
+    /// transcription providers consume one well-supported format.
+    private func convertToWAV(sourceURL: URL, directory: URL) throws -> URL {
+        let inputFile: AVAudioFile
+        do {
+            inputFile = try AVAudioFile(forReading: sourceURL)
+        } catch {
+            throw AudioImportError.undecodableAudio
+        }
+
+        let processingFormat = inputFile.processingFormat
+        let outputURL = directory.appendingPathComponent(
+            sourceURL.deletingPathExtension().lastPathComponent + ".wav",
+            isDirectory: false
+        )
+
+        if fileManager.fileExists(atPath: outputURL.path) {
+            try? fileManager.removeItem(at: outputURL)
+        }
+
+        let outputSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: processingFormat.sampleRate,
+            AVNumberOfChannelsKey: processingFormat.channelCount,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ]
+
+        do {
+            let outputFile = try AVAudioFile(forWriting: outputURL, settings: outputSettings)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: 65_536) else {
+                throw AudioImportError.conversionFailed("Could not allocate a conversion buffer.")
+            }
+
+            // CoreAudio reports an estimated length for Ogg inputs and reading
+            // at the actual end of stream throws instead of returning an empty
+            // buffer, so bound the loop explicitly and treat a tail-read error
+            // after successful reads as EOF.
+            var framesWritten: AVAudioFramePosition = 0
+            while inputFile.framePosition < inputFile.length {
+                do {
+                    try inputFile.read(into: buffer)
+                } catch {
+                    if framesWritten > 0 {
+                        break
+                    }
+                    throw error
+                }
+                if buffer.frameLength == 0 {
+                    break
+                }
+                try outputFile.write(from: buffer)
+                framesWritten += AVAudioFramePosition(buffer.frameLength)
+            }
+
+            guard framesWritten > 0 else {
+                throw AudioImportError.conversionFailed("The file contains no decodable audio.")
+            }
+        } catch let error as AudioImportError {
+            try? fileManager.removeItem(at: outputURL)
+            throw error
+        } catch {
+            try? fileManager.removeItem(at: outputURL)
+            throw AudioImportError.conversionFailed(error.localizedDescription)
+        }
+
+        return outputURL
     }
 }

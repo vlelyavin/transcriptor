@@ -275,11 +275,11 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         ),
         HistoryEntry(
             sourceType: .importedAudio,
-            displayName: "meeting-note.webm",
+            displayName: "meeting-note.ogg",
             originalFilePath: nil,
             workingFilePath: nil,
             transcriptText: "",
-            transcriptPreview: "Import failed because WebM conversion is not available yet in this build.",
+            transcriptPreview: "Telegram voice message converted to WAV and waiting for transcription.",
             createdAt: .now.addingTimeInterval(-172_800),
             durationSeconds: 0,
             characterCount: 0,
@@ -289,8 +289,8 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
             providerName: nil,
             language: nil,
             fileSizeBytes: 1_800_000,
-            transcriptionStatus: .failed,
-            errorMessage: "WebM import is blocked because this build does not yet include a reliable decoder/transcoder for WebM audio."
+            transcriptionStatus: .pending,
+            errorMessage: nil
         ),
     ]
 }

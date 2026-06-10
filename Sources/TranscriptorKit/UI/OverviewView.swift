@@ -8,7 +8,7 @@ public struct OverviewView: View {
     }
 
     public var body: some View {
-        List {
+        Form {
             Section {
                 LabeledContent("Voice input shortcut") {
                     Text(appState.recordingState.hotkey.displayString)
@@ -108,7 +108,7 @@ public struct OverviewView: View {
                 Text("Recent History")
             }
         }
-        .listStyle(.inset(alternatesRowBackgrounds: false))
+        .formStyle(.grouped)
         .navigationTitle("Overview")
     }
 

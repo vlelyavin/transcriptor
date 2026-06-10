@@ -1,6 +1,8 @@
 import SwiftUI
 
-public struct SettingsView: View {
+/// The standalone Settings window (Cmd+, / gear button), styled after System
+/// Settings: searchable category sidebar with colored icons + grouped detail.
+public struct SettingsWindowView: View {
     @State private var searchText = ""
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
@@ -11,119 +13,99 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        GeometryReader { proxy in
-            let compact = proxy.size.width < 700
+        NavigationSplitView {
+            VStack(spacing: 0) {
+                searchField
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
 
-            Group {
-                if compact {
-                    compactSettingsLayout
-                } else {
-                    wideSettingsLayout
-                }
-            }
-            .background(Color(nsColor: .underPageBackgroundColor))
-            .onAppear {
-                if !compact, appState.selectedSettingsPane == nil {
-                    appState.selectedSettingsPane = .general
-                }
-            }
-        }
-        .onChange(of: filteredPanes) { _, panes in
-            guard let selectedPane = appState.selectedSettingsPane else {
-                return
-            }
-
-            if panes.contains(selectedPane) {
-                return
-            }
-
-            appState.selectedSettingsPane = panes.first
-        }
-        .navigationTitle("Settings")
-    }
-
-    private var compactSettingsLayout: some View {
-        Group {
-            if let pane = appState.selectedSettingsPane, filteredPanes.contains(pane) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Button {
-                            appState.selectedSettingsPane = nil
-                        } label: {
-                            Label("All Settings", systemImage: "chevron.backward")
+                List(selection: $appState.selectedSettingsPane) {
+                    ForEach(filteredPanes) { pane in
+                        Label {
+                            Text(pane.title)
+                        } icon: {
+                            SidebarIconView(systemImage: pane.sidebarFillSymbol, tint: pane.sidebarTint)
                         }
-                        .buttonStyle(.borderless)
-
-                        Spacer()
+                        .tag(Optional(pane))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
 
-                    currentPaneView(for: pane)
-                }
-            } else if filteredPanes.isEmpty {
-                ContentUnavailableView(
-                    "No Matching Settings",
-                    systemImage: "magnifyingglass",
-                    description: Text("Try a different search term.")
-                )
-            } else {
-                List(filteredPanes) { pane in
-                    Button {
-                        appState.selectedSettingsPane = pane
-                    } label: {
-                        HStack {
-                            Label(pane.title, systemImage: pane.systemImage)
-
-                            Spacer()
-
-                            Image(systemName: "chevron.forward")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .contentShape(Rectangle())
+                    if filteredPanes.isEmpty {
+                        Text("No results")
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
                 }
-                .listStyle(.inset(alternatesRowBackgrounds: false))
-                .searchable(text: $searchText, placement: .automatic, prompt: "Search settings")
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
             }
-        }
-    }
-
-    private var wideSettingsLayout: some View {
-        HStack(spacing: 0) {
-            List(filteredPanes, selection: $appState.selectedSettingsPane) { pane in
-                Label(pane.title, systemImage: pane.systemImage)
-                    .tag(Optional(pane))
+            .background {
+                NativeSidebarMaterial()
+                    .ignoresSafeArea()
             }
-            .listStyle(.sidebar)
-            .searchable(text: $searchText, placement: .automatic, prompt: "Search settings")
-            .frame(width: 210)
-
-            Divider()
-
+            .navigationSplitViewColumnWidth(min: 200, ideal: 215, max: 230)
+        } detail: {
             Group {
                 if let pane = resolvedPane {
                     currentPaneView(for: pane)
+                        .navigationTitle(pane.title)
                 } else {
                     ContentUnavailableView(
                         "No Matching Settings",
                         systemImage: "magnifyingglass",
                         description: Text("Try a different search term.")
                     )
+                    .navigationTitle("Settings")
                 }
             }
-            .frame(maxWidth: .infinity)
-            .background(Color(nsColor: .underPageBackgroundColor))
         }
+        .frame(minWidth: 715, idealWidth: 760, minHeight: 470, idealHeight: 560)
+        .onChange(of: filteredPanes) { _, panes in
+            guard let selectedPane = appState.selectedSettingsPane else {
+                return
+            }
+
+            if !panes.contains(selectedPane) {
+                appState.selectedSettingsPane = panes.first
+            }
+        }
+        .onAppear {
+            if appState.selectedSettingsPane == nil {
+                appState.selectedSettingsPane = .general
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
+            TextField("Search", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     @ViewBuilder
     private func currentPaneView(for pane: SettingsPane) -> some View {
         switch pane {
         case .general:
-            settingsForm(pane: .general) {
+            settingsForm {
                 Section("Application") {
                     Toggle(
                         "Show Transcriptor in menu bar",
@@ -159,7 +141,7 @@ public struct SettingsView: View {
                 }
             }
         case .recording:
-            settingsForm(pane: .recording) {
+            settingsForm {
                 Section("Input Mode") {
                     Picker("Voice Input Mode", selection: $appState.recordingState.mode) {
                         ForEach(RecordingMode.allCases) { mode in
@@ -252,7 +234,7 @@ public struct SettingsView: View {
                 }
             }
         case .keyboardShortcut:
-            settingsForm(pane: .keyboardShortcut) {
+            settingsForm {
                 Section("Global Voice Input") {
                     LabeledContent("Current Shortcut") {
                         Text(appState.recordingState.hotkey.displayString)
@@ -277,15 +259,6 @@ public struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
 
-                    LabeledContent("Accessibility Permission") {
-                        Text("Not Required")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text("Transcriptor uses Carbon hotkey registration, so it normally does not need Accessibility permission just to start or stop recording.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
                     Button("Restore Recommended Shortcut") {
                         appState.resetHotkeyToRecommendedDefault()
                     }
@@ -293,23 +266,23 @@ public struct SettingsView: View {
 
                 Section("Menu Shortcuts") {
                     LabeledContent("Import Audio") {
-                        Text("Cmd + Shift + I")
+                        Text("⌘⇧I")
                             .font(.system(.body, design: .monospaced))
                     }
 
                     LabeledContent("Search History") {
-                        Text("Cmd + F")
+                        Text("⌘F")
                             .font(.system(.body, design: .monospaced))
                     }
 
                     LabeledContent("Settings") {
-                        Text("Cmd + ,")
+                        Text("⌘,")
                             .font(.system(.body, design: .monospaced))
                     }
                 }
             }
         case .overlay:
-            settingsForm(pane: .overlay) {
+            settingsForm {
                 Section("Appearance") {
                     Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
                     Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
@@ -331,7 +304,7 @@ public struct SettingsView: View {
                 }
             }
         case .models:
-            settingsForm(pane: .models) {
+            settingsForm {
                 Section("Preferred Transcription Provider") {
                     providerSelectionRow(
                         title: "WhisperKit Local",
@@ -419,7 +392,7 @@ public struct SettingsView: View {
                 }
             }
         case .storage:
-            settingsForm(pane: .storage) {
+            settingsForm {
                 Section("Retention") {
                     Stepper(value: $appState.storageSettings.capMegabytes, in: 256...10_240, step: 256) {
                         Text("History storage limit: \(appState.storageSettings.capMegabytes) MB")
@@ -461,27 +434,25 @@ public struct SettingsView: View {
                 }
             }
         case .cloudProviders:
-            settingsForm(pane: .cloudProviders) {
-                Section("Providers") {
-                    if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-                        providerConfigurationDisclosure(
-                            provider: provider,
-                            isEnabled: $appState.providerSettings.openAIEnabled,
-                            modelID: $appState.providerSettings.openAIModelID,
-                            privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                            apiKeyInput: $openAIAPIKeyInput
-                        )
-                    }
+            settingsForm {
+                if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
+                    providerConfigurationSection(
+                        provider: provider,
+                        isEnabled: $appState.providerSettings.openAIEnabled,
+                        modelID: $appState.providerSettings.openAIModelID,
+                        privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
+                        apiKeyInput: $openAIAPIKeyInput
+                    )
+                }
 
-                    if let provider = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-                        providerConfigurationDisclosure(
-                            provider: provider,
-                            isEnabled: $appState.providerSettings.groqEnabled,
-                            modelID: $appState.providerSettings.groqModelID,
-                            privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
-                            apiKeyInput: $groqAPIKeyInput
-                        )
-                    }
+                if let provider = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
+                    providerConfigurationSection(
+                        provider: provider,
+                        isEnabled: $appState.providerSettings.groqEnabled,
+                        modelID: $appState.providerSettings.groqModelID,
+                        privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
+                        apiKeyInput: $groqAPIKeyInput
+                    )
                 }
 
                 Section {
@@ -491,42 +462,25 @@ public struct SettingsView: View {
                 }
             }
         case .privacy:
-            settingsForm(pane: .privacy) {
+            settingsForm {
                 Section("Current Behavior") {
                     Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
                     Label("Parakeet Local uses FluidAudio Core ML bundles downloaded from Hugging Face and keeps transcription on this Mac.", systemImage: "waveform.badge.mic")
                     Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
                     Label("OpenAI and Groq only send audio after you enable the provider, store an API key in Keychain, and acknowledge the privacy warning.", systemImage: "key")
                     Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
-                    Label("WebM import is still blocked until a reliable decoder/transcoder is integrated.", systemImage: "exclamationmark.triangle")
                 }
             }
         }
     }
 
     private func settingsForm<Content: View>(
-        pane: SettingsPane,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(pane.title)
-                    .font(.title2.weight(.semibold))
-
-                Text(pane.subtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Form {
-                content()
-            }
-            .formStyle(.grouped)
+        Form {
+            content()
         }
+        .formStyle(.grouped)
     }
 
     private var filteredPanes: [SettingsPane] {
@@ -549,7 +503,7 @@ public struct SettingsView: View {
         return filteredPanes.first
     }
 
-    private func providerConfigurationDisclosure(
+    private func providerConfigurationSection(
         provider: ProviderDescriptor,
         isEnabled: Binding<Bool>,
         modelID: Binding<String>,
@@ -558,87 +512,74 @@ public struct SettingsView: View {
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
+        let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
+        let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        return DisclosureGroup {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Enable \(provider.name)", isOn: isEnabled)
+        return Section {
+            Toggle("Enable \(provider.name)", isOn: isEnabled)
 
-                LabeledContent("Model ID") {
-                    TextField("Model ID", text: modelID)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 240)
-                }
-
-                Toggle("I understand audio is sent to \(provider.name)", isOn: privacyConsent)
-
-                HStack(spacing: 10) {
-                    SecureField("API key", text: apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-
-                    Button("Save") {
-                        appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
-                        apiKeyInput.wrappedValue = ""
-                    }
-                    .disabled(apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button("Remove", role: .destructive) {
-                        appState.removeAPIKey(for: provider.id)
-                    }
-                    .disabled(!appState.hasStoredAPIKey(for: provider.id))
-
-                    Button("Test") {
-                        appState.testAPIKey(for: provider.id)
-                    }
-                    .disabled(!appState.hasStoredAPIKey(for: provider.id))
-                }
-
-                if appState.hasStoredAPIKey(for: provider.id) {
-                    Label("API key stored in Keychain", systemImage: "checkmark.shield")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label("No API key stored", systemImage: "key.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text(runtimeState.message)
-                    .font(.caption)
-                    .foregroundStyle(providerRuntimeColor(runtimeState))
-
-                if let validationMessage = validationState.message {
-                    Text(validationMessage)
-                        .font(.caption)
-                        .foregroundStyle(validationColor(validationState))
-                }
+            LabeledContent("Model ID") {
+                TextField("Model ID", text: modelID)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 230)
             }
-            .padding(.top, 8)
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(provider.name)
-                    Text(provider.summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+            Toggle("I understand audio is sent to \(provider.name)", isOn: privacyConsent)
+
+            LabeledContent("API Key") {
+                SecureField(hasStoredKey ? "Stored in Keychain — enter to replace" : "Enter API key", text: apiKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 230)
+            }
+
+            HStack(spacing: 8) {
+                Button("Save") {
+                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                    apiKeyInput.wrappedValue = ""
                 }
+                .disabled(keyInputEmpty)
+
+                Button("Remove", role: .destructive) {
+                    appState.removeAPIKey(for: provider.id)
+                }
+                .disabled(!hasStoredKey)
+
+                Button("Test") {
+                    appState.testAPIKey(for: provider.id)
+                }
+                .disabled(!hasStoredKey)
 
                 Spacer()
 
-                Text(runtimeState.title)
-                    .font(.caption)
-                    .foregroundStyle(providerRuntimeStatusStyle(runtimeState))
+                Label(
+                    hasStoredKey ? "Key stored in Keychain" : "No key stored",
+                    systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-        }
-    }
 
-    private func providerRuntimeStatusStyle(_ state: ProviderRuntimeState) -> AnyShapeStyle {
-        switch state {
-        case .ready, .disabled:
-            AnyShapeStyle(.secondary)
-        case .missingAPIKey, .privacyConsentRequired:
-            AnyShapeStyle(Color.orange)
-        case .unavailable:
-            AnyShapeStyle(Color.red)
+            if !hasStoredKey, keyInputEmpty {
+                Text("Enter an API key above to enable Save. Test and Remove become available once a key is stored in Keychain.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(runtimeState.message)
+                .font(.caption)
+                .foregroundStyle(providerRuntimeColor(runtimeState))
+
+            if let validationMessage = validationState.message {
+                Text(validationMessage)
+                    .font(.caption)
+                    .foregroundStyle(validationColor(validationState))
+            }
+        } header: {
+            Text(provider.name)
+        } footer: {
+            Text(provider.summary)
         }
     }
 
@@ -664,6 +605,7 @@ public struct SettingsView: View {
 
                 Spacer()
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
@@ -717,10 +659,10 @@ public struct SettingsView: View {
 }
 
 #if DEBUG
-struct SettingsView_Previews: PreviewProvider {
+struct SettingsWindowView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingsView(appState: .preview)
-            .frame(width: 1080, height: 720)
+        SettingsWindowView(appState: .preview)
+            .frame(width: 760, height: 560)
     }
 }
 #endif

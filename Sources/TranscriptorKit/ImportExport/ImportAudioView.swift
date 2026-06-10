@@ -28,13 +28,12 @@ public struct ImportAudioView: View {
 
             Section("Import Details") {
                 LabeledContent("Supported formats") {
-                    Text(".mp3, .m4a, .wav")
+                    Text(".mp3, .m4a, .wav, .ogg, .oga, .opus")
                 }
 
-                LabeledContent("Not supported") {
-                    Text(".webm — no decoder in this build")
-                        .foregroundStyle(.secondary)
-                }
+                Text("Telegram voice messages export as Ogg Opus audio and are converted to WAV automatically on import.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 LabeledContent("Storage") {
                     Text("Copied into Transcriptor-managed storage")
@@ -106,12 +105,9 @@ public struct ImportAudioView: View {
     }
 
     private var supportedImportContentTypes: [UTType] {
-        [
-            UTType(filenameExtension: "mp3") ?? .audio,
-            UTType(filenameExtension: "m4a") ?? .audio,
-            UTType(filenameExtension: "wav") ?? .audio,
-            UTType(filenameExtension: "webm") ?? .data
-        ]
+        SupportedImportFormat.allCases.map { format in
+            UTType(filenameExtension: format.rawValue) ?? .audio
+        }
     }
 
     private func recentImportRow(item: RecentImportItem) -> some View {
@@ -141,7 +137,7 @@ public struct ImportAudioView: View {
 
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
         guard providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
-            appState.importFeedbackMessage = "Drop .mp3, .m4a, .wav, or .webm files from Finder."
+            appState.importFeedbackMessage = "Drop .mp3, .m4a, .wav, .ogg, .oga, or .opus files from Finder."
             return false
         }
 

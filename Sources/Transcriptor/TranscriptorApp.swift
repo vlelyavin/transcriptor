@@ -39,21 +39,21 @@ struct TranscriptorApp: App {
                 appState.voiceInputController.startFromToolbar()
             }
         }
+
+        if environment["TRANSCRIPTOR_QA_OPEN_SETTINGS"] == "1" {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                appState.openSettings(pane: nil)
+            }
+        }
     }
 
     var body: some Scene {
         WindowGroup {
             MainWindowView(appState: appState)
         }
+        .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings…") {
-                    appState.openSettings()
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                .keyboardShortcut(",", modifiers: [.command])
-            }
-
             CommandMenu("Transcriptor") {
                 Button("Import Audio") {
                     appState.selectedScreen = .importAudio
@@ -83,5 +83,10 @@ struct TranscriptorApp: App {
                 Divider()
             }
         }
+
+        Settings {
+            SettingsWindowView(appState: appState)
+        }
+        .windowResizability(.contentMinSize)
     }
 }
