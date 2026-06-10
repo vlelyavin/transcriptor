@@ -8,228 +8,202 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Models")
-                        .font(.largeTitle.weight(.semibold))
+        Form {
+            Section("Current Selection") {
+                LabeledContent("Preferred provider") {
+                    Text(preferredProviderTitle)
+                }
 
-                    Text("Choose the local runtime you want ready on this Mac, then keep cloud providers honest about privacy and setup.")
+                LabeledContent("Selected local model") {
+                    Text(appState.selectedModel?.name ?? "None selected")
+                }
+
+                LabeledContent("Ready local models") {
+                    Text("\(appState.readyLocalModelIDs.count)")
+                }
+
+                if let whisperStatus = appState.whisperModelManager.statusMessage {
+                    Text(whisperStatus)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                SectionCard(
-                    title: "Current Selection",
-                    subtitle: "Downloaded local models stay in Application Support."
-                ) {
-                    LabeledContent("Preferred provider") {
-                        Text(preferredProviderTitle)
-                    }
-
-                    LabeledContent("Selected local model") {
-                        Text(appState.selectedModel?.name ?? "None selected")
-                    }
-
-                    LabeledContent("Ready local models") {
-                        Text("\(appState.readyLocalModelIDs.count)")
-                    }
-
-                    if let whisperStatus = appState.whisperModelManager.statusMessage {
-                        Text(whisperStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let parakeetStatus = appState.parakeetModelManager.statusMessage {
-                        Text(parakeetStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                ForEach(appState.modelCatalog.sections) { section in
-                    SectionCard(
-                        title: section.title,
-                        subtitle: section.description
-                    ) {
-                        VStack(spacing: 0) {
-                            ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
-                                localModelRow(model)
-
-                                if index < section.models.count - 1 {
-                                    Divider()
-                                }
-                            }
-                        }
-                    }
-                }
-
-                SectionCard(
-                    title: "Cloud Models",
-                    subtitle: "Cloud transcription is optional and only runs after explicit setup."
-                ) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(appState.providerCatalog.providers.enumerated()), id: \.element.id) { index, provider in
-                            providerRow(provider)
-
-                            if index < appState.providerCatalog.providers.count - 1 {
-                                Divider()
-                            }
-                        }
-                    }
+                if let parakeetStatus = appState.parakeetModelManager.statusMessage {
+                    Text(parakeetStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(24)
+
+            ForEach(appState.modelCatalog.sections) { section in
+                Section {
+                    ForEach(section.models) { model in
+                        localModelRow(model)
+                    }
+                } header: {
+                    Text(section.title)
+                } footer: {
+                    Text(section.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                ForEach(appState.providerCatalog.providers) { provider in
+                    providerRow(provider)
+                }
+            } header: {
+                Text("Cloud Models")
+            } footer: {
+                Text("Cloud transcription is optional and only runs after explicit setup.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .formStyle(.grouped)
         .navigationTitle("Models")
     }
 
     private func localModelRow(_ model: ModelDescriptor) -> some View {
         let inventoryItem = inventoryItem(for: model)
+        let isSelected = appState.transcriptionPreferences.selectedModelID == model.id
+            && appState.transcriptionPreferences.preferredProviderID == model.localProviderID
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(model.name)
-                            .font(.headline)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.name + (model.accentBadgeLabel.map { " (\($0))" } ?? ""))
 
-                        if let accentBadgeLabel = model.accentBadgeLabel {
-                            Text(accentBadgeLabel)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.quaternary.opacity(0.8), in: Capsule())
-                        }
-                    }
-
-                    Text("\(model.engineLabel) • \(model.languageScopeLabel)")
+                    Text("\(model.downloadSizeDescription) • \(model.engineLabel) • \(model.languageScopeLabel)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                stateBadge(for: inventoryItem.state)
+                stateText(for: inventoryItem.state)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .help("Selected as the preferred local model")
+                } else {
+                    Button("Select") {
+                        appState.selectLocalModel(model.id)
+                    }
+                    .controlSize(.small)
+                    .disabled(!isSelectable(inventoryItem.state))
+                }
+
+                actionButton(for: model, state: inventoryItem.state)
+                    .controlSize(.small)
+
+                if canDelete(inventoryItem.state) {
+                    Button {
+                        delete(model)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .controlSize(.small)
+                    .help("Delete downloaded model files")
+                }
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                GridRow {
-                    statLabel(title: "Size", value: model.downloadSizeDescription)
-                    statLabel(title: "Speed", value: model.speedDescription)
-                }
-                GridRow {
-                    statLabel(title: "Accuracy", value: model.accuracyDescription)
-                    statLabel(title: "Use", value: model.intendedUseLabel)
-                }
+            if let progress = inventoryItem.state.progressValue {
+                ProgressView(value: progress)
+                    .controlSize(.small)
             }
-
-            Text(model.notes)
-                .font(.callout)
-                .foregroundStyle(.secondary)
 
             if let detailMessage = inventoryItem.state.detailMessage {
                 Text(detailMessage)
                     .font(.caption)
-                    .foregroundStyle(inventoryItem.state == .unavailable(message: detailMessage) ? .red : .orange)
-            } else {
-                Text(model.availability.message)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(stateMessageStyle(for: inventoryItem.state))
             }
 
-            if let progress = inventoryItem.state.progressValue {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView(value: progress)
-                    Text(String(format: "%.0f%% downloaded", progress * 100))
+            DisclosureGroup("Details") {
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent("Speed") { Text(model.speedDescription) }
+                    LabeledContent("Accuracy") { Text(model.accuracyDescription) }
+                    LabeledContent("Best for") { Text(model.intendedUseLabel) }
+
+                    Text(model.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(model.availability.message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .font(.callout)
+                .padding(.top, 4)
             }
-
-            HStack(spacing: 10) {
-                Button(appState.transcriptionPreferences.selectedModelID == model.id ? "Selected" : "Set Preferred") {
-                    appState.selectLocalModel(model.id)
-                }
-                .disabled(appState.transcriptionPreferences.selectedModelID == model.id && appState.transcriptionPreferences.preferredProviderID == model.localProviderID)
-
-                if canDelete(inventoryItem.state) {
-                    Button("Delete", role: .destructive) {
-                        delete(model)
-                    }
-                }
-
-                Spacer()
-
-                actionButton(for: model, state: inventoryItem.state)
-            }
+            .font(.caption)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 2)
     }
 
     private func providerRow(_ provider: ProviderDescriptor) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(provider.name)
-                        .font(.headline)
 
-                    Text(provider.summary)
-                        .font(.callout)
+                    Text(provider.modelLabel)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
                 Text(runtimeState.title)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(providerStateColor(runtimeState).opacity(0.15), in: Capsule())
-                    .foregroundStyle(providerStateColor(runtimeState))
-            }
+                    .font(.caption)
+                    .foregroundStyle(providerStateStyle(runtimeState))
 
-            LabeledContent("Model") {
-                Text(provider.modelLabel)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            LabeledContent("Privacy") {
-                Text(provider.privacySummary)
-                    .foregroundStyle(.secondary)
+                if runtimeState.isSelectable {
+                    if appState.transcriptionPreferences.preferredProviderID == provider.id {
+                        Image(systemName: "checkmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .help("Selected as the preferred provider")
+                    } else {
+                        Button("Select") {
+                            appState.transcriptionPreferences.preferredProviderID = provider.id
+                        }
+                        .controlSize(.small)
+                    }
+                } else {
+                    Button("Set Up…") {
+                        appState.openSettings(pane: .cloudProviders)
+                    }
+                    .controlSize(.small)
+                }
             }
 
             if let validationMessage = validationState.message {
                 Text(validationMessage)
                     .font(.caption)
-                    .foregroundStyle(validationStateColor(validationState))
+                    .foregroundStyle(validationStateStyle(validationState))
             } else {
                 Text(runtimeState.message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            HStack {
-                AvailabilityBadge(availability: provider.availability)
-                Spacer()
-
-                if runtimeState.isSelectable {
-                    Button(appState.transcriptionPreferences.preferredProviderID == provider.id ? "Selected" : "Set Preferred") {
-                        appState.transcriptionPreferences.preferredProviderID = provider.id
-                    }
-                    .disabled(appState.transcriptionPreferences.preferredProviderID == provider.id)
-                } else {
-                    Button("Open Settings") {
-                        appState.openSettings(pane: .cloudProviders)
-                    }
-                }
-            }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 2)
+    }
+
+    private func isSelectable(_ state: LocalModelState) -> Bool {
+        switch state {
+        case .unavailable:
+            false
+        default:
+            true
+        }
     }
 
     @ViewBuilder
@@ -298,22 +272,18 @@ public struct ModelsView: View {
         }
     }
 
-    private func stateBadge(for state: LocalModelState) -> some View {
+    private func stateText(for state: LocalModelState) -> some View {
         Text(state.title)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(stateColor(state).opacity(0.15), in: Capsule())
-            .foregroundStyle(stateColor(state))
+            .font(.caption)
+            .foregroundStyle(stateMessageStyle(for: state))
     }
 
-    private func statLabel(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.callout)
+    private func stateMessageStyle(for state: LocalModelState) -> AnyShapeStyle {
+        switch state {
+        case .failed, .unavailable:
+            AnyShapeStyle(Color.red)
+        default:
+            AnyShapeStyle(.secondary)
         }
     }
 
@@ -328,50 +298,23 @@ public struct ModelsView: View {
         }
     }
 
-    private func stateColor(_ state: LocalModelState) -> Color {
+    private func providerStateStyle(_ state: ProviderRuntimeState) -> AnyShapeStyle {
         switch state {
-        case .notDownloaded:
-            .secondary
-        case .downloading:
-            .blue
-        case .downloaded:
-            .green
-        case .loading:
-            .orange
-        case .loaded:
-            .green
-        case .deleting:
-            .secondary
-        case .failed:
-            .red
-        case .unavailable:
-            .red
-        }
-    }
-
-    private func providerStateColor(_ state: ProviderRuntimeState) -> Color {
-        switch state {
-        case .ready:
-            .green
-        case .disabled:
-            .secondary
+        case .ready, .disabled:
+            AnyShapeStyle(.secondary)
         case .missingAPIKey, .privacyConsentRequired:
-            .orange
+            AnyShapeStyle(Color.orange)
         case .unavailable:
-            .red
+            AnyShapeStyle(Color.red)
         }
     }
 
-    private func validationStateColor(_ state: ProviderCredentialValidationState) -> Color {
+    private func validationStateStyle(_ state: ProviderCredentialValidationState) -> AnyShapeStyle {
         switch state {
-        case .idle:
-            .secondary
-        case .testing:
-            .orange
-        case .succeeded:
-            .green
+        case .idle, .testing, .succeeded:
+            AnyShapeStyle(.secondary)
         case .failed:
-            .red
+            AnyShapeStyle(Color.red)
         }
     }
 }
