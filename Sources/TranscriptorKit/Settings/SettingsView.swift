@@ -12,7 +12,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         GeometryReader { proxy in
-            let compact = proxy.size.width < 920
+            let compact = proxy.size.width < 700
 
             Group {
                 if compact {
@@ -45,19 +45,21 @@ public struct SettingsView: View {
     private var compactSettingsLayout: some View {
         Group {
             if let pane = appState.selectedSettingsPane, filteredPanes.contains(pane) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
                         Button {
                             appState.selectedSettingsPane = nil
                         } label: {
-                            Label("All Settings", systemImage: "chevron.left")
+                            Label("All Settings", systemImage: "chevron.backward")
                         }
-                        .buttonStyle(.link)
+                        .buttonStyle(.borderless)
 
-                        currentPaneView(for: pane)
+                        Spacer()
                     }
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
+                    .padding(.top, 12)
+
+                    currentPaneView(for: pane)
                 }
             } else if filteredPanes.isEmpty {
                 ContentUnavailableView(
@@ -66,49 +68,44 @@ public struct SettingsView: View {
                     description: Text("Try a different search term.")
                 )
             } else {
-                VStack(spacing: 0) {
-                    settingsSearchHeader
-
-                    List(filteredPanes) { pane in
-                        Button {
-                            appState.selectedSettingsPane = pane
-                        } label: {
+                List(filteredPanes) { pane in
+                    Button {
+                        appState.selectedSettingsPane = pane
+                    } label: {
+                        HStack {
                             Label(pane.title, systemImage: pane.systemImage)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Spacer()
+
+                            Image(systemName: "chevron.forward")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                     }
-                    .listStyle(.inset(alternatesRowBackgrounds: false))
+                    .buttonStyle(.plain)
                 }
+                .listStyle(.inset(alternatesRowBackgrounds: false))
+                .searchable(text: $searchText, placement: .automatic, prompt: "Search settings")
             }
         }
     }
 
     private var wideSettingsLayout: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                settingsSearchHeader
+        HStack(spacing: 0) {
+            List(filteredPanes, selection: $appState.selectedSettingsPane) { pane in
+                Label(pane.title, systemImage: pane.systemImage)
+                    .tag(Optional(pane))
+            }
+            .listStyle(.sidebar)
+            .searchable(text: $searchText, placement: .automatic, prompt: "Search settings")
+            .frame(width: 210)
 
-                List(filteredPanes, selection: $appState.selectedSettingsPane) { pane in
-                    Label(pane.title, systemImage: pane.systemImage)
-                        .tag(Optional(pane))
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-            }
-            .background {
-                NativeSidebarMaterial()
-                    .ignoresSafeArea()
-            }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 270)
-        } detail: {
+            Divider()
+
             Group {
                 if let pane = resolvedPane {
-                    ScrollView {
-                        currentPaneView(for: pane)
-                            .padding(.horizontal, 28)
-                            .padding(.vertical, 24)
-                    }
+                    currentPaneView(for: pane)
                 } else {
                     ContentUnavailableView(
                         "No Matching Settings",
@@ -117,22 +114,9 @@ public struct SettingsView: View {
                     )
                 }
             }
+            .frame(maxWidth: .infinity)
             .background(Color(nsColor: .underPageBackgroundColor))
         }
-    }
-
-    private var settingsSearchHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("Search Settings", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-
-            Text("Settings")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -527,21 +511,25 @@ public struct SettingsView: View {
         pane: SettingsPane,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(pane.title)
-                    .font(.largeTitle.weight(.semibold))
+                    .font(.title2.weight(.semibold))
 
                 Text(pane.subtitle)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Form {
                 content()
             }
             .formStyle(.grouped)
         }
-        .frame(maxWidth: 760, alignment: .leading)
     }
 
     private var filteredPanes: [SettingsPane] {
@@ -640,12 +628,20 @@ public struct SettingsView: View {
                 Spacer()
 
                 Text(runtimeState.title)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(providerRuntimeColor(runtimeState).opacity(0.15), in: Capsule())
-                    .foregroundStyle(providerRuntimeColor(runtimeState))
+                    .font(.caption)
+                    .foregroundStyle(providerRuntimeStatusStyle(runtimeState))
             }
+        }
+    }
+
+    private func providerRuntimeStatusStyle(_ state: ProviderRuntimeState) -> AnyShapeStyle {
+        switch state {
+        case .ready, .disabled:
+            AnyShapeStyle(.secondary)
+        case .missingAPIKey, .privacyConsentRequired:
+            AnyShapeStyle(Color.orange)
+        case .unavailable:
+            AnyShapeStyle(Color.red)
         }
     }
 
