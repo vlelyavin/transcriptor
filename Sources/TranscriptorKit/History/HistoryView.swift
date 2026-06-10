@@ -129,10 +129,7 @@ public struct HistoryView: View {
     }
 
     private func headerControls(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("History")
-                .font(.title2.weight(.semibold))
-
+        VStack(alignment: .leading, spacing: 10) {
             Picker("Source", selection: $selectedFilter) {
                 ForEach(HistoryFilter.allCases) { filter in
                     Text(filter.title).tag(filter)
@@ -165,9 +162,9 @@ public struct HistoryView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     private var emptyState: some View {
@@ -187,36 +184,28 @@ public struct HistoryView: View {
                             Button {
                                 selectedEntryID = nil
                             } label: {
-                                Label("Back to History", systemImage: "chevron.left")
+                                Label("History", systemImage: "chevron.backward")
                             }
-                            .buttonStyle(.link)
+                            .buttonStyle(.borderless)
                         }
 
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(entry.displayName)
-                                    .font(.title.weight(.semibold))
-                                    .lineLimit(2)
-                                    .truncationMode(.middle)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .textSelection(.enabled)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.displayName)
+                                .font(.title3.weight(.semibold))
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
 
-                                Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
-                                    .foregroundStyle(.secondary)
+                            Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
 
-                                ViewThatFits(in: .horizontal) {
-                                    HStack(spacing: 8) {
-                                        detailTags(for: entry)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        detailTags(for: entry)
-                                    }
-                                }
-                            }
-
-                            Spacer()
+                            Text(detailSummaryLine(for: entry))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         actionBar(for: entry, isCompact: isCompact)
 
@@ -254,31 +243,25 @@ public struct HistoryView: View {
                             UnavailableActionBanner(message: "This history item completed without transcript text, so copy and export remain disabled.")
                         }
 
-                        SectionCard(
-                            title: "Transcript",
-                            subtitle: "Latest saved transcript text for this history item."
-                        ) {
-                            if let latestVersion = entry.latestTranscriptVersion {
-                                latestTranscriptSummary(version: latestVersion)
-                            }
+                        GroupBox("Transcript") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if let latestVersion = entry.latestTranscriptVersion {
+                                    latestTranscriptSummary(version: latestVersion)
+                                }
 
-                            Text(displayTranscriptText(for: entry))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(displayTranscriptText(for: entry))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(6)
                         }
 
-                        if isCompact {
+                        GroupBox {
                             DisclosureGroup("Details") {
                                 metadataGrid(for: entry)
                                     .padding(.top, 8)
                             }
-                        } else {
-                            SectionCard(
-                                title: "Details",
-                                subtitle: "Saved metadata, audio paths, and file information."
-                            ) {
-                                metadataGrid(for: entry)
-                            }
+                            .padding(6)
                         }
 
                         transcriptVersionSection(for: entry)
@@ -296,29 +279,19 @@ public struct HistoryView: View {
         }
     }
 
-    @ViewBuilder
-    private func detailTags(for entry: HistoryEntry) -> some View {
-        detailTag(entry.transcriptionStatus.title)
-        detailTag(entry.sourceType.title)
+    private func detailSummaryLine(for entry: HistoryEntry) -> String {
+        var parts = [entry.transcriptionStatus.title, entry.sourceType.title]
         if let modelName = entry.modelName {
-            detailTag(modelName)
+            parts.append(modelName)
         }
         if let providerName = entry.providerName {
-            detailTag(providerName)
+            parts.append(providerName)
         }
+        return parts.joined(separator: " • ")
     }
 
     private func actionBar(for entry: HistoryEntry, isCompact: Bool) -> some View {
-        ViewThatFits(in: .horizontal) {
-            actionButtonsRow(for: entry)
-            VStack(alignment: .leading, spacing: 10) {
-                actionButtonsRow(for: entry)
-            }
-        }
-    }
-
-    private func actionButtonsRow(for entry: HistoryEntry) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
                 Button("Cancel") {
                     appState.cancelTranscription(for: entry)
@@ -329,94 +302,98 @@ public struct HistoryView: View {
                 }
             }
 
-            if !availableRetranscriptionPlans.isEmpty {
-                Menu("Re-transcribe") {
-                    if !downloadedLocalModels.isEmpty {
-                        Section("Local Models") {
-                            ForEach(downloadedLocalModels) { model in
-                                Button(model.name) {
-                                    appState.retranscribe(entry, using: model.id)
-                                }
-                            }
-                        }
-                    }
-
-                    let cloudPlans = availableRetranscriptionPlans.filter { $0.kind == .cloud }
-                    if !cloudPlans.isEmpty {
-                        Section("Cloud Providers") {
-                            ForEach(cloudPlans) { plan in
-                                Button("\(plan.providerName) (\(plan.modelName))") {
-                                    appState.retranscribe(entry, usingProvider: plan.providerID)
-                                }
-                            }
-                        }
-                    }
-                }
-                .disabled(availableRetranscriptionPlans.isEmpty || appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id))
-            }
-
-            Button("Copy Transcript") {
-                appState.copyTranscript(for: entry)
-            }
-            .disabled(!entry.canCopyTranscript)
-
-            Button("Export .txt") {
-                appState.exportTranscript(for: entry)
-            }
-            .disabled(!entry.canExportTranscript)
-
-            Button(playbackButtonTitle(for: entry)) {
+            Button(playbackButtonTitle(for: entry), systemImage: playbackButtonSymbol(for: entry)) {
                 appState.togglePlayback(for: entry)
             }
             .disabled(!hasPlayableAudioFile(entry))
 
+            Button("Copy") {
+                appState.copyTranscript(for: entry)
+            }
+            .disabled(!entry.canCopyTranscript)
+
             Spacer()
 
-            Button("Delete", role: .destructive) {
-                entryPendingDeletion = entry
+            Menu {
+                if !availableRetranscriptionPlans.isEmpty {
+                    Menu("Re-transcribe With") {
+                        if !downloadedLocalModels.isEmpty {
+                            Section("Local Models") {
+                                ForEach(downloadedLocalModels) { model in
+                                    Button(model.name) {
+                                        appState.retranscribe(entry, using: model.id)
+                                    }
+                                }
+                            }
+                        }
+
+                        let cloudPlans = availableRetranscriptionPlans.filter { $0.kind == .cloud }
+                        if !cloudPlans.isEmpty {
+                            Section("Cloud Providers") {
+                                ForEach(cloudPlans) { plan in
+                                    Button("\(plan.providerName) (\(plan.modelName))") {
+                                        appState.retranscribe(entry, usingProvider: plan.providerID)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .disabled(appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id))
+                }
+
+                Button("Export Transcript…") {
+                    appState.exportTranscript(for: entry)
+                }
+                .disabled(!entry.canExportTranscript)
+
+                Divider()
+
+                Button("Delete…", role: .destructive) {
+                    entryPendingDeletion = entry
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
             }
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
     }
 
     private func progressCard(_ progress: TranscriptionProgress) -> some View {
-        SectionCard(
-            title: "Transcription Progress",
-            subtitle: progress.statusMessage
-        ) {
-            if let fractionCompleted = progress.fractionCompleted {
-                ProgressView(value: fractionCompleted)
-            } else {
-                ProgressView()
-            }
-
-            if !progress.partialText.isEmpty {
-                Text(progress.partialText)
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(progress.statusMessage)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+
+                if let fractionCompleted = progress.fractionCompleted {
+                    ProgressView(value: fractionCompleted)
+                } else {
+                    ProgressView()
+                }
+
+                if !progress.partialText.isEmpty {
+                    Text(progress.partialText)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                }
             }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func cloudPrivacyCard(for provider: ProviderDescriptor) -> some View {
-        SectionCard(
-            title: "Cloud Transcription",
-            subtitle: "This provider uploads audio only after it is explicitly enabled."
-        ) {
-            Label("\(provider.privacySummary) Configure or disable this in Settings > Cloud Providers.", systemImage: "icloud.and.arrow.up")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
+        Label("\(provider.privacySummary) Configure or disable this in Settings > Cloud Providers.", systemImage: "icloud.and.arrow.up")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func latestTranscriptSummary(version: TranscriptVersion) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                detailTag(version.modelName ?? "Unknown Model")
-                detailTag(version.providerName ?? "Local")
-                detailTag(formattedDate(version.createdAt))
-            }
-        }
+        Text("\(version.modelName ?? "Unknown Model") • \(version.providerName ?? "Local") • \(formattedDate(version.createdAt))")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func metadataGrid(for entry: HistoryEntry) -> some View {
@@ -446,28 +423,31 @@ public struct HistoryView: View {
     @ViewBuilder
     private func transcriptVersionSection(for entry: HistoryEntry) -> some View {
         if !entry.transcriptVersions.isEmpty {
-            SectionCard(
-                title: "Transcript Versions",
-                subtitle: "Older transcripts are preserved when you re-transcribe with a different model or provider."
-            ) {
-                ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(version.modelName ?? "Unknown Model")
-                                .font(.subheadline.weight(.semibold))
-                            Text("\(formattedDate(version.createdAt)) • \(version.providerName ?? "Local")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            GroupBox {
+                DisclosureGroup("Transcript Versions") {
+                    VStack(spacing: 0) {
+                        ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(version.modelName ?? "Unknown Model")
+                                        .font(.subheadline)
+                                    Text("\(formattedDate(version.createdAt)) • \(version.providerName ?? "Local")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Text("\(version.characterCount) characters")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 6)
                         }
-
-                        Spacer()
-
-                        Text("\(version.characterCount) chars")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 6)
+                    .padding(.top, 4)
                 }
+                .padding(6)
             }
         }
     }
@@ -538,26 +518,38 @@ public struct HistoryView: View {
                 }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                metadataLabel(systemImage: "calendar", text: formattedDate(entry.createdAt))
-                metadataLabel(systemImage: "clock", text: durationLabel(entry.durationSeconds))
-                metadataLabel(systemImage: "textformat.abc", text: "\(entry.characterCount) chars")
-            }
+            Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                metadataLabel(systemImage: "tray.full", text: entry.sourceType.title)
-                metadataLabel(systemImage: "waveform", text: rowStatusText(for: entry))
-
-                if let modelName = entry.modelName {
-                    metadataLabel(systemImage: "cube.transparent", text: modelName)
-                }
-
-                if let providerName = entry.providerName {
-                    metadataLabel(systemImage: "network", text: providerName)
-                }
-            }
+            Text(rowDetailLine(for: entry))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .padding(.vertical, 4)
+    }
+
+    private func rowDetailLine(for entry: HistoryEntry) -> String {
+        var parts = [entry.sourceType.title, rowStatusText(for: entry)]
+        if let modelName = entry.modelName {
+            parts.append(modelName)
+        }
+        if let providerName = entry.providerName {
+            parts.append(providerName)
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    private func playbackButtonSymbol(for entry: HistoryEntry) -> String {
+        if appState.audioPlaybackService.isPlaying,
+           appState.audioPlaybackService.currentlyPlayingEntryID == entry.id {
+            return "pause.fill"
+        }
+
+        return "play.fill"
     }
 
     private func displayTranscriptText(for entry: HistoryEntry) -> String {
@@ -618,20 +610,6 @@ public struct HistoryView: View {
         }
 
         return "Play"
-    }
-
-    private func detailTag(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial, in: Capsule())
-    }
-
-    private func metadataLabel(systemImage: String, text: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
     }
 
     private func formattedDate(_ date: Date) -> String {
