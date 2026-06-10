@@ -700,7 +700,7 @@ public final class AppState {
         )
     }
 
-    private func appendPendingRecording(_ recording: RecordedAudioAsset) {
+    func appendPendingRecording(_ recording: RecordedAudioAsset) {
         let entry = HistoryEntry.pendingRecording(
             recording: recording,
             modelID: selectedModel?.id,
@@ -819,7 +819,7 @@ public final class AppState {
         refreshTranscriptInsertionDebugSnapshot()
     }
 
-    private func handleCompletedTranscription(for entry: HistoryEntry) {
+    func handleCompletedTranscription(for entry: HistoryEntry) {
         guard entry.id == pendingInsertionEntryID else {
             return
         }
