@@ -35,7 +35,7 @@ public struct HistoryView: View {
                     }
                 }
             }
-            .background(Color(nsColor: .underPageBackgroundColor))
+            .background(Color(nsColor: .windowBackgroundColor))
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history

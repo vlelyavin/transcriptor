@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 
 public struct MainWindowView: View {
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
-    @State private var sidebarSearchText = ""
+    @State private var sidebarSearchText = ProcessInfo.processInfo.environment["TRANSCRIPTOR_QA_SEARCH"] ?? ""
+    @FocusState private var searchFieldFocused: Bool
 
     public init(appState: AppState) {
         self.appState = appState
@@ -12,59 +14,14 @@ public struct MainWindowView: View {
 
     public var body: some View {
         NavigationSplitView {
-            List(selection: $appState.sidebarSelection) {
-                if trimmedSearchText.isEmpty {
-                    Section {
-                        ForEach(NavigationScreen.allCases) { screen in
-                            screenRow(for: screen)
-                        }
-                    }
-
-                    Section("Settings") {
-                        ForEach(SettingsPane.allCases) { pane in
-                            paneRow(for: pane)
-                        }
-                    }
-                } else {
-                    searchResultsContent
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .searchable(text: $sidebarSearchText, placement: .sidebar, prompt: "Search")
-            .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 6) {
-                    Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
-                        .foregroundStyle(voiceInputController.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-
-                    Text(voiceInputController.isRecording ? "Recording" : "Ready")
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text(appState.recordingState.hotkey.displayString)
-                        .foregroundStyle(.tertiary)
-                }
-                .font(.caption)
-                .lineLimit(1)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background {
-                    NativeSidebarMaterial(blending: .withinWindow)
-                        .ignoresSafeArea()
-                }
-            }
-            .background {
-                NativeSidebarMaterial()
-                    .ignoresSafeArea()
-            }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
+            sidebar
         } detail: {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 640, minHeight: 460)
         .navigationSplitViewStyle(.balanced)
+        .background(WindowChromeConfigurator())
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -94,7 +51,7 @@ public struct MainWindowView: View {
                 } label: {
                     Label(
                         voiceInputController.isRecording ? "Stop Voice Input" : "Start Voice Input",
-                        systemImage: voiceInputController.isRecording ? "stop.fill" : "mic.fill"
+                        systemImage: voiceInputController.isRecording ? "stop.circle.fill" : "mic"
                     )
                 }
                 .disabled(voiceInputController.state == .requestingPermission || voiceInputController.state == .stopping)
@@ -108,6 +65,111 @@ public struct MainWindowView: View {
                 .help("Open Settings (Cmd+,)")
             }
         }
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        List(selection: $appState.sidebarSelection) {
+            if trimmedSearchText.isEmpty {
+                Section {
+                    ForEach(NavigationScreen.allCases) { screen in
+                        screenRow(for: screen)
+                    }
+                }
+
+                // No "Settings" label — System Settings groups categories with
+                // an extra vertical gap, not a header. A headerless second
+                // section gives that native spacing.
+                Section {
+                    ForEach(SettingsPane.allCases) { pane in
+                        paneRow(for: pane)
+                    }
+                }
+            } else {
+                searchResultsContent
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            sidebarSearchField
+        }
+        .onChange(of: appState.sidebarSelection) { _, _ in
+            // Selecting a search result navigates and clears the query, like
+            // System Settings.
+            if !trimmedSearchText.isEmpty {
+                sidebarSearchText = ""
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            HStack(spacing: 6) {
+                Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
+                    .foregroundStyle(voiceInputController.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+
+                Text(voiceInputController.isRecording ? "Recording" : "Ready")
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(appState.recordingState.hotkey.displayString)
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.caption)
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                NativeSidebarMaterial(blending: .withinWindow)
+                    .ignoresSafeArea()
+            }
+        }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 264)
+    }
+
+    /// Native System Settings-style search field. Implemented as a real
+    /// `TextField` with `@FocusState` (outside the `List`) so it keeps keyboard
+    /// focus even as the list content switches to search results — the failure
+    /// mode that made `.searchable(placement: .sidebar)` appear non-functional.
+    private var sidebarSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.secondary)
+
+            TextField("Search", text: $sidebarSearchText)
+                .textFieldStyle(.plain)
+                .focused($searchFieldFocused)
+                .onSubmit { searchFieldFocused = true }
+
+            if !trimmedSearchText.isEmpty {
+                Button {
+                    sidebarSearchText = ""
+                    searchFieldFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(.separator.opacity(searchFieldFocused ? 0.0 : 0.4), lineWidth: 0.5)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .background {
+            NativeSidebarMaterial(blending: .withinWindow)
+                .ignoresSafeArea()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { searchFieldFocused = true }
     }
 
     private func screenRow(for screen: NavigationScreen) -> some View {
@@ -186,28 +248,42 @@ public struct MainWindowView: View {
         SettingsPane.searchResults(matching: trimmedSearchText)
     }
 
+    // MARK: - Detail
+
     @ViewBuilder
     private var contentView: some View {
         switch appState.sidebarSelection {
         case let .screen(screen):
             switch screen {
             case .overview:
-                OverviewView(appState: appState)
+                OverviewView(appState: appState).modifier(SettingsContentWidth())
             case .history:
                 HistoryView(appState: appState)
             case .importAudio:
-                ImportAudioView(appState: appState)
+                ImportAudioView(appState: appState).modifier(SettingsContentWidth())
             case .models:
-                ModelsView(appState: appState)
+                ModelsView(appState: appState).modifier(SettingsContentWidth())
             }
         case let .settings(pane):
-            SettingsPaneDetailView(pane: pane, appState: appState)
+            SettingsPaneDetailView(pane: pane, appState: appState).modifier(SettingsContentWidth())
         }
     }
 }
 
-/// System Settings-style sidebar icon: black rounded-square tile with a thin
-/// border and a white glyph.
+/// Pins grouped-form content to a native System Settings-style column: a fixed
+/// readable width hugging the leading edge instead of being centered with large
+/// gaps on both sides when the window is wide.
+struct SettingsContentWidth: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: 620, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// System Settings-style sidebar icon: a dark beveled tile with a white glyph.
+/// The tile is a subtle top-to-bottom gradient (not pure black) and the border
+/// is a soft top highlight rather than a hard stroke, matching macOS.
 struct SidebarIconView: View {
     let systemImage: String
 
@@ -215,12 +291,47 @@ struct SidebarIconView: View {
         Image(systemName: systemImage)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.white)
-            .frame(width: 21, height: 21)
-            .background(Color.black, in: RoundedRectangle(cornerRadius: 5.5, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+            .frame(width: 20, height: 20)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(white: 0.34), Color(white: 0.22)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
+            .shadow(color: .black.opacity(0.18), radius: 0.5, y: 0.5)
+    }
+}
+
+/// Reaches the hosting `NSWindow` to remove the titlebar separator line so the
+/// toolbar blends into the content like System Settings.
+private struct WindowChromeConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { configure(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { configure(nsView.window) }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        window?.titlebarSeparatorStyle = .none
     }
 }
 

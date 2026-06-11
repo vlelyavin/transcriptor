@@ -63,6 +63,19 @@ visual language to the dark System Settings reference:
 - [x] Toolbar mic icon replaced (`mic.fill`/`stop.fill`, no ring)
 - [x] Round-3 screenshots and QA notes at `docs/review/native-polish-round3/`
 
+## Native polish round 4 (native styling fidelity)
+
+The round-4 brief pushed the styling to match native macOS System Settings
+exactly and fixed the still-broken sidebar search:
+
+- [x] Sidebar and content use genuine native materials (removed the round-3 scrim that made the sidebar read gray/lighter than content); `HistoryView` no longer overrides the window background
+- [x] Sidebar icon tiles are a dark **gradient** with a soft bevel highlight (no pure-black fill, no hard solid border)
+- [x] Toolbar separator line removed (`NSWindow.titlebarSeparatorStyle = .none`) so the toolbar blends into content
+- [x] Grouped-form content is pinned to a fixed-width column on the leading edge instead of being centered with large symmetric side gaps; applied to every form screen, History stays full width
+- [x] The "Settings" sidebar label is replaced by the native inter-group vertical gap
+- [x] **Sidebar search fixed**: replaced `.searchable(placement: .sidebar)` (which lost first-responder focus when the searchable list restructured) with a `TextField` + `@FocusState` outside the List; live filtering, selection navigates and clears the query
+- [x] Round-4 screenshots and QA notes at `docs/review/native-polish-round4/`
+
 ## Final QA status matrix
 
 | Feature | Status | Notes |
