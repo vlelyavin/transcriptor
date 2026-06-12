@@ -18,6 +18,50 @@ public final class AppState {
     public private(set) var navigationForwardStack: [SidebarItem] = []
     private var isPerformingHistoryNavigation = false
 
+    /// When set, the History screen selects this entry on appearance. Used to
+    /// open a specific item's detail (e.g. tapping a Recent Import).
+    public var pendingHistoryEntryID: UUID?
+
+    /// Navigates to the History screen and requests that `entryID` be selected.
+    public func openHistoryEntry(_ entryID: UUID) {
+        pendingHistoryEntryID = entryID
+        sidebarSelection = .screen(.history)
+    }
+
+    // MARK: - Onboarding
+
+    private static let welcomeGuideDefaultsKey = "com.transcriptor.hasSeenWelcomeGuide"
+
+    /// Persisted flag: whether the first-launch welcome guide has been shown.
+    public var hasSeenWelcomeGuide: Bool = UserDefaults.standard.bool(forKey: AppState.welcomeGuideDefaultsKey) {
+        didSet { UserDefaults.standard.set(hasSeenWelcomeGuide, forKey: AppState.welcomeGuideDefaultsKey) }
+    }
+
+    /// Drives the welcome/setup guide sheet.
+    public var isPresentingWelcomeGuide = false
+
+    /// True on first launch (the guide should auto-present).
+    public var shouldAutoPresentWelcomeGuide: Bool { !hasSeenWelcomeGuide }
+
+    /// Presents the setup guide (used by the first-launch auto-present and the
+    /// Overview "set up transcription" banner button).
+    public func presentWelcomeGuide() {
+        isPresentingWelcomeGuide = true
+    }
+
+    /// Marks the guide as seen and dismisses it.
+    public func dismissWelcomeGuide() {
+        hasSeenWelcomeGuide = true
+        isPresentingWelcomeGuide = false
+    }
+
+    /// Dismisses the guide and routes to the Models screen to download a model.
+    public func beginModelSetup() {
+        hasSeenWelcomeGuide = true
+        isPresentingWelcomeGuide = false
+        sidebarSelection = .screen(.models)
+    }
+
     public var selectedScreen: NavigationScreen {
         get {
             if case let .screen(screen) = sidebarSelection {
@@ -281,6 +325,9 @@ public final class AppState {
             },
             supplementalPhaseProvider: { [weak self] in
                 self?.overlaySupplementalPhase
+            },
+            actionsProvider: { [weak self] in
+                self?.makeOverlayActions() ?? RecordingOverlayActions()
             }
         )
 
@@ -345,6 +392,20 @@ public final class AppState {
             .union(parakeetModelManager.downloadedParakeetModels().map(\.id))
     }
 
+    /// True when there is at least one usable transcription path: a downloaded
+    /// local model, or a cloud provider that is fully set up. The app must never
+    /// imply transcription is available when this is false.
+    public var isTranscriptionConfigured: Bool {
+        !readyLocalModelIDs.isEmpty
+            || providerRuntimeStates.values.contains { $0.isSelectable }
+    }
+
+    /// Auto-transcribe can only be enabled when transcription is actually
+    /// configured — otherwise it would silently fail after every capture.
+    public var canEnableAutoTranscribe: Bool {
+        isTranscriptionConfigured
+    }
+
     public var preferredCloudProvider: ProviderDescriptor? {
         guard !isLocalProviderID(transcriptionPreferences.preferredProviderID) else {
             return nil
@@ -402,6 +463,14 @@ public final class AppState {
     public func selectLocalModel(_ modelID: String) {
         guard let model = modelCatalog.model(id: modelID), let localProviderID = model.localProviderID else {
             transcriptionPreferences.selectedModelID = modelID
+            return
+        }
+
+        // A local model can only be selected once its files are downloaded or
+        // loaded — selecting an undownloaded model would only fail at transcribe
+        // time and falsely imply transcription is ready.
+        guard readyLocalModelIDs.contains(modelID) else {
+            historyActionMessage = "Download \(model.name) before selecting it."
             return
         }
 
@@ -798,13 +867,26 @@ public final class AppState {
 
         do {
             try persistHistoryEntry(entry)
-            if generalSettings.insertTranscriptIntoActiveApp {
-                pendingInsertionEntryID = entry.id
-                setOverlaySupplementalPhase(.transcribing("Transcribing your dictation before insertion."))
-                transcribe(entry)
-            } else {
-                queueAutomaticTranscriptionIfNeeded(for: entry)
+
+            // Flow B: no transcription configured — keep the recording and show
+            // the recorder result card. Never spin a "Transcribing…" state.
+            guard isTranscriptionConfigured else {
+                pendingInsertionEntryID = nil
+                transcriptInsertionService.clearCapturedTarget()
+                refreshTranscriptInsertionDebugSnapshot()
+                setOverlaySupplementalPhase(.unconfigured(OverlayUnconfiguredPayload(
+                    entryID: entry.id,
+                    fileName: entry.displayName,
+                    durationSeconds: entry.durationSeconds
+                )))
+                return
             }
+
+            // Flow A: transcribe the dictation. handleCompletedTranscription then
+            // inserts into the focused field, or shows the transcript preview.
+            pendingInsertionEntryID = entry.id
+            setOverlaySupplementalPhase(.transcribing("Transcribing your dictation…"))
+            transcribe(entry)
         } catch {
             historyActionMessage = error.localizedDescription
             setOverlaySupplementalPhase(.error(error.localizedDescription))
@@ -884,7 +966,7 @@ public final class AppState {
     }
 
     private func queueAutomaticTranscriptionIfNeeded(for entry: HistoryEntry) {
-        guard transcriptionPreferences.autoTranscribeAfterCapture else {
+        guard transcriptionPreferences.autoTranscribeAfterCapture, isTranscriptionConfigured else {
             return
         }
 
@@ -916,7 +998,10 @@ public final class AppState {
         pendingInsertionEntryID = nil
 
         Task { @MainActor in
-            setOverlaySupplementalPhase(.inserting("Restoring the previous app and inserting your transcript."))
+            if generalSettings.insertTranscriptIntoActiveApp {
+                setOverlaySupplementalPhase(.inserting("Restoring the previous app and inserting your transcript."))
+            }
+
             let outcome = await transcriptInsertionService.insertCapturedTranscript(
                 entry.transcriptText,
                 settings: generalSettings
@@ -925,14 +1010,109 @@ public final class AppState {
             historyActionMessage = outcome.message
 
             switch outcome {
-            case let .inserted(message), let .copiedToClipboard(message), let .savedOnly(message):
+            case let .inserted(message):
+                // Pasted straight into the focused field — quick confirmation.
                 setOverlaySupplementalPhase(.saved(message))
                 scheduleOverlaySupplementalClear(after: .seconds(1.6))
+            case .copiedToClipboard, .savedOnly:
+                // No focused field to paste into — show the interactive preview.
+                presentTranscriptPreview(for: entry)
             case let .failed(message):
                 setOverlaySupplementalPhase(.error(message))
                 scheduleOverlaySupplementalClear(after: .seconds(2))
             }
         }
+    }
+
+    private func presentTranscriptPreview(for entry: HistoryEntry) {
+        setOverlaySupplementalPhase(.preview(OverlayPreviewPayload(
+            entryID: entry.id,
+            transcript: entry.transcriptText,
+            modelName: entry.modelName,
+            durationSeconds: entry.durationSeconds
+        )))
+    }
+
+    /// Action callbacks for the overlay result cards (preview / unconfigured).
+    private func makeOverlayActions() -> RecordingOverlayActions {
+        RecordingOverlayActions(
+            copy: { [weak self] id in
+                guard let self, let entry = self.historyEntry(id: id) else { return }
+                self.copyTranscript(for: entry)
+            },
+            save: { [weak self] _ in
+                // Already persisted to history — Save just keeps it and dismisses.
+                self?.dismissOverlayResult()
+            },
+            delete: { [weak self] id in
+                guard let self, let entry = self.historyEntry(id: id) else { return }
+                self.deleteHistoryEntry(entry)
+                self.dismissOverlayResult()
+            },
+            showAll: { [weak self] id in
+                guard let self else { return }
+                self.dismissOverlayResult()
+                self.openHistoryEntry(id)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            },
+            retranscribe: { [weak self] id, option in
+                guard let self, let entry = self.historyEntry(id: id) else { return }
+                self.pendingInsertionEntryID = entry.id
+                self.setOverlaySupplementalPhase(.transcribing("Re-transcribing…"))
+                switch option.kind {
+                case let .localModel(modelID):
+                    self.retranscribe(entry, using: modelID)
+                case let .cloudProvider(providerID):
+                    self.retranscribe(entry, usingProvider: providerID)
+                }
+            },
+            retranscribeOptions: { [weak self] in
+                self?.overlayRetranscribeOptions() ?? []
+            },
+            configureTranscription: { [weak self] in
+                guard let self else { return }
+                self.dismissOverlayResult()
+                self.sidebarSelection = .screen(.models)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            },
+            dismiss: { [weak self] in
+                self?.dismissOverlayResult()
+            }
+        )
+    }
+
+    /// Re-transcription choices for the preview menu: every downloaded local
+    /// model plus every set-up cloud provider. Always non-empty in a configured
+    /// state, so "Re-transcribe with Different Model" is always offered.
+    private func overlayRetranscribeOptions() -> [OverlayRetranscribeOption] {
+        var options: [OverlayRetranscribeOption] = []
+
+        for model in modelCatalog.localModels where readyLocalModelIDs.contains(model.id) {
+            options.append(OverlayRetranscribeOption(
+                id: "local:\(model.id)",
+                title: model.name,
+                isCloud: false,
+                kind: .localModel(model.id)
+            ))
+        }
+
+        for provider in providerCatalog.providers where providerRuntimeState(for: provider).isSelectable {
+            options.append(OverlayRetranscribeOption(
+                id: "cloud:\(provider.id)",
+                title: provider.name,
+                isCloud: true,
+                kind: .cloudProvider(provider.id)
+            ))
+        }
+
+        return options
+    }
+
+    /// Dismisses any overlay result card.
+    public func dismissOverlayResult() {
+        overlaySupplementalClearTask?.cancel()
+        overlaySupplementalPhase = nil
+        recordingOverlayManager.refreshPresentation()
     }
 
     private func handleFailedTranscription(for entryID: UUID, message: String) {

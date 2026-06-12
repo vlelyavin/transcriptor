@@ -19,6 +19,15 @@ struct TranscriptorApp: App {
     private static func applyQAOverridesIfRequested(to appState: AppState) {
         let environment = ProcessInfo.processInfo.environment
 
+        // Onboarding: force-show with TRANSCRIPTOR_QA_ONBOARDING=1, otherwise
+        // suppress the first-launch guide during any QA run so it doesn't block
+        // screenshots of other screens.
+        if environment["TRANSCRIPTOR_QA_ONBOARDING"] == "1" {
+            appState.hasSeenWelcomeGuide = false
+        } else if environment.keys.contains(where: { $0.hasPrefix("TRANSCRIPTOR_QA_") }) {
+            appState.hasSeenWelcomeGuide = true
+        }
+
         if let rawScreen = environment["TRANSCRIPTOR_QA_SCREEN"],
            let screen = NavigationScreen(rawValue: rawScreen) {
             appState.selectedScreen = screen
@@ -81,7 +90,7 @@ struct TranscriptorApp: App {
         WindowGroup {
             MainWindowView(appState: appState)
         }
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {

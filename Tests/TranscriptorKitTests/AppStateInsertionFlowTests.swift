@@ -16,7 +16,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         XCTAssertEqual(appState.historyActionMessage?.hasPrefix("Queued"), true)
     }
 
-    func testInsertionDisabledRespectsAutoTranscribeOff() throws {
+    func testConfiguredDictationTranscribesEvenWithInsertionOff() throws {
+        // When a transcription provider is configured, a dictation capture
+        // always transcribes (Flow A) so the user gets a transcript preview;
+        // the insertion toggle only controls whether it pastes vs. previews.
         let context = try makeReadyCloudContext()
         let appState = context.appState
         appState.generalSettings.insertTranscriptIntoActiveApp = false
@@ -25,7 +28,7 @@ final class AppStateInsertionFlowTests: XCTestCase {
         appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
 
         let entry = try XCTUnwrap(appState.historyStore.entries.first)
-        XCTAssertFalse(appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id))
+        XCTAssertTrue(appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id))
     }
 
     func testCompletedTranscriptionCallsInsertionService() async throws {
@@ -49,7 +52,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
     }
 
-    func testMissingSetupShowsSetupRequiredAndKeepsHistoryEntry() throws {
+    func testMissingSetupShowsUnconfiguredCardAndKeepsRecording() throws {
+        // Flow B: no transcription configured. The recording is kept (pending,
+        // not failed) and the overlay shows the recorder result card rather than
+        // attempting and failing a transcription.
         let context = try makeContext(secrets: [:])
         let appState = context.appState
         appState.generalSettings.insertTranscriptIntoActiveApp = true
@@ -57,12 +63,37 @@ final class AppStateInsertionFlowTests: XCTestCase {
         appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
 
         let entry = try XCTUnwrap(appState.historyStore.entries.first)
-        XCTAssertEqual(entry.transcriptionStatus, .failed)
+        XCTAssertEqual(entry.transcriptionStatus, .pending)
+        XCTAssertFalse(appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id))
         XCTAssertTrue(context.insertionService.clearCapturedTargetCallCount >= 1)
 
-        if case .setupRequired = appState.overlaySupplementalPhase {
+        if case let .unconfigured(payload) = appState.overlaySupplementalPhase {
+            XCTAssertEqual(payload.entryID, entry.id)
         } else {
-            XCTFail("Expected setupRequired overlay phase, got \(String(describing: appState.overlaySupplementalPhase))")
+            XCTFail("Expected unconfigured overlay phase, got \(String(describing: appState.overlaySupplementalPhase))")
+        }
+    }
+
+    func testCompletedTranscriptionWithoutFocusedFieldShowsPreview() async throws {
+        // Flow A, no focused field: insertion service reports savedOnly, so the
+        // overlay shows the interactive transcript preview.
+        let context = try makeReadyCloudContext()
+        let appState = context.appState
+        appState.generalSettings.insertTranscriptIntoActiveApp = false
+
+        appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
+
+        var entry = try XCTUnwrap(appState.historyStore.entries.first)
+        entry.transcriptText = "Preview me"
+        entry.transcriptionStatus = .completed
+        appState.handleCompletedTranscription(for: entry)
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        if case let .preview(payload) = appState.overlaySupplementalPhase {
+            XCTAssertEqual(payload.transcript, "Preview me")
+        } else {
+            XCTFail("Expected preview overlay phase, got \(String(describing: appState.overlaySupplementalPhase))")
         }
     }
 
@@ -147,6 +178,9 @@ private final class MockInsertionService: TranscriptInsertionServing {
 
     func insertCapturedTranscript(_ text: String, settings: GeneralSettings) async -> TranscriptInsertionOutcome {
         insertedTexts.append(text)
+        guard settings.insertTranscriptIntoActiveApp else {
+            return .savedOnly("Transcript saved to history.")
+        }
         return .inserted("Transcript inserted into the active app.")
     }
 }

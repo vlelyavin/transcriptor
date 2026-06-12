@@ -10,25 +10,39 @@ public struct OverviewView: View {
     public var body: some View {
         Form {
             Section {
+                heroHeader
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+
+            if !appState.isTranscriptionConfigured {
+                Section {
+                    setupBanner
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+            }
+
+            Section {
                 linkedRow("Voice input shortcut", destination: .settings(.keyboardShortcut)) {
                     Text(appState.recordingState.hotkey.displayString)
                         .font(.system(.body, design: .monospaced))
                 }
 
-                linkedRow("Input mode", destination: .settings(.recording)) {
+                linkedRow("Input mode", destination: .settings(.general)) {
                     Text(appState.recordingState.mode.title)
                 }
 
-                linkedRow("Current state", destination: .settings(.recording)) {
+                linkedRow("Current state", destination: .settings(.advanced)) {
                     Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
-                linkedRow("Overlay", destination: .settings(.overlay)) {
+                linkedRow("Overlay", destination: .settings(.general)) {
                     Text(appState.overlayState.isEnabled ? "Enabled" : "Disabled")
                         .foregroundStyle(.secondary)
                 }
 
-                linkedRow("Insert into active app", destination: .settings(.recording)) {
+                linkedRow("Insert into active app", destination: .settings(.general)) {
                     Text(insertionStatusText)
                         .foregroundStyle(.secondary)
                 }
@@ -114,6 +128,77 @@ public struct OverviewView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Overview")
+    }
+
+    /// Native System Settings-style hero: large app glyph, name, and a one-line
+    /// description of what the app does.
+    private var heroHeader: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "waveform")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 64, height: 64)
+                .background {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                }
+
+            Text("Transcriptor")
+                .font(.title2.weight(.bold))
+
+            Text("Press your shortcut, speak, and your words are typed for you — transcribed on-device and saved to a private local history.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 420)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+    }
+
+    /// Persistent call-to-action shown until a transcription model (or cloud
+    /// provider) is configured. Launches the setup guide.
+    private var setupBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.title2)
+                .foregroundStyle(Color.accentColor)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Set up transcription")
+                    .font(.body.weight(.semibold))
+                Text("Download a model to turn recordings into text. Until then, Transcriptor still works as a voice recorder.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Set Up…") {
+                appState.presentWelcomeGuide()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 0.5)
+        }
+        .padding(.vertical, 4)
     }
 
     /// A status row whose trailing button jumps to the place where the value
