@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public struct HistoryView: View {
@@ -110,6 +111,10 @@ public struct HistoryView: View {
                             if canTriggerTranscription(for: entry) {
                                 Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
                                     appState.transcribe(entry)
+                                }
+                            } else if !appState.isTranscriptionConfigured {
+                                Button("Set Up Transcription…") {
+                                    appState.selectedScreen = .models
                                 }
                             }
 
@@ -254,16 +259,25 @@ public struct HistoryView: View {
                         }
 
                         if entry.transcriptionStatus != .completed && !appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
-                            UnavailableActionBanner(
-                                message: "This item has not been transcribed yet. Download a local Whisper model, then start transcription from this pane."
-                            )
+                            if appState.isTranscriptionConfigured {
+                                UnavailableActionBanner(
+                                    message: "This item has not been transcribed yet. Use Transcribe Now above to generate a transcript."
+                                )
+                            } else {
+                                UnavailableActionBanner(
+                                    message: "Transcription isn't set up yet. Download a model to transcribe this recording.",
+                                    actionTitle: "Open Models"
+                                ) {
+                                    appState.selectedScreen = .models
+                                }
+                            }
                         }
 
                         if entry.transcriptionStatus == .completed && !entry.canCopyTranscript {
                             UnavailableActionBanner(message: "This history item completed without transcript text, so copy and export remain disabled.")
                         }
 
-                        GroupBox("Transcript") {
+                        GroupBox(label: historySectionHeader("Transcript")) {
                             VStack(alignment: .leading, spacing: 8) {
                                 if let latestVersion = entry.latestTranscriptVersion {
                                     latestTranscriptSummary(version: latestVersion)
@@ -276,7 +290,7 @@ public struct HistoryView: View {
                             .padding(6)
                         }
 
-                        GroupBox("Details") {
+                        GroupBox(label: historySectionHeader("Details")) {
                             metadataGrid(for: entry)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(6)
@@ -414,10 +428,18 @@ public struct HistoryView: View {
             .foregroundStyle(.secondary)
     }
 
+    /// Section header styled to match the grouped-form section labels used on
+    /// the other pages (small, semibold, secondary) instead of the heavier
+    /// default `GroupBox` title.
+    private func historySectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
     private func metadataGrid(for entry: HistoryEntry) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
-            metadataRow(title: "Original Audio", value: entry.originalFilePath ?? "Unavailable")
-            metadataRow(title: "Working Audio", value: entry.workingFilePath ?? "Unavailable")
+            audioMetadataRow(for: entry)
             metadataRow(title: "File Size", value: byteCountFormatter.string(fromByteCount: entry.fileSizeBytes))
             metadataRow(title: "Language", value: entry.language ?? "Unknown")
             metadataRow(title: "Model", value: entry.modelName ?? "Not assigned")
@@ -425,14 +447,36 @@ public struct HistoryView: View {
         }
     }
 
+    /// A single "Audio" row that replaces the two raw file-path rows. The path is
+    /// surfaced as a "View in Finder" button rather than printed in full.
+    private func audioMetadataRow(for entry: HistoryEntry) -> some View {
+        GridRow {
+            Text("Audio")
+                .foregroundStyle(.secondary)
+            if let path = audioRevealPath(for: entry) {
+                Button("View in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                }
+                .buttonStyle(.link)
+                .gridColumnAlignment(.leading)
+            } else {
+                Text("Unavailable")
+            }
+        }
+    }
+
+    private func audioRevealPath(for entry: HistoryEntry) -> String? {
+        let candidates = [entry.preferredPlaybackPath, entry.workingFilePath, entry.originalFilePath]
+        return candidates.compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
     private func metadataRow(title: String, value: String) -> some View {
         GridRow {
             Text(title)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(title.contains("Audio") ? .system(.caption, design: .monospaced) : .body)
-                .lineLimit(title.contains("Audio") ? 3 : 2)
-                .truncationMode(title.contains("Audio") ? .middle : .tail)
+                .lineLimit(2)
+                .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
@@ -441,7 +485,7 @@ public struct HistoryView: View {
     @ViewBuilder
     private func transcriptVersionSection(for entry: HistoryEntry) -> some View {
         if !entry.transcriptVersions.isEmpty {
-            GroupBox("Transcript Versions") {
+            GroupBox(label: historySectionHeader("Transcript Versions")) {
                 VStack(spacing: 0) {
                     ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
                         HStack(alignment: .firstTextBaseline) {

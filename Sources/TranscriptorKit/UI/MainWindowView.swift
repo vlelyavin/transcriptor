@@ -5,6 +5,7 @@ public struct MainWindowView: View {
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
     @State private var sidebarSearchText = ProcessInfo.processInfo.environment["TRANSCRIPTOR_QA_SEARCH"] ?? ""
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init(appState: AppState) {
         self.appState = appState
@@ -12,15 +13,18 @@ public struct MainWindowView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // When the sidebar is collapsed the detail content fills the full
+                // window width instead of leaving a blank gray gutter on the right.
+                .environment(\.sidebarCollapsed, columnVisibility == .detailOnly)
         }
         .frame(
-            minWidth: 720,
-            idealWidth: 880,
+            minWidth: 640,
+            idealWidth: 700,
             maxWidth: 980,
             minHeight: 480,
             idealHeight: 660,
@@ -229,13 +233,30 @@ public struct MainWindowView: View {
     }
 }
 
+/// Environment flag set by `MainWindowView` when the split-view sidebar is
+/// collapsed, so leading-aligned content can expand to fill the freed width.
+private struct SidebarCollapsedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var sidebarCollapsed: Bool {
+        get { self[SidebarCollapsedKey.self] }
+        set { self[SidebarCollapsedKey.self] = newValue }
+    }
+}
+
 /// Pins grouped-form content to a native System Settings-style column: a fixed
 /// readable width hugging the leading edge instead of being centered with large
-/// gaps on both sides when the window is wide.
+/// gaps on both sides when the window is wide. When the sidebar is collapsed the
+/// cap is lifted so the content stretches across the whole window (matching
+/// `white_collapsed.png`), leaving no empty gutter on the right.
 struct SettingsContentWidth: ViewModifier {
+    @Environment(\.sidebarCollapsed) private var sidebarCollapsed
+
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: 620, alignment: .leading)
+            .frame(maxWidth: sidebarCollapsed ? .infinity : 620, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

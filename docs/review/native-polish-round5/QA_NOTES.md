@@ -43,3 +43,32 @@ References: `docs/reference/reference_v3/`.
   buttons could not be automated (Accessibility not granted to the harness). The
   native control + window-key activation is the canonical fix; a human should type
   once into search and dismiss one preview card to confirm end to end.
+
+## Round 6 — appearance, window width, search focus, history detail
+
+References: `docs/reference/reference_v4/white_collapsed.png`, `history_item.png`.
+
+| Issue (reported) | Root cause | Fix |
+|---|---|---|
+| App stuck in light mode; ignores system dark/light | Process launched outside a fully-registered bundle came up as an accessory/background app, so it didn't participate in the system appearance and stayed in default aqua | New `AppDelegate` promotes the process with `NSApp.setActivationPolicy(.regular)` + `activate` on launch, so it inherits the system appearance. No appearance is hard-coded anywhere |
+| Typing in search goes to the previously active app; window won't take focus | Same root cause — an accessory/background process can't make its window key, so keystrokes route to the prior frontmost app | The `.regular` activation policy lets the window become key; the existing `NativeSearchField` then takes first responder normally. **Launch the packaged `Transcriptor.app` (`open dist/Transcriptor.app`), not `swift run`** — an un-indexed raw executable can still mis-register |
+| Empty gray gutter on the right when the sidebar is hidden | `SettingsContentWidth` always capped content at 620 pt, leaving the freed width blank | `MainWindowView` tracks `NavigationSplitView` `columnVisibility`; when `.detailOnly`, `SettingsContentWidth` lifts the cap so content fills the window (matches `white_collapsed.png`) |
+| Initial window too wide | idealWidth 880 | Reduced ~20% → idealWidth 700, minWidth 640 |
+| Can't transcribe a history item with no model, and no way to get to Models | The Transcribe action is correctly hidden when nothing is configured, but there was no redirect | Unconfigured items now show an "Open Models" button in the detail banner and a "Set Up Transcription…" context-menu item, both routing to the Models page |
+| History detail headers/labels didn't match other pages | `GroupBox` titles render heavy; two raw audio paths were printed in full | `Transcript`/`Details`/`Transcript Versions` now use the grouped-form section header style (small, semibold, secondary). The two audio rows are merged into one **Audio** row with a **View in Finder** button instead of a printed path |
+
+### Round 6 verification
+
+- `swift build --product Transcriptor`: clean. `swift test`: 61 passing, 1 skipped, 0 failures.
+- Real on-screen `screencapture -l` evidence in this folder: `r6-history-dark`,
+  `r6-history-detail-dark` / `-light` (restyled headers, combined Audio + View in
+  Finder, Open Models CTA), `r6-overview-light` (hero + setup banner),
+  `r6-settings-general-light`.
+- Dark/light captures use the QA appearance override, which proves no surface is
+  hard-coded to one appearance. The activation-policy promotion is the actual
+  inheritance fix and is best confirmed by launching the packaged app while the
+  system is in dark mode.
+- Not auto-verifiable (AppleScript can't drive SwiftUI's split-view toggle / first
+  responder reliably): the **collapsed-sidebar stretch** and **search keystroke
+  routing**. Confirm manually by hiding the sidebar (content should fill the width)
+  and typing into search after launching `dist/Transcriptor.app`.

@@ -2,8 +2,35 @@ import AppKit
 import SwiftUI
 import TranscriptorKit
 
+/// Promotes the process to a regular foreground app and activates it on launch.
+///
+/// Without this, an executable launched outside a fully-registered app bundle
+/// (e.g. `swift run`, or a freshly built bundle that LaunchServices hasn't
+/// indexed) can come up as an accessory/background process: its window can't
+/// become key, so keystrokes leak to whatever app was frontmost — the reported
+/// "typing into search goes to the previous app" bug. Forcing `.regular` also
+/// ensures the app participates in the system light/dark appearance instead of
+/// being stuck in the default aqua (light) appearance.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            for window in sender.windows where window.canBecomeMain {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+}
+
 @main
 struct TranscriptorApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState: AppState
     private let menuBarStatusItemController: MenuBarStatusItemController
 
@@ -36,6 +63,13 @@ struct TranscriptorApp: App {
         if let rawPane = environment["TRANSCRIPTOR_QA_SETTINGS_PANE"],
            let pane = SettingsPane(rawValue: rawPane) {
             appState.selectedSettingsPane = pane
+        }
+
+        // Opens the first history entry's detail pane so QA can screenshot it
+        // (the detail otherwise only appears after a tap in the compact layout).
+        if environment["TRANSCRIPTOR_QA_HISTORY_DETAIL"] == "1",
+           let firstEntryID = appState.historyStore.entries.first?.id {
+            appState.openHistoryEntry(firstEntryID)
         }
 
         if let appearance = environment["TRANSCRIPTOR_QA_APPEARANCE"] {
