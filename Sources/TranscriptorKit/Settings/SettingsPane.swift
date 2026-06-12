@@ -23,8 +23,13 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     case storage
     case cloudProviders
     case privacy
+    case advanced
 
     public var id: String { rawValue }
+
+    /// The categories shown as always-visible rows in the sidebar. Everything
+    /// else is reachable through Advanced, Overview deep links, or search.
+    public static let sidebarVisiblePanes: [SettingsPane] = [.general, .keyboardShortcut, .advanced]
 
     public var title: String {
         switch self {
@@ -44,6 +49,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Cloud Providers"
         case .privacy:
             "Privacy"
+        case .advanced:
+            "Advanced"
         }
     }
 
@@ -65,6 +72,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "cloud"
         case .privacy:
             "hand.raised"
+        case .advanced:
+            "slider.horizontal.3"
         }
     }
 
@@ -86,6 +95,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Store API keys in Keychain and review cloud privacy controls."
         case .privacy:
             "Review what stays local, what requires permission, and what remains blocked."
+        case .advanced:
+            "Less-common options for recording, overlay, transcription, storage, providers, and privacy."
         }
     }
 
@@ -165,6 +176,16 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
                 "Cloud transcription privacy",
                 "Model download sources",
             ]
+        case .advanced:
+            [
+                "Microphone and audio",
+                "Overlay options",
+                "Transcription providers",
+                "Default local model",
+                "Storage limit",
+                "API providers",
+                "Privacy summary",
+            ]
         }
     }
 
@@ -209,6 +230,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             ["openai", "groq", "api", "keychain", "privacy"]
         case .privacy:
             ["accessibility", "microphone", "permissions", "local", "cloud"]
+        case .advanced:
+            ["advanced", "more", "extra", "diagnostics", "options"]
         }
     }
 }

@@ -256,3 +256,48 @@ exactly and fixed the still-broken sidebar search:
 - Groq is wired to `POST /openai/v1/audio/transcriptions` with `whisper-large-v3-turbo` as the default model ID, based on Groq's current speech-to-text docs.
 - This build currently blocks cloud uploads above 25 MB with a clear error message. It does not silently truncate audio and it does not yet implement chunk stitching.
 - Manual end-to-end cloud verification still requires user-provided credentials and was not run in this environment.
+
+## Native polish round 5 (effortless workflow + native fidelity)
+
+Reference set: `docs/reference/reference_v3/` (`sidebar+extra space.png`, `settings-reference.png`, `to-remove.png`, `arrows-to-remove.png`). Evidence: `docs/review/native-polish-round5/`.
+
+### Native UI
+- [x] Sidebar search is a real `NSSearchField` (`NativeSearchField`) — fixes keystrokes leaking to the previously active app, and matches the native rounded look. Activates the app and makes the window key on focus.
+- [x] Sidebar background unified to a single material (no extra scrim behind the search field or footer); the bottom "Ready / shortcut" footer was removed.
+- [x] Window maximum width capped (`maxWidth: 980`, `windowResizability(.contentSize)`) so there is no large empty area on the right.
+- [x] Sidebar icon tiles darkened.
+
+### Aggressive-minimal configuration
+- [x] Sidebar settings reduced to **General**, **Keyboard Shortcut**, **Advanced**. Everything non-essential lives under a single Advanced entry.
+- [x] General holds only essentials (input mode, overlay on/off, transcript insertion, launch/menu-bar). The remaining panes (`.recording`, `.overlay`, `.models`, `.storage`, `.cloudProviders`, `.privacy`) stay reachable via Overview deep links and sidebar search but are not always-on sidebar rows.
+- [x] Insertion diagnostics ("Last Insertion Attempt") demoted to the bottom of Advanced.
+
+### Disclosure arrows removed (always expanded)
+- [x] Models "Details", History "Details" and "Transcript Versions" no longer use `DisclosureGroup`.
+
+### Model management rules
+- [x] A model cannot be selected unless downloaded (`AppState.selectLocalModel` guard + `ModelsView.isSelectable` limited to `.downloaded`/`.loaded`).
+- [x] Auto-transcribe cannot be enabled without a configured provider (`canEnableAutoTranscribe`, guarded bindings in Settings + Import; `queueAutomaticTranscriptionIfNeeded` also checks `isTranscriptionConfigured`).
+- [x] Transcription never starts without a usable provider (resolver throws; the dictation popup routes to the unconfigured card instead).
+
+### First-launch experience
+- [x] First-launch welcome/setup guide sheet (`WelcomeGuideView`) with a Skip path; persisted via `hasSeenWelcomeGuide`.
+- [x] Persistent Overview setup banner shown until `isTranscriptionConfigured`, launching the same guide.
+- [x] Overview hero header (icon + name + description), native System Settings style.
+
+### Import Audio
+- [x] Recent Imports rows are buttons that open the item in History (`AppState.openHistoryEntry` + `pendingHistoryEntryID`).
+
+### Voice input popup
+- [x] Live audio indicator reacts to speech while recording (existing, retained).
+- [x] Configured + focused field → transcribe → auto-paste → brief confirmation.
+- [x] Configured + no focused field → transcribe → interactive **preview** card (Show All, Copy, Save, Delete, Re-transcribe with Different Model — always offered).
+- [x] Not configured → no spinner; **recorder result** card with metadata, Save, Delete, "Transcription isn't configured.", and Configure Transcription.
+
+### Verification
+- [x] `swift build`, `swift test` (60 passing, 1 skipped), and `TranscriptorSmokeChecks` all green.
+- [x] Real `screencapture` screenshots in `docs/review/native-polish-round5/`.
+
+#### Honest limitations
+- The setup banner and the guide's "Set Up Transcription" CTA only appear when no model/provider is configured; the QA machine already has a downloaded model, so the captured guide shows the "You're ready to go" state. Banner/guide CTA logic is covered by unit tests instead.
+- Typing into the new `NSSearchField` and clicking the floating result-card buttons could not be exercised by automation (Accessibility prompt is not granted to the harness). The native control + window-key activation is the canonical fix; a human should type once and click the preview card once to confirm end to end.

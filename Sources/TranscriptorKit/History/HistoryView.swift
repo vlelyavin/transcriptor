@@ -11,7 +11,9 @@ public struct HistoryView: View {
 
     public init(appState: AppState) {
         self.appState = appState
-        _selectedEntryID = State(initialValue: appState.historyStore.entries.first?.id)
+        let initialID = appState.pendingHistoryEntryID ?? appState.historyStore.entries.first?.id
+        _selectedEntryID = State(initialValue: initialID)
+        _isCompactDetailVisible = State(initialValue: appState.pendingHistoryEntryID != nil)
     }
 
     public var body: some View {
@@ -39,6 +41,20 @@ public struct HistoryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
+        }
+        .onAppear {
+            if let pending = appState.pendingHistoryEntryID {
+                selectedEntryID = pending
+                isCompactDetailVisible = true
+                appState.pendingHistoryEntryID = nil
+            }
+        }
+        .onChange(of: appState.pendingHistoryEntryID) { _, newValue in
+            if let newValue {
+                selectedEntryID = newValue
+                isCompactDetailVisible = true
+                appState.pendingHistoryEntryID = nil
+            }
         }
         .navigationTitle("History")
         .alert("Delete History Item", isPresented: Binding(
@@ -260,12 +276,10 @@ public struct HistoryView: View {
                             .padding(6)
                         }
 
-                        GroupBox {
-                            DisclosureGroup("Details") {
-                                metadataGrid(for: entry)
-                                    .padding(.top, 8)
-                            }
-                            .padding(6)
+                        GroupBox("Details") {
+                            metadataGrid(for: entry)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(6)
                         }
 
                         transcriptVersionSection(for: entry)
@@ -427,30 +441,28 @@ public struct HistoryView: View {
     @ViewBuilder
     private func transcriptVersionSection(for entry: HistoryEntry) -> some View {
         if !entry.transcriptVersions.isEmpty {
-            GroupBox {
-                DisclosureGroup("Transcript Versions") {
-                    VStack(spacing: 0) {
-                        ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
-                            HStack(alignment: .firstTextBaseline) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(version.modelName ?? "Unknown Model")
-                                        .font(.subheadline)
-                                    Text("\(formattedDate(version.createdAt)) • \(version.providerName ?? "Local")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Text("\(version.characterCount) characters")
+            GroupBox("Transcript Versions") {
+                VStack(spacing: 0) {
+                    ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(version.modelName ?? "Unknown Model")
+                                    .font(.subheadline)
+                                Text("\(formattedDate(version.createdAt)) • \(version.providerName ?? "Local")")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .padding(.vertical, 6)
+
+                            Spacer()
+
+                            Text("\(version.characterCount) characters")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.top, 4)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(6)
             }
         }

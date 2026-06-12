@@ -42,8 +42,18 @@ public struct ImportAudioView: View {
 
                 Toggle(
                     "Auto-transcribe",
-                    isOn: $appState.transcriptionPreferences.autoTranscribeAfterCapture
+                    isOn: Binding(
+                        get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+                        set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+                    )
                 )
+                .disabled(!appState.canEnableAutoTranscribe)
+
+                if !appState.canEnableAutoTranscribe {
+                    Text("Download a transcription model to enable automatic transcription.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Recent Imports") {
@@ -111,28 +121,39 @@ public struct ImportAudioView: View {
     }
 
     private func recentImportRow(item: RecentImportItem) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
-                .foregroundStyle(item.status == .failed ? AnyShapeStyle(.yellow) : AnyShapeStyle(.secondary))
-                .frame(width: 20)
+        Button {
+            appState.openHistoryEntry(item.id)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
+                    .foregroundStyle(item.status == .failed ? AnyShapeStyle(.yellow) : AnyShapeStyle(.secondary))
+                    .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.fileName)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.fileName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
 
-                Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
+                    Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(item.format.fileExtensionLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-
-            Spacer()
-
-            Text(item.format.fileExtensionLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .help("Open “\(item.fileName)” in History")
     }
 
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {

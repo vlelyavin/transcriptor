@@ -5,7 +5,6 @@ public struct MainWindowView: View {
     @Bindable private var appState: AppState
     @Bindable private var voiceInputController: VoiceInputController
     @State private var sidebarSearchText = ProcessInfo.processInfo.environment["TRANSCRIPTOR_QA_SEARCH"] ?? ""
-    @FocusState private var searchFieldFocused: Bool
 
     public init(appState: AppState) {
         self.appState = appState
@@ -19,9 +18,24 @@ public struct MainWindowView: View {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minWidth: 640, minHeight: 460)
+        .frame(
+            minWidth: 720,
+            idealWidth: 880,
+            maxWidth: 980,
+            minHeight: 480,
+            idealHeight: 660,
+            maxHeight: .infinity
+        )
         .navigationSplitViewStyle(.balanced)
         .background(WindowChromeConfigurator())
+        .sheet(isPresented: $appState.isPresentingWelcomeGuide) {
+            WelcomeGuideView(appState: appState)
+        }
+        .onAppear {
+            if appState.shouldAutoPresentWelcomeGuide {
+                appState.presentWelcomeGuide()
+            }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -82,7 +96,7 @@ public struct MainWindowView: View {
                 // an extra vertical gap, not a header. A headerless second
                 // section gives that native spacing.
                 Section {
-                    ForEach(SettingsPane.allCases) { pane in
+                    ForEach(SettingsPane.sidebarVisiblePanes) { pane in
                         paneRow(for: pane)
                     }
                 }
@@ -101,75 +115,20 @@ public struct MainWindowView: View {
                 sidebarSearchText = ""
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 6) {
-                Image(systemName: voiceInputController.isRecording ? "mic.fill" : "mic")
-                    .foregroundStyle(voiceInputController.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-
-                Text(voiceInputController.isRecording ? "Recording" : "Ready")
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text(appState.recordingState.hotkey.displayString)
-                    .foregroundStyle(.tertiary)
-            }
-            .font(.caption)
-            .lineLimit(1)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background {
-                NativeSidebarMaterial(blending: .withinWindow)
-                    .ignoresSafeArea()
-            }
-        }
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 264)
     }
 
-    /// Native System Settings-style search field. Implemented as a real
-    /// `TextField` with `@FocusState` (outside the `List`) so it keeps keyboard
-    /// focus even as the list content switches to search results — the failure
-    /// mode that made `.searchable(placement: .sidebar)` appear non-functional.
+    /// Native System Settings-style search field. Backed by a real
+    /// `NSSearchField` (see `NativeSearchField`) so it reliably takes first
+    /// responder and routes keystrokes to this app — the previous SwiftUI
+    /// `TextField` could leak typing to the previously active application. No
+    /// custom background is layered behind it, so it sits on the same sidebar
+    /// material as the list (a single unified shade).
     private var sidebarSearchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(.secondary)
-
-            TextField("Search", text: $sidebarSearchText)
-                .textFieldStyle(.plain)
-                .focused($searchFieldFocused)
-                .onSubmit { searchFieldFocused = true }
-
-            if !trimmedSearchText.isEmpty {
-                Button {
-                    sidebarSearchText = ""
-                    searchFieldFocused = true
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(.separator.opacity(searchFieldFocused ? 0.0 : 0.4), lineWidth: 0.5)
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 6)
-        .padding(.bottom, 6)
-        .background {
-            NativeSidebarMaterial(blending: .withinWindow)
-                .ignoresSafeArea()
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { searchFieldFocused = true }
+        NativeSearchField(text: $sidebarSearchText, placeholder: "Search")
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
     }
 
     private func screenRow(for screen: NavigationScreen) -> some View {
@@ -296,7 +255,7 @@ struct SidebarIconView: View {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(white: 0.34), Color(white: 0.22)],
+                            colors: [Color(white: 0.28), Color(white: 0.16)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -354,6 +313,8 @@ extension SettingsPane {
             "cloud.fill"
         case .privacy:
             "hand.raised.fill"
+        case .advanced:
+            "slider.horizontal.3"
         }
     }
 }

@@ -122,24 +122,22 @@ public struct ModelsView: View {
                     .foregroundStyle(stateMessageStyle(for: inventoryItem.state))
             }
 
-            DisclosureGroup("Details") {
-                VStack(alignment: .leading, spacing: 4) {
-                    LabeledContent("Speed") { Text(model.speedDescription) }
-                    LabeledContent("Accuracy") { Text(model.accuracyDescription) }
-                    LabeledContent("Best for") { Text(model.intendedUseLabel) }
+            // Details are always shown — no disclosure arrow to expand.
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent("Speed") { Text(model.speedDescription) }
+                LabeledContent("Accuracy") { Text(model.accuracyDescription) }
+                LabeledContent("Best for") { Text(model.intendedUseLabel) }
 
-                    Text(model.notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Text(model.notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                    Text(model.availability.message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .font(.callout)
-                .padding(.top, 4)
+                Text(model.availability.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .font(.caption)
+            .font(.callout)
+            .padding(.top, 4)
         }
         .padding(.vertical, 2)
     }
@@ -198,11 +196,13 @@ public struct ModelsView: View {
     }
 
     private func isSelectable(_ state: LocalModelState) -> Bool {
+        // Only a downloaded (or loaded) model can be selected — you cannot pick a
+        // model that isn't on disk yet.
         switch state {
-        case .unavailable:
-            false
-        default:
+        case .downloaded, .loaded:
             true
+        default:
+            false
         }
     }
 

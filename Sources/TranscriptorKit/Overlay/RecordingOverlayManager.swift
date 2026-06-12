@@ -10,6 +10,7 @@ public final class RecordingOverlayManager {
     private var overlayStateProvider: (() -> OverlayState)?
     private var recordingModeProvider: (() -> RecordingMode)?
     private var supplementalPhaseProvider: (() -> OverlaySupplementalPhase?)?
+    private var actionsProvider: (() -> RecordingOverlayActions)?
     private var hideTask: Task<Void, Never>?
 
     public init() {}
@@ -18,12 +19,14 @@ public final class RecordingOverlayManager {
         voiceInputController: VoiceInputController,
         overlayStateProvider: @escaping () -> OverlayState,
         recordingModeProvider: @escaping () -> RecordingMode,
-        supplementalPhaseProvider: @escaping () -> OverlaySupplementalPhase?
+        supplementalPhaseProvider: @escaping () -> OverlaySupplementalPhase?,
+        actionsProvider: @escaping () -> RecordingOverlayActions = { RecordingOverlayActions() }
     ) {
         self.voiceInputController = voiceInputController
         self.overlayStateProvider = overlayStateProvider
         self.recordingModeProvider = recordingModeProvider
         self.supplementalPhaseProvider = supplementalPhaseProvider
+        self.actionsProvider = actionsProvider
         observeChanges()
         refreshPresentation()
     }
@@ -61,28 +64,49 @@ public final class RecordingOverlayManager {
             rootView: Color.black.opacity(0.16)
                 .ignoresSafeArea()
         )
-        panel.contentViewController = NSHostingController(
-            rootView: RecordingOverlayView(
-                voiceInputController: voiceInputController,
-                overlayState: overlayState,
-                recordingMode: recordingModeProvider(),
-                supplementalPhase: supplementalPhase,
-                stopAction: {
-                    voiceInputController.stopFromToolbar()
-                },
-                cancelAction: {
-                    Task {
-                        await voiceInputController.cancelRecording()
-                    }
-                }
+
+        let panelSize: NSSize
+        if let resultContent = resultContent(for: supplementalPhase) {
+            // Interactive transcript-preview / unconfigured result card.
+            let actions = actionsProvider?() ?? RecordingOverlayActions()
+            panel.contentViewController = NSHostingController(
+                rootView: ResultOverlayView(content: resultContent, actions: actions)
             )
-        )
+            panelSize = NSSize(width: 380, height: preferredHeight(for: resultContent))
+        } else {
+            panel.contentViewController = NSHostingController(
+                rootView: RecordingOverlayView(
+                    voiceInputController: voiceInputController,
+                    overlayState: overlayState,
+                    recordingMode: recordingModeProvider(),
+                    supplementalPhase: supplementalPhase,
+                    stopAction: {
+                        voiceInputController.stopFromToolbar()
+                    },
+                    cancelAction: {
+                        Task {
+                            await voiceInputController.cancelRecording()
+                        }
+                    }
+                )
+            )
+            panelSize = NSSize(width: 340, height: 210)
+        }
+
         dimmingPanel.setFrame(screen.frame, display: false)
-        panel.setContentSize(NSSize(width: 340, height: 210))
+        panel.setContentSize(panelSize)
         position(panel: panel, screen: screen, using: overlayState.position)
         showPanel(dimmingPanel)
         showPanel(panel)
-        panel.ignoresMouseEvents = !allowsInteraction(for: voiceInputController.state, mode: recordingModeProvider())
+
+        let isResultCard = resultContent(for: supplementalPhase) != nil
+        let interactive = allowsInteraction(for: voiceInputController.state, mode: recordingModeProvider()) || isResultCard
+        panel.ignoresMouseEvents = !interactive
+        if isResultCard {
+            // Become key so the card's buttons and menus receive clicks (the
+            // panel is non-activating, so this does not steal app focus).
+            panel.makeKey()
+        }
 
         if case .error = supplementalPhase {
             scheduleHide(after: .seconds(2))
@@ -225,6 +249,26 @@ public final class RecordingOverlayManager {
 
     private func allowsInteraction(for state: VoiceInputControllerState, mode: RecordingMode) -> Bool {
         state == .recording && mode == .toggleToTalk
+    }
+
+    private func resultContent(for phase: OverlaySupplementalPhase?) -> ResultOverlayView.Content? {
+        switch phase {
+        case let .preview(payload):
+            return .preview(payload)
+        case let .unconfigured(payload):
+            return .unconfigured(payload)
+        default:
+            return nil
+        }
+    }
+
+    private func preferredHeight(for content: ResultOverlayView.Content) -> CGFloat {
+        switch content {
+        case .preview:
+            return 270
+        case .unconfigured:
+            return 220
+        }
     }
 
     private func presentationScreen() -> NSScreen {
