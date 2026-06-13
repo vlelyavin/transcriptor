@@ -42,13 +42,20 @@ final class SettingsPaneSearchTests: XCTestCase {
     func testSearchResultsMatchSettingsAcrossPanes() {
         let results = SettingsPane.searchResults(matching: "auto")
         let panes = results.map(\.pane)
-        XCTAssertTrue(panes.contains(.models))
         XCTAssertTrue(panes.contains(.storage))
         XCTAssertTrue(
-            results.first(where: { $0.pane == .models })?
+            results.first(where: { $0.pane == .storage })?
                 .matchedSettingTitles
-                .contains("Auto-transcribe after recording or import") == true
+                .contains("Auto-delete oldest history when over limit") == true
         )
+    }
+
+    func testAutoTranscribeSearchResolvesToModelsScreen() {
+        // The dedicated Models settings pane was removed; auto-transcribe is now
+        // configured on the Models screen, so the screen search surfaces it.
+        XCTAssertFalse(SettingsPane.allCases.map(\.title).contains("Models"))
+        XCTAssertTrue(NavigationScreen.models.matches(query: "auto-transcribe"))
+        XCTAssertTrue(NavigationScreen.models.matches(query: "automation"))
     }
 
     func testSearchResultsEmptyQueryReturnsNothing() {

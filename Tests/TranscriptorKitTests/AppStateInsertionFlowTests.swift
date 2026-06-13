@@ -137,6 +137,56 @@ final class AppStateInsertionFlowTests: XCTestCase {
         XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
     }
 
+    // MARK: - Cloud provider readiness & validation
+
+    func testCloudProviderNotReadyUntilKeyIsValidated() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        let openAI = try XCTUnwrap(appState.providerCatalog.provider(id: "openai"))
+
+        // Consent + stored key, but not yet validated → not ready.
+        appState.providerSettings.openAIPrivacyAcknowledged = true
+        appState.saveAPIKey("sk-test-123", for: "openai")
+        XCTAssertTrue(appState.hasStoredAPIKey(for: "openai"))
+        XCTAssertFalse(appState.providerRuntimeState(for: openAI).isReady)
+
+        // Validation passing is what flips it to ready.
+        appState.providerSettings.openAICredentialValidated = true
+        XCTAssertTrue(appState.providerRuntimeState(for: openAI).isReady)
+    }
+
+    func testSavingNewKeyResetsValidation() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        appState.providerSettings.openAIPrivacyAcknowledged = true
+        appState.saveAPIKey("sk-old", for: "openai")
+        appState.providerSettings.openAICredentialValidated = true
+
+        // Replacing the key must reset validation until the new key is tested.
+        appState.saveAPIKey("sk-new", for: "openai")
+        XCTAssertFalse(appState.providerSettings.openAICredentialValidated)
+    }
+
+    func testRemovingKeyResetsValidation() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        appState.providerSettings.openAIPrivacyAcknowledged = true
+        appState.saveAPIKey("sk-old", for: "openai")
+        appState.providerSettings.openAICredentialValidated = true
+
+        appState.removeAPIKey(for: "openai")
+        XCTAssertFalse(appState.providerSettings.openAICredentialValidated)
+        XCTAssertFalse(appState.hasStoredAPIKey(for: "openai"))
+    }
+
+    func testConsentRequiredBeforeKey() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        let openAI = try XCTUnwrap(appState.providerCatalog.provider(id: "openai"))
+
+        // No consent yet → the first gate is consent.
+        if case .privacyConsentRequired = appState.providerRuntimeState(for: openAI) {
+        } else {
+            XCTFail("Expected consent to be the first requirement")
+        }
+    }
+
     // MARK: - Helpers
 
     private struct Context {
@@ -151,6 +201,9 @@ final class AppStateInsertionFlowTests: XCTestCase {
         let context = try makeContext(secrets: ["openai-api-key": "sk-test"])
         context.appState.providerSettings.openAIEnabled = true
         context.appState.providerSettings.openAIPrivacyAcknowledged = true
+        // A provider is only "ready" after its key passes validation, so mark
+        // the stored key validated to model a fully set-up provider.
+        context.appState.providerSettings.openAICredentialValidated = true
         context.appState.transcriptionPreferences.preferredProviderID = "openai"
         context.appState.transcriptionQueueController.replaceProviders([HangingProvider()])
         return context

@@ -1,9 +1,12 @@
+import AppKit
 import SwiftUI
 
-/// First-launch setup gate, presented as a sheet. Downloading and configuring a
-/// transcription model is **mandatory**: the sheet cannot be dismissed until a
-/// transcription path exists. It offers a one-click path to the recommended
-/// model so the fastest route to a working app is also the obvious one.
+/// First-launch setup gate, presented as a sheet. Setup is **mandatory**: the
+/// sheet cannot be dismissed until BOTH a transcription model is configured AND
+/// Accessibility access is granted — the two things the app needs to deliver its
+/// core value (speak, transcribe, and type into the active app). It offers a
+/// one-click path to each so the fastest route to a working app is the obvious
+/// one.
 public struct WelcomeGuideView: View {
     @Bindable private var appState: AppState
 
@@ -17,7 +20,11 @@ public struct WelcomeGuideView: View {
                 VStack(spacing: 20) {
                     header
                     howItWorks
-                    setupCard
+
+                    VStack(spacing: 12) {
+                        modelStepCard
+                        accessibilityStepCard
+                    }
                 }
                 .padding(28)
             }
@@ -29,10 +36,16 @@ public struct WelcomeGuideView: View {
                 .padding(.vertical, 14)
         }
         .frame(width: 460)
-        .frame(minHeight: 540)
+        .frame(minHeight: 580)
         // Setup is mandatory — block interactive (swipe/click-away) dismissal
-        // until a transcription path is configured.
-        .interactiveDismissDisabled(!appState.isTranscriptionConfigured)
+        // until every required step is complete.
+        .interactiveDismissDisabled(appState.requiresSetup)
+        .onAppear { appState.refreshAccessibilityPermissionStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // The user may grant Accessibility in System Settings and switch
+            // back — re-check so the gate updates without a relaunch.
+            appState.refreshAccessibilityPermissionStatus()
+        }
         .onChange(of: appState.readyLocalModelIDs) { _, _ in
             // As soon as the recommended model finishes downloading, select it
             // so the user lands in a ready-to-use state with no extra clicks.
@@ -120,105 +133,140 @@ public struct WelcomeGuideView: View {
         }
     }
 
-    @ViewBuilder
-    private var setupCard: some View {
-        if appState.isTranscriptionConfigured {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("You're ready to go")
-                        .font(.body.weight(.semibold))
-                    Text("A transcription model is set up. Try your shortcut now.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        } else if let model = appState.recommendedSetupModel {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(Color.accentColor)
+    // MARK: - Required setup steps
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Download a transcription model")
-                            .font(.body.weight(.semibold))
-                        Text("Transcriptor needs a speech model to turn your voice into text. It runs entirely on your Mac.")
+    @ViewBuilder
+    private var modelStepCard: some View {
+        if appState.isTranscriptionConfigured {
+            requirementCard(
+                done: true,
+                title: "Transcription model ready",
+                detail: "A speech model is set up and runs entirely on your Mac."
+            )
+        } else if let model = appState.recommendedSetupModel {
+            requirementCard(done: false, title: "Download a transcription model", detail: "Transcriptor needs a speech model to turn your voice into text. It runs entirely on your Mac.") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Recommended")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(model.name)
+                                .font(.callout.weight(.semibold))
+                        }
+                        Spacer()
+                        Text(model.downloadSizeDescription)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+
+                    if let progress = recommendedModelState.progressValue {
+                        ProgressView(value: progress)
+                            .controlSize(.small)
+                        Text("Downloading… \(Int(progress * 100))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if recommendedModelIsLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Preparing model…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let failureMessage = recommendedModelState.detailMessage {
+                        Text(failureMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Spacer()
-                }
-
-                Divider()
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Recommended")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(model.name)
-                            .font(.callout.weight(.semibold))
-                    }
-                    Spacer()
-                    Text(model.downloadSizeDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let progress = recommendedModelState.progressValue {
-                    ProgressView(value: progress)
-                        .controlSize(.small)
-                    Text("Downloading… \(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if recommendedModelIsLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Preparing model…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let failureMessage = recommendedModelState.detailMessage {
-                    Text(failureMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+    }
+
+    @ViewBuilder
+    private var accessibilityStepCard: some View {
+        if appState.isAccessibilityGranted {
+            requirementCard(
+                done: true,
+                title: "Accessibility access granted",
+                detail: "Transcriptor can type your transcript into the app you're using."
+            )
+        } else {
+            requirementCard(
+                done: false,
+                title: "Grant Accessibility access",
+                detail: "macOS requires Accessibility access so Transcriptor can insert dictated text into the app you're typing in. Without it, dictation can't reach other apps."
+            )
+        }
+    }
+
+    /// A consistent requirement card: a status glyph (green check when done,
+    /// accent dot when pending), a title and explanation, and optional extra
+    /// content (e.g. the model download progress).
+    @ViewBuilder
+    private func requirementCard(
+        done: Bool,
+        title: String,
+        detail: String,
+        @ViewBuilder extra: () -> some View = { EmptyView() }
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(Color.accentColor))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            extra()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            (done ? Color.green : Color.accentColor).opacity(0.10),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
     }
 
     private var footer: some View {
         HStack {
             Spacer()
 
-            if appState.isTranscriptionConfigured {
+            if !appState.isTranscriptionConfigured {
+                if recommendedModelIsBusy {
+                    Button("Downloading…") {}
+                        .disabled(true)
+                } else {
+                    Button(recommendedModelState.detailMessage == nil ? "Download Model" : "Retry Download") {
+                        appState.beginModelSetup()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(appState.recommendedSetupModel == nil)
+                }
+            } else if !appState.isAccessibilityGranted {
+                Button("Grant Accessibility Access") {
+                    appState.requestAccessibilityPermissionPrompt()
+                    appState.openAccessibilityPrivacySettings()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            } else {
                 Button("Start Using Transcriptor") {
                     appState.dismissWelcomeGuide()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-            } else if recommendedModelIsBusy {
-                Button("Downloading…") {}
-                    .disabled(true)
-            } else {
-                Button(recommendedModelState.detailMessage == nil ? "Download Model" : "Retry Download") {
-                    appState.beginModelSetup()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .disabled(appState.recommendedSetupModel == nil)
             }
         }
     }

@@ -19,7 +19,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     case recording
     case keyboardShortcut
     case overlay
-    case models
     case storage
     case privacy
     case advanced
@@ -40,8 +39,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Keyboard Shortcut"
         case .overlay:
             "Overlay"
-        case .models:
-            "Models"
         case .storage:
             "Storage"
         case .privacy:
@@ -61,8 +58,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "keyboard"
         case .overlay:
             "rectangle.inset.filled.and.person.filled"
-        case .models:
-            "cpu"
         case .storage:
             "internaldrive"
         case .privacy:
@@ -82,14 +77,12 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Configure the global shortcut Transcriptor listens for while it is running."
         case .overlay:
             "Control the voice input overlay that appears during dictation."
-        case .models:
-            "Choose default transcription providers, local models, and automation behavior."
         case .storage:
             "Manage retained local history, audio files, and storage limits."
         case .privacy:
             "Review what stays local, what requires permission, and what remains blocked."
         case .advanced:
-            "Less-common options for recording, overlay, transcription, storage, providers, and privacy."
+            "Less-common options for recording, overlay, storage, and privacy."
         }
     }
 
@@ -139,13 +132,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
                 "Show live audio indicator",
                 "Overlay position",
             ]
-        case .models:
-            [
-                "Preferred transcription provider",
-                "Preferred local provider",
-                "Default local model",
-                "Auto-transcribe after recording or import",
-            ]
         case .storage:
             [
                 "History storage limit",
@@ -163,10 +149,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             [
                 "Microphone and audio",
                 "Overlay options",
-                "Transcription providers",
-                "Default local model",
                 "Storage limit",
-                "API providers",
                 "Privacy summary",
             ]
         }
@@ -205,8 +188,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             ["shortcut", "hotkey", "keyboard", "global"]
         case .overlay:
             ["overlay", "indicator", "position", "done"]
-        case .models:
-            ["whisper", "provider", "auto-transcribe", "model"]
         case .storage:
             ["history", "storage", "cap", "prune", "delete"]
         case .privacy:

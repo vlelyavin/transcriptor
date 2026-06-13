@@ -16,7 +16,7 @@ public struct ModelsView: View {
                     Text(preferredProviderTitle)
                 }
 
-                LabeledContent("Selected local model") {
+                LabeledContent("Selected model") {
                     Text(appState.selectedModel?.name ?? "None selected")
                 }
 
@@ -24,17 +24,14 @@ public struct ModelsView: View {
                     Text("\(appState.readyLocalModelIDs.count)")
                 }
 
-                if let whisperStatus = appState.whisperModelManager.statusMessage {
-                    Text(whisperStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let parakeetStatus = appState.parakeetModelManager.statusMessage {
-                    Text(parakeetStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Toggle(
+                    "Auto-transcribe after recording or import",
+                    isOn: Binding(
+                        get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+                        set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+                    )
+                )
+                .disabled(!appState.canEnableAutoTranscribe)
             }
 
             ForEach(appState.modelCatalog.sections) { section in
@@ -52,7 +49,7 @@ public struct ModelsView: View {
             }
 
             Section {
-                Text("Cloud transcription is optional. A provider becomes available once you store an API key and confirm that audio may be sent to it — until then, everything stays on this Mac.")
+                Text("Cloud transcription is optional. A provider only becomes available after you turn on audio sending, store an API key, and the key passes a test — until then, everything stays on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
@@ -81,42 +78,46 @@ public struct ModelsView: View {
         .navigationTitle("Models")
     }
 
+    // MARK: - Local model rows
+
+    /// One downloadable local model. The model name is on the main line with a
+    /// small red/green status indicator beneath it (red = not downloaded, green =
+    /// downloaded and usable), the action button on the trailing edge, and the
+    /// weight/language/speed metadata in a key/value table styled like the
+    /// Current Selection rows. No "Not Downloaded"/"Loaded" text statuses — the
+    /// dot and the available action already make the state clear.
     private func localModelRow(_ model: ModelDescriptor) -> some View {
         let inventoryItem = inventoryItem(for: model)
+        let state = inventoryItem.state
         let isSelected = appState.transcriptionPreferences.selectedModelID == model.id
             && appState.transcriptionPreferences.preferredProviderID == model.localProviderID
 
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(model.name + (model.accentBadgeLabel.map { " (\($0))" } ?? ""))
 
-                    Text("\(model.downloadSizeDescription) • \(model.engineLabel) • \(model.languageScopeLabel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    statusIndicator(color: localStateColor(state), label: localStateAccessibilityLabel(state))
                 }
 
                 Spacer()
-
-                stateText(for: inventoryItem.state)
 
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.accentColor)
                         .help("Selected as the preferred local model")
-                } else {
+                } else if isSelectable(state) {
                     Button("Select") {
                         appState.selectLocalModel(model.id)
                     }
                     .controlSize(.small)
-                    .disabled(!isSelectable(inventoryItem.state))
                 }
 
-                actionButton(for: model, state: inventoryItem.state)
+                actionButton(for: model, state: state)
                     .controlSize(.small)
 
-                if canDelete(inventoryItem.state) {
+                if canDelete(state) {
                     Button {
                         delete(model)
                     } label: {
@@ -127,41 +128,48 @@ public struct ModelsView: View {
                 }
             }
 
-            if let progress = inventoryItem.state.progressValue {
+            if let progress = state.progressValue {
                 ProgressView(value: progress)
                     .controlSize(.small)
             }
 
-            if let detailMessage = inventoryItem.state.detailMessage {
+            if let detailMessage = state.detailMessage {
                 Text(detailMessage)
                     .font(.caption)
-                    .foregroundStyle(stateMessageStyle(for: inventoryItem.state))
+                    .foregroundStyle(Color.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Details are always shown — no disclosure arrow to expand.
-            VStack(alignment: .leading, spacing: 4) {
+            // Metadata table — same key/value treatment as Current Selection.
+            Group {
+                LabeledContent("Size") { Text(model.downloadSizeDescription) }
+                LabeledContent("Language") { Text(model.languageScopeLabel) }
                 LabeledContent("Speed") { Text(model.speedDescription) }
                 LabeledContent("Accuracy") { Text(model.accuracyDescription) }
                 LabeledContent("Best for") { Text(model.intendedUseLabel) }
-
-                Text(model.notes)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(model.availability.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-            .font(.callout)
-            .padding(.top, 4)
+            .padding(.top, 2)
         }
         .padding(.vertical, 2)
     }
 
-    /// Full inline configuration for one cloud provider, living on the Models
-    /// page so cloud and local transcription are managed in one place — there is
-    /// no separate cloud-providers settings page. A provider becomes selectable
-    /// only when an API key is stored and audio consent is confirmed.
+    /// A small colored status dot with no visible text label — the action button
+    /// and metadata carry the rest of the meaning, matching native lists.
+    private func statusIndicator(color: Color, label: String) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 7, height: 7)
+            .accessibilityLabel(label)
+    }
+
+    // MARK: - Cloud provider configuration
+
+    /// Full inline configuration for one cloud provider, modeled on the native
+    /// System Settings network panel: the top line carries the red/green status
+    /// indicator and the "send audio" consent switch, and the remaining
+    /// details (connection status, model ID, API key) sit below. The provider
+    /// is only "Ready" — green — once consent, a stored key, and a passing key
+    /// test are all in place. Details cannot be edited until consent is given.
     private func cloudProviderSection(
         provider: ProviderDescriptor,
         modelID: Binding<String>,
@@ -171,44 +179,37 @@ public struct ModelsView: View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
         let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
+        let hasConsent = privacyConsent.wrappedValue
         let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isTesting: Bool = {
+            if case .testing = validationState { return true }
+            return false
+        }()
 
         return Section {
-            // Status + selection: a colored state dot and label (the
-            // "API Key Needed" indicator is painted in the app's accent blue),
-            // with the matching action on the trailing edge.
+            // 1. Top line: Status (red/green indicator) + the consent switch.
             LabeledContent {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(providerStateColor(runtimeState))
-                        .frame(width: 7, height: 7)
+                HStack(spacing: 12) {
+                    statusIndicator(color: providerStateColor(runtimeState), label: runtimeState.title)
                     Text(runtimeState.title)
                         .font(.caption)
                         .foregroundStyle(providerStateStyle(runtimeState))
 
-                    if runtimeState.isSelectable {
-                        if appState.transcriptionPreferences.preferredProviderID == provider.id {
-                            Image(systemName: "checkmark")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .help("Selected as the preferred provider")
-                        } else {
-                            Button("Select") {
-                                appState.transcriptionPreferences.preferredProviderID = provider.id
-                            }
-                            .controlSize(.small)
-                        }
-                    }
+                    Toggle("Send audio to \(provider.name)", isOn: privacyConsent)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .help("Send audio to \(provider.name). Required before any audio leaves this Mac.")
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Status")
-                    Text(runtimeState.message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Status")
             }
+
+            // 2. Below status: connection status, then the editable details.
+            Text(runtimeState.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             LabeledContent("Model ID") {
                 TextField("Model ID", text: modelID)
@@ -216,50 +217,55 @@ public struct ModelsView: View {
                     .labelsHidden()
                     .frame(width: 230)
             }
-
-            Toggle(isOn: privacyConsent) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Send audio to \(provider.name)")
-                    Text("Required before any audio leaves this Mac for \(provider.name).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            .disabled(!hasConsent)
 
             LabeledContent {
-                SecureField(hasStoredKey ? "Stored in Keychain — enter to replace" : "Enter API key", text: apiKeyInput)
+                SecureField(hasStoredKey ? "Stored — enter to replace" : "Enter API key", text: apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("API Key")
-                    Label(
-                        hasStoredKey ? "Stored in Keychain" : "No key stored",
-                        systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(hasStoredKey ? Color.green : Color.secondary)
+                    // Plain gray status text — no icons.
+                    Text(hasStoredKey ? "Stored in Keychain" : "No key stored")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .disabled(!hasConsent)
 
             HStack(spacing: 8) {
                 Button("Save") {
                     appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
                     apiKeyInput.wrappedValue = ""
                 }
-                .disabled(keyInputEmpty)
+                .disabled(!hasConsent || keyInputEmpty)
+
+                Button("Test") {
+                    appState.testAPIKey(for: provider.id, enteredKey: apiKeyInput.wrappedValue)
+                    apiKeyInput.wrappedValue = ""
+                }
+                .disabled(!hasConsent || (keyInputEmpty && !hasStoredKey) || isTesting)
 
                 Button("Remove") {
                     appState.removeAPIKey(for: provider.id)
                 }
                 .disabled(!hasStoredKey)
 
-                Button("Test") {
-                    appState.testAPIKey(for: provider.id)
+                if runtimeState.isReady {
+                    if appState.transcriptionPreferences.preferredProviderID == provider.id {
+                        Label("Default", systemImage: "checkmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button("Set as Default") {
+                            appState.transcriptionPreferences.preferredProviderID = provider.id
+                        }
+                    }
                 }
-                .disabled(!hasStoredKey)
+
+                Spacer()
 
                 Button("Reset") {
                     apiKeyInput.wrappedValue = ""
@@ -272,6 +278,7 @@ public struct ModelsView: View {
                 Text(validationMessage)
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
             Text(provider.name)
@@ -282,9 +289,9 @@ public struct ModelsView: View {
         }
     }
 
+    // MARK: - Local model helpers
+
     private func isSelectable(_ state: LocalModelState) -> Bool {
-        // Only a downloaded (or loaded) model can be selected — you cannot pick a
-        // model that isn't on disk yet.
         switch state {
         case .downloaded, .loaded:
             true
@@ -304,15 +311,15 @@ public struct ModelsView: View {
             Button("Load") {
                 load(model)
             }
-        case .loaded:
-            Button("Loaded") {}
-                .disabled(true)
         case .downloading, .loading, .deleting:
-            Button(state.title) {}
-                .disabled(true)
+            // Transitional — the progress bar/spinner communicates the activity.
+            ProgressView()
+                .controlSize(.small)
+        case .loaded:
+            // Ready: the green dot and Select/✓ already convey usability.
+            EmptyView()
         case .unavailable:
-            Button("Unavailable") {}
-                .disabled(true)
+            EmptyView()
         }
     }
 
@@ -359,18 +366,33 @@ public struct ModelsView: View {
         }
     }
 
-    private func stateText(for state: LocalModelState) -> some View {
-        Text(state.title)
-            .font(.caption)
-            .foregroundStyle(stateMessageStyle(for: state))
+    private func localStateColor(_ state: LocalModelState) -> Color {
+        switch state {
+        case .downloaded, .loaded:
+            .green
+        case .notDownloaded, .failed, .unavailable:
+            .red
+        case .downloading, .loading, .deleting:
+            .secondary
+        }
     }
 
-    private func stateMessageStyle(for state: LocalModelState) -> AnyShapeStyle {
+    private func localStateAccessibilityLabel(_ state: LocalModelState) -> String {
         switch state {
-        case .failed, .unavailable:
-            AnyShapeStyle(Color.red)
-        default:
-            AnyShapeStyle(.secondary)
+        case .downloaded, .loaded:
+            "Downloaded"
+        case .notDownloaded:
+            "Not downloaded"
+        case .downloading:
+            "Downloading"
+        case .loading:
+            "Loading"
+        case .deleting:
+            "Deleting"
+        case .failed:
+            "Error"
+        case .unavailable:
+            "Unavailable"
         }
     }
 
@@ -379,37 +401,21 @@ public struct ModelsView: View {
         case "parakeet-local":
             "Parakeet Local"
         case "whisperkit-local":
-            "WhisperKit Local"
+            "On-device (Whisper)"
         default:
-            appState.preferredCloudProvider?.name ?? "WhisperKit Local"
+            appState.preferredCloudProvider?.name ?? "On-device (Whisper)"
         }
+    }
+
+    // MARK: - Cloud provider styling
+
+    private func providerStateColor(_ state: ProviderRuntimeState) -> Color {
+        // Red for any not-ready state, green only when fully ready. No blue.
+        state.isReady ? .green : .red
     }
 
     private func providerStateStyle(_ state: ProviderRuntimeState) -> AnyShapeStyle {
-        switch state {
-        case .ready, .disabled:
-            AnyShapeStyle(.secondary)
-        case .missingAPIKey, .privacyConsentRequired:
-            // A setup-needed prompt, not an error — painted in the app's firm
-            // accent blue so it reads as an actionable next step. The system
-            // accent colour stays legible in both Light and Dark Mode.
-            AnyShapeStyle(Color.accentColor)
-        case .unavailable:
-            AnyShapeStyle(Color.red)
-        }
-    }
-
-    private func providerStateColor(_ state: ProviderRuntimeState) -> Color {
-        switch state {
-        case .ready:
-            .green
-        case .disabled:
-            .secondary
-        case .missingAPIKey, .privacyConsentRequired:
-            .accentColor
-        case .unavailable:
-            .red
-        }
+        state.isReady ? AnyShapeStyle(Color.green) : AnyShapeStyle(.secondary)
     }
 
     private func validationStateStyle(_ state: ProviderCredentialValidationState) -> AnyShapeStyle {

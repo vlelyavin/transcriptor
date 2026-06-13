@@ -49,11 +49,11 @@ public struct OverviewView: View {
             }
 
             Section {
-                linkedRow("Preferred provider", destination: .settings(.models)) {
+                linkedRow("Preferred provider", destination: .screen(.models)) {
                     Text(preferredProviderTitle)
                 }
 
-                linkedRow("Selected local model", destination: .settings(.models)) {
+                linkedRow("Selected model", destination: .screen(.models)) {
                     Text(appState.selectedModel?.name ?? "None selected")
                 }
 
@@ -61,7 +61,7 @@ public struct OverviewView: View {
                     Text("\(appState.readyLocalModelIDs.count)")
                 }
 
-                linkedRow("Auto-transcribe", destination: .settings(.models)) {
+                linkedRow("Auto-transcribe", destination: .screen(.models)) {
                     Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
                 }
             } header: {
@@ -253,9 +253,9 @@ public struct OverviewView: View {
         case "parakeet-local":
             "Parakeet Local"
         case "whisperkit-local":
-            "WhisperKit Local"
+            "On-device (Whisper)"
         default:
-            appState.preferredCloudProvider?.name ?? "WhisperKit Local"
+            appState.preferredCloudProvider?.name ?? "On-device (Whisper)"
         }
     }
 }

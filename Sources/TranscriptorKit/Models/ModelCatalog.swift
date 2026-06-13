@@ -113,8 +113,8 @@ public struct ModelCatalog: Equatable, Sendable {
         sections: [
             ModelSection(
                 id: "whisper",
-                title: "WhisperKit Models",
-                description: "Local Whisper-family models are backed by Argmax OSS WhisperKit and stored in Transcriptor-managed model storage.",
+                title: "Whisper Models",
+                description: "Whisper-family speech models that run entirely on this Mac. Downloaded files are kept in Transcriptor-managed local storage.",
                 models: [
                     ModelDescriptor(
                         id: "whisper-tiny",

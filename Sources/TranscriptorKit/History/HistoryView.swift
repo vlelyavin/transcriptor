@@ -39,6 +39,21 @@ public struct HistoryView: View {
                 }
             }
             .background(Color(nsColor: .windowBackgroundColor))
+            .toolbar {
+                // In the narrow single-column layout, a native toolbar back
+                // button returns to the list — replacing the old in-content
+                // breadcrumb so the detail starts directly with its content.
+                if compact, isCompactDetailVisible, selectedEntry != nil {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            isCompactDetailVisible = false
+                        } label: {
+                            Image(systemName: "chevron.backward")
+                        }
+                        .help("Back to History")
+                    }
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
@@ -203,104 +218,55 @@ public struct HistoryView: View {
     private func detailPane(isCompact: Bool) -> some View {
         Group {
             if let entry = selectedEntry {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if isCompact {
-                            Button {
-                                isCompactDetailVisible = false
-                            } label: {
-                                Label("History", systemImage: "chevron.backward")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.displayName)
-                                .font(.title3.weight(.semibold))
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .textSelection(.enabled)
-
-                            Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-
-                            Text(detailSummaryLine(for: entry))
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // A native grouped Form so section labels, the Details key/value
+                // table, and spacing match the rest of the app exactly. The page
+                // starts directly with its content — no breadcrumb.
+                Form {
+                    Section {
+                        detailHeader(for: entry)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 2, bottom: 4, trailing: 2))
+                            .listRowBackground(Color.clear)
 
                         actionBar(for: entry, isCompact: isCompact)
-
-                        if let progress = appState.transcriptionQueueController.progress(for: entry.id) {
-                            progressCard(progress)
-                        }
-
-                        if let preferredCloudProvider = appState.preferredCloudProvider {
-                            cloudPrivacyCard(for: preferredCloudProvider)
-                        }
-
-                        if let historyActionMessage = appState.historyActionMessage {
-                            UnavailableActionBanner(message: historyActionMessage)
-                        }
-
-                        if hasMissingAudioFile(entry) {
-                            UnavailableActionBanner(message: "The original audio file is missing from disk. Playback and re-transcription stay disabled until the file is restored.")
-                        }
-
-                        if let queueError = appState.transcriptionQueueController.lastErrorByEntryID[entry.id] {
-                            UnavailableActionBanner(message: queueError)
-                        }
-
-                        if let errorMessage = entry.errorMessage {
-                            UnavailableActionBanner(message: errorMessage)
-                        }
-
-                        if entry.transcriptionStatus != .completed && !appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
-                            if appState.isTranscriptionConfigured {
-                                UnavailableActionBanner(
-                                    message: "This item has not been transcribed yet. Use Transcribe Now above to generate a transcript."
-                                )
-                            } else {
-                                UnavailableActionBanner(
-                                    message: "Transcription isn't set up yet. Download a model to transcribe this recording.",
-                                    actionTitle: "Open Models"
-                                ) {
-                                    appState.selectedScreen = .models
-                                }
-                            }
-                        }
-
-                        if entry.transcriptionStatus == .completed && !entry.canCopyTranscript {
-                            UnavailableActionBanner(message: "This history item completed without transcript text, so copy and export remain disabled.")
-                        }
-
-                        GroupBox(label: historySectionHeader("Transcript")) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                if let latestVersion = entry.latestTranscriptVersion {
-                                    latestTranscriptSummary(version: latestVersion)
-                                }
-
-                                Text(displayTranscriptText(for: entry))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(6)
-                        }
-
-                        GroupBox(label: historySectionHeader("Details")) {
-                            metadataGrid(for: entry)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(6)
-                        }
-
-                        transcriptVersionSection(for: entry)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 2, bottom: 8, trailing: 2))
+                            .listRowBackground(Color.clear)
                     }
-                    .padding(.horizontal, isCompact ? 20 : 24)
-                    .padding(.vertical, isCompact ? 18 : 24)
+
+                    if let progress = appState.transcriptionQueueController.progress(for: entry.id) {
+                        Section {
+                            progressContent(progress)
+                        }
+                    }
+
+                    if hasAnyBanner(for: entry) {
+                        Section {
+                            detailBanners(for: entry)
+                        }
+                    }
+
+                    Section("Transcript") {
+                        if let latestVersion = entry.latestTranscriptVersion {
+                            latestTranscriptSummary(version: latestVersion)
+                        }
+
+                        Text(displayTranscriptText(for: entry))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Section("Details") {
+                        detailsRows(for: entry)
+                    }
+
+                    if !entry.transcriptVersions.isEmpty {
+                        Section("Transcript Versions") {
+                            ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
+                                transcriptVersionRow(version)
+                            }
+                        }
+                    }
                 }
+                .formStyle(.grouped)
             } else {
                 ContentUnavailableView(
                     "Select a Transcript",
@@ -311,15 +277,79 @@ public struct HistoryView: View {
         }
     }
 
+    private func detailHeader(for entry: HistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(entry.displayName)
+                .font(.title3.weight(.semibold))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            Text("\(formattedDate(entry.createdAt)) • \(durationLabel(entry.durationSeconds)) • \(entry.characterCount) characters")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Text(detailSummaryLine(for: entry))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A short, user-facing summary: just status and source. Model/provider live
+    /// in the Details table below, so they are not repeated here.
     private func detailSummaryLine(for entry: HistoryEntry) -> String {
-        var parts = [entry.transcriptionStatus.title, entry.sourceType.title]
-        if let modelName = entry.modelName {
-            parts.append(modelName)
+        [entry.transcriptionStatus.title, entry.sourceType.title].joined(separator: " • ")
+    }
+
+    /// True when at least one actionable/informative banner should be shown.
+    /// Purely decorative status messages are intentionally excluded.
+    private func hasAnyBanner(for entry: HistoryEntry) -> Bool {
+        if hasMissingAudioFile(entry) { return true }
+        if appState.transcriptionQueueController.lastErrorByEntryID[entry.id] != nil { return true }
+        if entry.errorMessage != nil { return true }
+        if needsSetupBanner(for: entry) { return true }
+        if entry.transcriptionStatus == .completed && !entry.canCopyTranscript { return true }
+        return false
+    }
+
+    /// Only shown when transcription is genuinely unavailable (not set up) — an
+    /// actionable banner with a direct route to the Models screen. When a model
+    /// is configured we don't nag with a "not transcribed yet" message, since the
+    /// Transcribe button is right there in the action bar.
+    private func needsSetupBanner(for entry: HistoryEntry) -> Bool {
+        entry.transcriptionStatus != .completed
+            && !appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id)
+            && !appState.isTranscriptionConfigured
+    }
+
+    @ViewBuilder
+    private func detailBanners(for entry: HistoryEntry) -> some View {
+        if hasMissingAudioFile(entry) {
+            UnavailableActionBanner(message: "The original audio file is missing from disk. Playback and re-transcription stay disabled until the file is restored.")
         }
-        if let providerName = entry.providerName {
-            parts.append(providerName)
+
+        if let queueError = appState.transcriptionQueueController.lastErrorByEntryID[entry.id] {
+            UnavailableActionBanner(message: queueError)
         }
-        return parts.joined(separator: " • ")
+
+        if let errorMessage = entry.errorMessage {
+            UnavailableActionBanner(message: errorMessage)
+        }
+
+        if needsSetupBanner(for: entry) {
+            UnavailableActionBanner(
+                message: "Transcription isn't set up yet. Download a model to transcribe this recording.",
+                actionTitle: "Open Models"
+            ) {
+                appState.selectedScreen = .models
+            }
+        }
+
+        if entry.transcriptionStatus == .completed && !entry.canCopyTranscript {
+            UnavailableActionBanner(message: "This item finished without any transcript text, so copy and export stay disabled.")
+        }
     }
 
     private func actionBar(for entry: HistoryEntry, isCompact: Bool) -> some View {
@@ -384,84 +414,89 @@ public struct HistoryView: View {
                     entryPendingDeletion = entry
                 }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
+                Text("More…")
             }
             .menuIndicator(.hidden)
             .fixedSize()
         }
     }
 
-    private func progressCard(_ progress: TranscriptionProgress) -> some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(progress.statusMessage)
+    private func progressContent(_ progress: TranscriptionProgress) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(progress.statusMessage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            if let fractionCompleted = progress.fractionCompleted {
+                ProgressView(value: fractionCompleted)
+            } else {
+                ProgressView()
+            }
+
+            if !progress.partialText.isEmpty {
+                Text(progress.partialText)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-
-                if let fractionCompleted = progress.fractionCompleted {
-                    ProgressView(value: fractionCompleted)
-                } else {
-                    ProgressView()
-                }
-
-                if !progress.partialText.isEmpty {
-                    Text(progress.partialText)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(4)
-                }
+                    .lineLimit(4)
             }
-            .padding(6)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func cloudPrivacyCard(for provider: ProviderDescriptor) -> some View {
-        Label("\(provider.privacySummary) Configure or disable this in Settings > Cloud Providers.", systemImage: "icloud.and.arrow.up")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func latestTranscriptSummary(version: TranscriptVersion) -> some View {
-        Text("\(version.modelName ?? "Unknown Model") • \(version.providerName ?? "Local") • \(formattedDate(version.createdAt))")
+        Text("\(humanizedModelName(version.modelName)) • \(humanizedProviderName(version.providerName)) • \(formattedDate(version.createdAt))")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
-    /// Section header styled to match the grouped-form section labels used on
-    /// the other pages (small, semibold, secondary) instead of the heavier
-    /// default `GroupBox` title.
-    private func historySectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-    }
+    /// The Details key/value table, rendered with native `LabeledContent` rows so
+    /// it matches the Current Selection / About-style tables elsewhere.
+    @ViewBuilder
+    private func detailsRows(for entry: HistoryEntry) -> some View {
+        LabeledContent("Audio") {
+            if let path = audioRevealPath(for: entry) {
+                Button("Open in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                Text("Unavailable")
+                    .foregroundStyle(.secondary)
+            }
+        }
 
-    private func metadataGrid(for entry: HistoryEntry) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
-            audioMetadataRow(for: entry)
-            metadataRow(title: "File Size", value: byteCountFormatter.string(fromByteCount: entry.fileSizeBytes))
-            metadataRow(title: "Language", value: entry.language ?? "Unknown")
-            metadataRow(title: "Model", value: entry.modelName ?? "Not assigned")
-            metadataRow(title: "Provider", value: entry.providerName ?? "Local")
+        LabeledContent("File Size") {
+            Text(byteCountFormatter.string(fromByteCount: entry.fileSizeBytes))
+        }
+
+        LabeledContent("Language") {
+            Text(entry.language ?? "Unknown")
+        }
+
+        LabeledContent("Model") {
+            Text(humanizedModelName(entry.modelName))
+        }
+
+        LabeledContent("Provider") {
+            Text(humanizedProviderName(entry.providerName))
         }
     }
 
-    /// A single "Audio" row that replaces the two raw file-path rows. The path is
-    /// surfaced as a "View in Finder" button rather than printed in full.
-    private func audioMetadataRow(for entry: HistoryEntry) -> some View {
-        GridRow {
-            Text("Audio")
-                .foregroundStyle(.secondary)
-            if let path = audioRevealPath(for: entry) {
-                Button("View in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-                }
-                .buttonStyle(.link)
-                .gridColumnAlignment(.leading)
-            } else {
-                Text("Unavailable")
+    private func transcriptVersionRow(_ version: TranscriptVersion) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(humanizedModelName(version.modelName))
+                Text("\(formattedDate(version.createdAt)) • \(humanizedProviderName(version.providerName))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+
+            Spacer()
+
+            Text("\(version.characterCount) characters")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -470,46 +505,19 @@ public struct HistoryView: View {
         return candidates.compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0) }
     }
 
-    private func metadataRow(title: String, value: String) -> some View {
-        GridRow {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .lineLimit(2)
-                .truncationMode(.tail)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
+    /// Presents provider names without internal engine names. Legacy entries may
+    /// have stored "WhisperKit Local"; surface them as the on-device label.
+    private func humanizedProviderName(_ name: String?) -> String {
+        guard let name, !name.isEmpty else { return "On-device" }
+        if name.localizedCaseInsensitiveContains("whisperkit") {
+            return "On-device (Whisper)"
         }
+        return name
     }
 
-    @ViewBuilder
-    private func transcriptVersionSection(for entry: HistoryEntry) -> some View {
-        if !entry.transcriptVersions.isEmpty {
-            GroupBox(label: historySectionHeader("Transcript Versions")) {
-                VStack(spacing: 0) {
-                    ForEach(entry.transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt })) { version in
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(version.modelName ?? "Unknown Model")
-                                    .font(.subheadline)
-                                Text("\(formattedDate(version.createdAt)) • \(version.providerName ?? "Local")")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Text("\(version.characterCount) characters")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 6)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-            }
-        }
+    private func humanizedModelName(_ name: String?) -> String {
+        guard let name, !name.isEmpty else { return "Not assigned" }
+        return name.replacingOccurrences(of: "WhisperKit", with: "Whisper")
     }
 
     private var filteredEntries: [HistoryEntry] {
@@ -594,11 +602,11 @@ public struct HistoryView: View {
 
     private func rowDetailLine(for entry: HistoryEntry) -> String {
         var parts = [entry.sourceType.title, rowStatusText(for: entry)]
-        if let modelName = entry.modelName {
-            parts.append(modelName)
+        if entry.modelName != nil {
+            parts.append(humanizedModelName(entry.modelName))
         }
-        if let providerName = entry.providerName {
-            parts.append(providerName)
+        if entry.providerName != nil {
+            parts.append(humanizedProviderName(entry.providerName))
         }
         return parts.joined(separator: " • ")
     }
