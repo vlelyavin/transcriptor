@@ -10,6 +10,7 @@ public final class ParakeetModelManager {
 
     private let catalog: ModelCatalog
     private let provider: ParakeetLocalTranscriptionProvider
+    private var downloadTasks: [String: Task<Void, Never>] = [:]
 
     public init(
         catalog: ModelCatalog,
@@ -42,7 +43,7 @@ public final class ParakeetModelManager {
         inventory[model.id] = LocalModelInventoryItem(modelID: model.id, state: .downloading(progress: 0))
         statusMessage = nil
 
-        Task {
+        downloadTasks[model.id] = Task {
             do {
                 let folder = try await provider.downloadModel(model) { [weak self] progress in
                     Task { @MainActor in
@@ -55,6 +56,7 @@ public final class ParakeetModelManager {
                 }
 
                 await MainActor.run {
+                    downloadTasks[model.id] = nil
                     inventory[model.id] = LocalModelInventoryItem(
                         modelID: model.id,
                         state: .downloaded,
@@ -62,8 +64,15 @@ public final class ParakeetModelManager {
                     )
                     statusMessage = "Downloaded \(model.name)."
                 }
+            } catch is CancellationError {
+                await MainActor.run {
+                    downloadTasks[model.id] = nil
+                    inventory[model.id] = LocalModelInventoryItem(modelID: model.id, state: .notDownloaded)
+                    statusMessage = "Cancelled \(model.name) download."
+                }
             } catch {
                 await MainActor.run {
+                    downloadTasks[model.id] = nil
                     inventory[model.id] = LocalModelInventoryItem(
                         modelID: model.id,
                         state: .failed(message: error.localizedDescription)
@@ -72,6 +81,17 @@ public final class ParakeetModelManager {
                 }
             }
         }
+    }
+
+    /// Cancels an in-progress download and reverts the model to not-downloaded.
+    public func cancelDownload(_ model: ModelDescriptor) {
+        guard let task = downloadTasks[model.id] else {
+            return
+        }
+        task.cancel()
+        downloadTasks[model.id] = nil
+        inventory[model.id] = LocalModelInventoryItem(modelID: model.id, state: .notDownloaded)
+        statusMessage = "Cancelled \(model.name) download."
     }
 
     public func load(_ model: ModelDescriptor) {

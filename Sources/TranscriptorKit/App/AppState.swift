@@ -537,6 +537,73 @@ public final class AppState {
         }
     }
 
+    // MARK: - Active transcription target
+
+    /// The single, unified transcription target the user has chosen — either a
+    /// downloaded local model or a ready cloud provider. This replaces the old
+    /// two-knob "preferred provider + selected model" model in the UI.
+    public enum ActiveTarget: Hashable, Sendable {
+        case local(String)
+        case cloud(String)
+    }
+
+    /// Every target the user can pick right now: downloaded local models first,
+    /// then fully set-up cloud providers.
+    public var availableTargets: [ActiveTarget] {
+        var targets: [ActiveTarget] = []
+        for model in modelCatalog.localModels where readyLocalModelIDs.contains(model.id) {
+            targets.append(.local(model.id))
+        }
+        for provider in providerCatalog.providers where providerRuntimeState(for: provider).isReady {
+            targets.append(.cloud(provider.id))
+        }
+        return targets
+    }
+
+    /// The currently active target, if it is still valid (downloaded / ready).
+    public var activeTarget: ActiveTarget? {
+        if isLocalProviderID(transcriptionPreferences.preferredProviderID) {
+            let modelID = transcriptionPreferences.selectedModelID
+            return readyLocalModelIDs.contains(modelID) ? .local(modelID) : nil
+        }
+
+        let providerID = transcriptionPreferences.preferredProviderID
+        guard let provider = providerCatalog.provider(id: providerID),
+              providerRuntimeState(for: provider).isReady else {
+            return nil
+        }
+        return .cloud(providerID)
+    }
+
+    public func selectTarget(_ target: ActiveTarget) {
+        switch target {
+        case let .local(modelID):
+            selectLocalModel(modelID)
+        case let .cloud(providerID):
+            transcriptionPreferences.preferredProviderID = providerID
+        }
+    }
+
+    /// Commits the first available target when the stored selection no longer
+    /// resolves to a ready model/provider (e.g. its files were never downloaded
+    /// or were deleted), so the displayed selection always matches what would
+    /// actually run. A no-op when the current selection is already valid or when
+    /// nothing is ready.
+    public func ensureActiveTargetValid() {
+        if activeTarget == nil, let first = availableTargets.first {
+            selectTarget(first)
+        }
+    }
+
+    public func targetDisplayName(_ target: ActiveTarget) -> String {
+        switch target {
+        case let .local(modelID):
+            return modelCatalog.model(id: modelID)?.name ?? modelID
+        case let .cloud(providerID):
+            return providerCatalog.provider(id: providerID)?.name ?? providerID
+        }
+    }
+
     public func importAudio(from sourceURLs: [URL]) {
         for sourceURL in sourceURLs {
             do {

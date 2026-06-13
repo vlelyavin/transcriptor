@@ -14,7 +14,20 @@ import TranscriptorKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        applyDockIcon()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Sets the Dock icon from the bundled AppIcon at runtime. The static
+    /// `CFBundleIconFile` is the source of truth for Finder/installer, but the
+    /// running Dock icon can lag behind LaunchServices' icon cache — assigning
+    /// it here guarantees the correct icon every launch.
+    private func applyDockIcon() {
+        let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "icns")
+        if let url, let image = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = image
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

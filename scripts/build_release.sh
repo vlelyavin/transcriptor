@@ -23,6 +23,15 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME}"
 chmod 755 "${MACOS_DIR}/${APP_NAME}"
 
+# App icon (dock + installer). Regenerate if missing.
+ICON_SRC="${ROOT_DIR}/Sources/Transcriptor/Resources/AppIcon.icns"
+if [[ ! -f "${ICON_SRC}" ]]; then
+  ( cd "${ROOT_DIR}" && swift Scripts/generate_app_icon.swift )
+fi
+if [[ -f "${ICON_SRC}" ]]; then
+  cp "${ICON_SRC}" "${RESOURCES_DIR}/AppIcon.icns"
+fi
+
 cat > "${INFO_PLIST}" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -32,6 +41,10 @@ cat > "${INFO_PLIST}" <<'PLIST'
   <string>en</string>
   <key>CFBundleExecutable</key>
   <string>Transcriptor</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIconName</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>com.vlelyavin.Transcriptor</string>
   <key>CFBundleInfoDictionaryVersion</key>

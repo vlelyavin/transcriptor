@@ -260,6 +260,9 @@ struct SettingsContentWidth: ViewModifier {
 struct SidebarIconView: View {
     let systemImage: String
     var size: CGFloat = 20
+    /// When true, the glyph animates with a native variable-color symbol effect
+    /// (used by the recording overlay's "listening" state).
+    var animated: Bool = false
 
     private var cornerRadius: CGFloat { size * 0.26 }
 
@@ -267,6 +270,7 @@ struct SidebarIconView: View {
         Image(systemName: systemImage)
             .font(.system(size: size * 0.55, weight: .medium))
             .foregroundStyle(.white)
+            .symbolEffect(.variableColor.iterative, isActive: animated)
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

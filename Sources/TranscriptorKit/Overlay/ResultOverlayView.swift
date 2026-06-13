@@ -34,11 +34,7 @@ struct ResultOverlayView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: headerSymbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(headerColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            SidebarIconView(systemImage: headerSymbol, size: 32)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(headerTitle)
@@ -178,13 +174,6 @@ struct ResultOverlayView: View {
         switch content {
         case .preview: "text.quote"
         case .unconfigured: "mic.badge.plus"
-        }
-    }
-
-    private var headerColor: Color {
-        switch content {
-        case .preview: .accentColor
-        case .unconfigured: .orange
         }
     }
 
