@@ -23,6 +23,9 @@ public enum ProviderRuntimeState: Equatable, Sendable {
     case disabled(message: String)
     case missingAPIKey(message: String)
     case privacyConsentRequired(message: String)
+    /// A key is stored and consent is given, but the key has not yet passed a
+    /// live validation against the provider — so it is not yet usable.
+    case needsValidation(message: String)
     case unavailable(message: String)
 
     public var title: String {
@@ -32,9 +35,11 @@ public enum ProviderRuntimeState: Equatable, Sendable {
         case .disabled:
             "Disabled"
         case .missingAPIKey:
-            "API Key Needed"
+            "Not Ready"
         case .privacyConsentRequired:
-            "Privacy Consent Needed"
+            "Not Ready"
+        case .needsValidation:
+            "Not Verified"
         case .unavailable:
             "Unavailable"
         }
@@ -46,6 +51,7 @@ public enum ProviderRuntimeState: Equatable, Sendable {
              let .disabled(message),
              let .missingAPIKey(message),
              let .privacyConsentRequired(message),
+             let .needsValidation(message),
              let .unavailable(message):
             message
         }
@@ -58,4 +64,8 @@ public enum ProviderRuntimeState: Equatable, Sendable {
 
         return false
     }
+
+    /// True when the provider is fully set up and usable. Drives the green/red
+    /// status indicator: green only when ready, red for every not-ready state.
+    public var isReady: Bool { isSelectable }
 }

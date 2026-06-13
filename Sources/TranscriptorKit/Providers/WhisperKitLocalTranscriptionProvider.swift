@@ -3,7 +3,7 @@ import WhisperKit
 
 public actor WhisperKitLocalTranscriptionProvider: LocalTranscriptionProvider {
     public let id = "whisperkit-local"
-    public let displayName = "WhisperKit Local"
+    public let displayName = "On-device (Whisper)"
     public let kind: TranscriptionProviderKind = .local
     public let supportedModelIDs: Set<String>
 

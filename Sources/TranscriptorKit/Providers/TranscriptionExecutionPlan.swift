@@ -140,7 +140,7 @@ public struct TranscriptionTargetResolver: Sendable {
         case "parakeet-local":
             "Parakeet Local"
         default:
-            "WhisperKit Local"
+            "On-device (Whisper)"
         }
     }
 
@@ -169,6 +169,8 @@ public struct TranscriptionTargetResolver: Sendable {
             throw TranscriptionError.missingCredentials(message)
         case let .privacyConsentRequired(message):
             throw TranscriptionError.privacyConsentRequired(message)
+        case let .needsValidation(message):
+            throw TranscriptionError.missingCredentials(message)
         case let .unavailable(message):
             throw TranscriptionError.providerUnavailable(message)
         }

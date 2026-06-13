@@ -315,8 +315,6 @@ extension SettingsPane {
             "keyboard.fill"
         case .overlay:
             "rectangle.inset.filled"
-        case .models:
-            "cpu.fill"
         case .storage:
             "internaldrive.fill"
         case .privacy:

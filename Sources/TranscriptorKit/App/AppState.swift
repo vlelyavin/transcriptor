@@ -46,13 +46,23 @@ public final class AppState {
     /// dismissed.
     public var requiresModelSetup: Bool { !isTranscriptionConfigured }
 
+    /// Inserting dictated text into other apps — the app's core value — needs
+    /// macOS Accessibility access, so it is a required part of initial setup.
+    public var isAccessibilityGranted: Bool { accessibilityPermissionStatus == .granted }
+
+    public var requiresAccessibilitySetup: Bool { !isAccessibilityGranted }
+
+    /// Initial setup is mandatory and complete only when BOTH a transcription
+    /// model is configured AND Accessibility access is granted.
+    public var requiresSetup: Bool { requiresModelSetup || requiresAccessibilitySetup }
+
     /// QA/screenshot hook: when true, the mandatory setup gate is not
     /// auto-presented, so automated captures of other screens aren't blocked.
     /// Never set during a normal launch.
     public var suppressSetupGate = false
 
     /// The setup gate auto-presents on launch whenever setup is still required.
-    public var shouldAutoPresentWelcomeGuide: Bool { requiresModelSetup && !suppressSetupGate }
+    public var shouldAutoPresentWelcomeGuide: Bool { requiresSetup && !suppressSetupGate }
 
     /// The model offered first in the mandatory setup flow — the catalog's
     /// flagged recommendation, falling back to the first downloadable WhisperKit
@@ -71,7 +81,7 @@ public final class AppState {
     /// Dismisses the setup gate. Because setup is mandatory, this only succeeds
     /// once a transcription path has actually been configured.
     public func dismissWelcomeGuide() {
-        guard isTranscriptionConfigured else { return }
+        guard !requiresSetup else { return }
         hasSeenWelcomeGuide = true
         isPresentingWelcomeGuide = false
     }
@@ -308,7 +318,9 @@ public final class AppState {
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
-            groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged
+            groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            openAICredentialValidated: snapshot.openAICredentialValidated,
+            groqCredentialValidated: snapshot.groqCredentialValidated
         )
         self.historyStore = HistoryStore(entries: persistedEntries)
         self.modelCatalog = modelCatalog
@@ -712,15 +724,22 @@ public final class AppState {
             break
         }
 
-        // A cloud provider becomes usable as soon as both requirements are met:
-        // an API key is stored in Keychain and the user has acknowledged that
-        // audio is sent to that provider. There is no separate enable switch.
-        guard hasStoredAPIKey(for: provider.id) else {
-            return .missingAPIKey(message: "Add your \(provider.name) API key to use this provider. Audio stays on this Mac until you do.")
+        // A cloud provider is only "ready" once every requirement passes, in the
+        // order the user fills them in:
+        //   1. consent to send audio to the provider,
+        //   2. an API key stored in Keychain,
+        //   3. that key has passed a live validation (Test) against the provider.
+        // It never reports Ready before validation has succeeded.
+        guard providerSettings.hasPrivacyConsent(for: provider.id) else {
+            return .privacyConsentRequired(message: "Turn on “Send audio to \(provider.name)” to set it up. Audio stays on this Mac until you do.")
         }
 
-        guard providerSettings.hasPrivacyConsent(for: provider.id) else {
-            return .privacyConsentRequired(message: "Confirm that audio is sent to \(provider.name) to start using it.")
+        guard hasStoredAPIKey(for: provider.id) else {
+            return .missingAPIKey(message: "Add your \(provider.name) API key to continue.")
+        }
+
+        guard providerSettings.hasValidatedCredential(for: provider.id) else {
+            return .needsValidation(message: "Test your \(provider.name) API key to finish setup.")
         }
 
         let configuredModelID = providerSettings.modelID(for: provider.id, fallback: provider.modelLabel)
@@ -753,7 +772,10 @@ public final class AppState {
         do {
             try secretStore.saveSecret(trimmedKey, for: provider.keychainAccount)
             storedAPIKeyProviderIDs.insert(providerID)
-            providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) API key saved to Keychain.")
+            // A newly stored key has not been validated yet — readiness must wait
+            // until the user tests this exact key successfully.
+            providerSettings.setCredentialValidated(false, for: providerID)
+            providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) API key saved. Test it to finish setup.")
         } catch {
             providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
         }
@@ -767,17 +789,41 @@ public final class AppState {
         do {
             try secretStore.deleteSecret(for: provider.keychainAccount)
             storedAPIKeyProviderIDs.remove(providerID)
+            providerSettings.setCredentialValidated(false, for: providerID)
             providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) API key removed from Keychain.")
         } catch {
             providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
         }
     }
 
-    public func testAPIKey(for providerID: String) {
+    /// Validates a provider's API key. If the user has typed a new key into the
+    /// field (`enteredKey`), that exact key is stored and tested — so we never
+    /// validate a stale stored key while a freshly entered one is waiting. When
+    /// the field is empty, the already-stored key is tested instead. Readiness
+    /// (the green "Ready" state) is only granted once this validation succeeds.
+    public func testAPIKey(for providerID: String, enteredKey: String = "") {
         guard let provider = providerCatalog.provider(id: providerID) else {
             return
         }
 
+        let trimmedEnteredKey = enteredKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedEnteredKey.isEmpty {
+            do {
+                try secretStore.saveSecret(trimmedEnteredKey, for: provider.keychainAccount)
+                storedAPIKeyProviderIDs.insert(providerID)
+            } catch {
+                providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
+                return
+            }
+        }
+
+        guard hasStoredAPIKey(for: providerID) else {
+            providerCredentialValidationStates[providerID] = .failed("Add a \(provider.name) API key before testing.")
+            return
+        }
+
+        // Any test invalidates a prior validation until it succeeds again.
+        providerSettings.setCredentialValidated(false, for: providerID)
         providerCredentialValidationStates[providerID] = .testing
         let modelID = providerSettings.modelID(for: providerID, fallback: provider.modelLabel)
 
@@ -785,10 +831,12 @@ public final class AppState {
             do {
                 try await cloudProvider(for: providerID)?.validateCredentials(modelID: modelID)
                 await MainActor.run {
-                    self.providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) accepted the stored key for model '\(modelID)'.")
+                    self.providerSettings.setCredentialValidated(true, for: providerID)
+                    self.providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) is ready. The key was accepted for model “\(modelID)”.")
                 }
             } catch {
                 await MainActor.run {
+                    self.providerSettings.setCredentialValidated(false, for: providerID)
                     self.providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
                 }
             }
@@ -871,6 +919,7 @@ public final class AppState {
             removeAPIKey(for: providerID)
         }
 
+        providerSettings.setCredentialValidated(false, for: providerID)
         providerCredentialValidationStates[providerID] = .idle
     }
 
@@ -902,7 +951,9 @@ public final class AppState {
                 openAIModelID: providerSettings.openAIModelID,
                 groqModelID: providerSettings.groqModelID,
                 openAIPrivacyAcknowledged: providerSettings.openAIPrivacyAcknowledged,
-                groqPrivacyAcknowledged: providerSettings.groqPrivacyAcknowledged
+                groqPrivacyAcknowledged: providerSettings.groqPrivacyAcknowledged,
+                openAICredentialValidated: providerSettings.openAICredentialValidated,
+                groqCredentialValidated: providerSettings.groqCredentialValidated
             )
         )
     }

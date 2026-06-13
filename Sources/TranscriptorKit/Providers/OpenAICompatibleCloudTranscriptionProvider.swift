@@ -174,6 +174,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     private func mapAPIError(data: Data, statusCode: Int) -> TranscriptionError {
         let apiMessage = (try? JSONDecoder().decode(CloudAPIErrorEnvelope.self, from: data).error.message)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+            .redactingAPIKeys()
 
         switch statusCode {
         case 401, 403:
@@ -223,6 +224,24 @@ private extension Data {
 private extension String {
     func normalizedTranscriptWhitespace() -> String {
         replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Strips any API-key-like token from a provider error message so the raw
+    /// (or even partially masked) key is never surfaced in UI, logs, or history.
+    /// Providers like OpenAI echo the offending key back in their error text
+    /// (e.g. "Incorrect API key provided: sk-…****…gAA"); this replaces such
+    /// tokens with a neutral phrase while keeping the rest of the message.
+    func redactingAPIKeys() -> String {
+        // Matches OpenAI/Groq-style secrets ("sk-…", "gsk_…"), including masked
+        // variants that contain "*" or "…"/"." runs.
+        let pattern = "(?i)\\b(?:sk|gsk|rk|pk)[-_][A-Za-z0-9\\-_*.…]+"
+        let redacted = replacingOccurrences(
+            of: pattern,
+            with: "your API key",
+            options: .regularExpression
+        )
+        return redacted.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

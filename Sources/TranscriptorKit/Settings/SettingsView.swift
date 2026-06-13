@@ -31,11 +31,12 @@ public struct SettingsPaneDetailView: View {
                 shortcutSections
             }
         case .advanced:
-            // Single catch-all for everything non-essential.
+            // Single catch-all for everything non-essential. Transcription
+            // provider/model selection lives on the dedicated Models screen, not
+            // here, to avoid duplicate settings.
             settingsForm {
                 recordingDetailSection
                 overlaySection
-                transcriptionSections
                 storageSections
                 privacySection
                 diagnosticsSection
@@ -51,8 +52,6 @@ public struct SettingsPaneDetailView: View {
             }
         case .overlay:
             settingsForm { overlaySection }
-        case .models:
-            settingsForm { transcriptionSections }
         case .storage:
             settingsForm { storageSections }
         case .privacy:
@@ -246,120 +245,6 @@ public struct SettingsPaneDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var transcriptionSections: some View {
-        Section("Preferred Transcription Provider") {
-            providerSelectionRow(
-                title: "WhisperKit Local",
-                subtitle: "Audio stays on this Mac.",
-                isSelected: appState.transcriptionPreferences.preferredProviderID == "whisperkit-local",
-                isEnabled: true
-            ) {
-                appState.selectPreferredLocalProvider("whisperkit-local")
-            }
-
-            providerSelectionRow(
-                title: "Parakeet Local",
-                subtitle: parakeetProviderSubtitle,
-                isSelected: appState.transcriptionPreferences.preferredProviderID == "parakeet-local",
-                isEnabled: appState.parakeetModelManager.inventory.values.contains {
-                    switch $0.state {
-                    case .unavailable:
-                        false
-                    default:
-                        true
-                    }
-                }
-            ) {
-                appState.selectPreferredLocalProvider("parakeet-local")
-            }
-
-            ForEach(appState.providerCatalog.providers) { provider in
-                let runtimeState = appState.providerRuntimeState(for: provider)
-                providerSelectionRow(
-                    title: provider.name,
-                    subtitle: runtimeState.message,
-                    isSelected: appState.transcriptionPreferences.preferredProviderID == provider.id,
-                    isEnabled: runtimeState.isSelectable
-                ) {
-                    appState.transcriptionPreferences.preferredProviderID = provider.id
-                }
-            }
-        }
-
-        Section {
-            Picker("Preferred Local Provider", selection: $appState.transcriptionPreferences.preferredLocalProviderID) {
-                Text("WhisperKit Local").tag("whisperkit-local")
-                Text("Parakeet Local").tag("parakeet-local")
-            }
-            .onChange(of: appState.transcriptionPreferences.preferredLocalProviderID) { _, newValue in
-                appState.selectPreferredLocalProvider(newValue)
-            }
-        } header: {
-            Text("Local Provider")
-        } footer: {
-            Text("Choose which local runtime should be preferred when you transcribe without selecting a cloud provider.")
-        }
-
-        Section {
-            // Only downloaded models can be selected; the binding routes through
-            // selectLocalModel which rejects undownloaded models.
-            Picker(
-                "Selected Transcription Model",
-                selection: Binding(
-                    get: { appState.transcriptionPreferences.selectedModelID },
-                    set: { appState.selectLocalModel($0) }
-                )
-            ) {
-                if readyLocalModels.isEmpty {
-                    Text("No downloaded models").tag(appState.transcriptionPreferences.selectedModelID)
-                } else {
-                    ForEach(readyLocalModels) { model in
-                        Text(model.name).tag(model.id)
-                    }
-                }
-            }
-            .disabled(readyLocalModels.isEmpty)
-        } header: {
-            Text("Default Local Model")
-        } footer: {
-            if readyLocalModels.isEmpty {
-                Text("Download a model below to choose it here.")
-            } else if let selectedModel = appState.selectedModel {
-                Text(selectedModel.availability.message)
-            }
-        }
-
-        Section {
-            Toggle(
-                "Auto-transcribe after recording or import",
-                isOn: Binding(
-                    get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
-                    set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
-                )
-            )
-            .disabled(!appState.canEnableAutoTranscribe)
-
-            if let provider = appState.preferredCloudProvider {
-                Label(provider.privacySummary, systemImage: "icloud")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        } header: {
-            Text("Automation")
-        } footer: {
-            if !appState.canEnableAutoTranscribe {
-                Text("Download a transcription model to enable automatic transcription.")
-            } else if let statusMessage = appState.whisperModelManager.statusMessage {
-                Text(statusMessage)
-            }
-        }
-    }
-
-    private var readyLocalModels: [ModelDescriptor] {
-        appState.modelCatalog.localModels.filter { appState.readyLocalModelIDs.contains($0.id) }
-    }
-
     /// History storage limit bounds: 20 MB up to 2 GB (2 048 MB).
     private var storageLimitRange: ClosedRange<Int> { 20...2_048 }
 
@@ -479,83 +364,8 @@ public struct SettingsPaneDetailView: View {
         .formStyle(.grouped)
     }
 
-    private func providerSelectionRow(
-        title: String,
-        subtitle: String,
-        isSelected: Bool,
-        isEnabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                RadioIndicator(isSelected: isSelected)
-                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.55)
-    }
-
     private func megabyteString(for bytes: Int64) -> String {
         String(format: "%.2f MB", Double(bytes) / 1_048_576)
-    }
-
-    private var parakeetProviderSubtitle: String {
-        if appState.parakeetModelManager.inventory.values.contains(where: {
-            switch $0.state {
-            case .unavailable:
-                false
-            default:
-                true
-            }
-        }) {
-            return "Audio stays on this Mac. Uses a local Core ML Parakeet backend."
-        }
-
-        return "Requires Apple Silicon for the current Core ML backend."
-    }
-}
-
-/// A radio button drawn to match the native macOS control: a bordered well when
-/// off, an accent-filled disc with a small white center when on. Used for the
-/// vertical "Preferred Transcription Provider" radio group, where per-row
-/// disabling and subtitles rule out a plain `Picker(.radioGroup)`.
-struct RadioIndicator: View {
-    let isSelected: Bool
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            isSelected ? Color.clear : Color(nsColor: .separatorColor),
-                            lineWidth: 1
-                        )
-                }
-                .shadow(color: .black.opacity(0.07), radius: 0.5, y: 0.5)
-
-            if isSelected {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 5, height: 5)
-            }
-        }
-        .frame(width: 14, height: 14)
     }
 }
 

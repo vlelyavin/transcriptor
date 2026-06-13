@@ -28,6 +28,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var groqModelID: String
     public var openAIPrivacyAcknowledged: Bool
     public var groqPrivacyAcknowledged: Bool
+    public var openAICredentialValidated: Bool
+    public var groqCredentialValidated: Bool
 
     public init(
         launchAtLoginEnabled: Bool = false,
@@ -55,7 +57,9 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
         openAIPrivacyAcknowledged: Bool = false,
-        groqPrivacyAcknowledged: Bool = false
+        groqPrivacyAcknowledged: Bool = false,
+        openAICredentialValidated: Bool = false,
+        groqCredentialValidated: Bool = false
     ) {
         self.launchAtLoginEnabled = launchAtLoginEnabled
         self.showMenuBarIcon = showMenuBarIcon
@@ -83,6 +87,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.groqModelID = groqModelID
         self.openAIPrivacyAcknowledged = openAIPrivacyAcknowledged
         self.groqPrivacyAcknowledged = groqPrivacyAcknowledged
+        self.openAICredentialValidated = openAICredentialValidated
+        self.groqCredentialValidated = groqCredentialValidated
     }
 }
 
@@ -113,6 +119,8 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var groqModelID: String?
     var openAIPrivacyAcknowledged: Bool?
     var groqPrivacyAcknowledged: Bool?
+    var openAICredentialValidated: Bool?
+    var groqCredentialValidated: Bool?
 }
 
 @MainActor
@@ -162,7 +170,9 @@ public final class AppPreferencesStore {
             openAIModelID: decoded.openAIModelID ?? "gpt-4o-mini-transcribe",
             groqModelID: decoded.groqModelID ?? "whisper-large-v3-turbo",
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
-            groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false
+            groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
+            openAICredentialValidated: decoded.openAICredentialValidated ?? false,
+            groqCredentialValidated: decoded.groqCredentialValidated ?? false
         )
     }
 
@@ -193,7 +203,9 @@ public final class AppPreferencesStore {
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
-            groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged
+            groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            openAICredentialValidated: snapshot.openAICredentialValidated,
+            groqCredentialValidated: snapshot.groqCredentialValidated
         )
 
         guard let data = try? encoder.encode(codableSnapshot) else {
