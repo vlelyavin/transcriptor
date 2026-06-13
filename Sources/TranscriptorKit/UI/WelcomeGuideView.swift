@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// First-launch welcome + setup guide, presented as a sheet. Explains the core
-/// workflow and offers a one-click path to download a transcription model. The
-/// user can always skip — the app still works as a voice recorder.
+/// First-launch setup gate, presented as a sheet. Downloading and configuring a
+/// transcription model is **mandatory**: the sheet cannot be dismissed until a
+/// transcription path exists. It offers a one-click path to the recommended
+/// model so the fastest route to a working app is also the obvious one.
 public struct WelcomeGuideView: View {
     @Bindable private var appState: AppState
 
@@ -28,7 +29,15 @@ public struct WelcomeGuideView: View {
                 .padding(.vertical, 14)
         }
         .frame(width: 460)
-        .frame(minHeight: 520)
+        .frame(minHeight: 540)
+        // Setup is mandatory — block interactive (swipe/click-away) dismissal
+        // until a transcription path is configured.
+        .interactiveDismissDisabled(!appState.isTranscriptionConfigured)
+        .onChange(of: appState.readyLocalModelIDs) { _, _ in
+            // As soon as the recommended model finishes downloading, select it
+            // so the user lands in a ready-to-use state with no extra clicks.
+            appState.finishModelSetupIfReady()
+        }
     }
 
     private var header: some View {
@@ -41,7 +50,7 @@ public struct WelcomeGuideView: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+                                colors: [Color(white: 0.28), Color(white: 0.16)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -49,7 +58,14 @@ public struct WelcomeGuideView: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
                 }
 
             Text("Welcome to Transcriptor")
@@ -123,49 +139,108 @@ public struct WelcomeGuideView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
+        } else if let model = appState.recommendedSetupModel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.title2)
                         .foregroundStyle(Color.accentColor)
-                    Text("Set up transcription")
-                        .font(.body.weight(.semibold))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Download a transcription model")
+                            .font(.body.weight(.semibold))
+                        Text("Transcriptor needs a speech model to turn your voice into text. It runs entirely on your Mac.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
                 }
 
-                Text("Download a local model to turn speech into text. It runs entirely on your Mac. You can skip this and use Transcriptor as a voice recorder — recordings can be transcribed later.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Divider()
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Recommended")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(model.name)
+                            .font(.callout.weight(.semibold))
+                    }
+                    Spacer()
+                    Text(model.downloadSizeDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let progress = recommendedModelState.progressValue {
+                    ProgressView(value: progress)
+                        .controlSize(.small)
+                    Text("Downloading… \(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if recommendedModelIsLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Preparing model…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let failureMessage = recommendedModelState.detailMessage {
+                    Text(failureMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
     private var footer: some View {
         HStack {
-            if !appState.isTranscriptionConfigured {
-                Button("Skip for now") {
-                    appState.dismissWelcomeGuide()
-                }
-            }
-
             Spacer()
 
             if appState.isTranscriptionConfigured {
-                Button("Done") {
+                Button("Start Using Transcriptor") {
                     appState.dismissWelcomeGuide()
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            } else if recommendedModelIsBusy {
+                Button("Downloading…") {}
+                    .disabled(true)
             } else {
-                Button("Set Up Transcription") {
+                Button(recommendedModelState.detailMessage == nil ? "Download Model" : "Retry Download") {
                     appState.beginModelSetup()
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(appState.recommendedSetupModel == nil)
             }
         }
+    }
+
+    // MARK: - Recommended model state helpers
+
+    private var recommendedModelState: LocalModelState {
+        guard let model = appState.recommendedSetupModel else { return .notDownloaded }
+        return appState.whisperModelManager.item(for: model.id)?.state ?? .notDownloaded
+    }
+
+    private var recommendedModelIsLoading: Bool {
+        switch recommendedModelState {
+        case .loading, .deleting:
+            true
+        default:
+            false
+        }
+    }
+
+    private var recommendedModelIsBusy: Bool {
+        recommendedModelState.progressValue != nil || recommendedModelIsLoading
     }
 }
 

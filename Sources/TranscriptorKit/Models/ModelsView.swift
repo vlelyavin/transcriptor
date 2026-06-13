@@ -1,6 +1,8 @@
 import SwiftUI
 
 public struct ModelsView: View {
+    @State private var openAIAPIKeyInput = ""
+    @State private var groqAPIKeyInput = ""
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
@@ -50,15 +52,29 @@ public struct ModelsView: View {
             }
 
             Section {
-                ForEach(appState.providerCatalog.providers) { provider in
-                    providerRow(provider)
-                }
-            } header: {
-                Text("Cloud Models")
-            } footer: {
-                Text("Cloud transcription is optional and only runs after explicit setup.")
+                Text("Cloud transcription is optional. A provider becomes available once you store an API key and confirm that audio may be sent to it — until then, everything stays on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } header: {
+                Text("Cloud Models")
+            }
+
+            if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
+                cloudProviderSection(
+                    provider: openAI,
+                    modelID: $appState.providerSettings.openAIModelID,
+                    privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
+                    apiKeyInput: $openAIAPIKeyInput
+                )
+            }
+
+            if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
+                cloudProviderSection(
+                    provider: groq,
+                    modelID: $appState.providerSettings.groqModelID,
+                    privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
+                    apiKeyInput: $groqAPIKeyInput
+                )
             }
         }
         .formStyle(.grouped)
@@ -142,57 +158,128 @@ public struct ModelsView: View {
         .padding(.vertical, 2)
     }
 
-    private func providerRow(_ provider: ProviderDescriptor) -> some View {
+    /// Full inline configuration for one cloud provider, living on the Models
+    /// page so cloud and local transcription are managed in one place — there is
+    /// no separate cloud-providers settings page. A provider becomes selectable
+    /// only when an API key is stored and audio consent is confirmed.
+    private func cloudProviderSection(
+        provider: ProviderDescriptor,
+        modelID: Binding<String>,
+        privacyConsent: Binding<Bool>,
+        apiKeyInput: Binding<String>
+    ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
+        let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
+        let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        return Section {
+            // Status + selection: a colored state dot and label (the
+            // "API Key Needed" indicator is painted in the app's accent blue),
+            // with the matching action on the trailing edge.
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(providerStateColor(runtimeState))
+                        .frame(width: 7, height: 7)
+                    Text(runtimeState.title)
+                        .font(.caption)
+                        .foregroundStyle(providerStateStyle(runtimeState))
+
+                    if runtimeState.isSelectable {
+                        if appState.transcriptionPreferences.preferredProviderID == provider.id {
+                            Image(systemName: "checkmark")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .help("Selected as the preferred provider")
+                        } else {
+                            Button("Select") {
+                                appState.transcriptionPreferences.preferredProviderID = provider.id
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.name)
-
-                    Text(provider.modelLabel)
+                    Text("Status")
+                    Text(runtimeState.message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+            }
 
-                Spacer()
+            LabeledContent("Model ID") {
+                TextField("Model ID", text: modelID)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 230)
+            }
 
-                Text(runtimeState.title)
+            Toggle(isOn: privacyConsent) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Send audio to \(provider.name)")
+                    Text("Required before any audio leaves this Mac for \(provider.name).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            LabeledContent {
+                SecureField(hasStoredKey ? "Stored in Keychain — enter to replace" : "Enter API key", text: apiKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 230)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("API Key")
+                    Label(
+                        hasStoredKey ? "Stored in Keychain" : "No key stored",
+                        systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
+                    )
                     .font(.caption)
-                    .foregroundStyle(providerStateStyle(runtimeState))
-
-                if runtimeState.isSelectable {
-                    if appState.transcriptionPreferences.preferredProviderID == provider.id {
-                        Image(systemName: "checkmark")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .help("Selected as the preferred provider")
-                    } else {
-                        Button("Select") {
-                            appState.transcriptionPreferences.preferredProviderID = provider.id
-                        }
-                        .controlSize(.small)
-                    }
-                } else {
-                    Button("Set Up…") {
-                        appState.openSettings(pane: .cloudProviders)
-                    }
-                    .controlSize(.small)
+                    .foregroundStyle(hasStoredKey ? Color.green : Color.secondary)
                 }
+            }
+
+            HStack(spacing: 8) {
+                Button("Save") {
+                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                    apiKeyInput.wrappedValue = ""
+                }
+                .disabled(keyInputEmpty)
+
+                Button("Remove") {
+                    appState.removeAPIKey(for: provider.id)
+                }
+                .disabled(!hasStoredKey)
+
+                Button("Test") {
+                    appState.testAPIKey(for: provider.id)
+                }
+                .disabled(!hasStoredKey)
+
+                Button("Reset") {
+                    apiKeyInput.wrappedValue = ""
+                    appState.resetCloudProvider(provider.id)
+                }
+                .help("Reset \(provider.name): clears the key, consent, and model.")
             }
 
             if let validationMessage = validationState.message {
                 Text(validationMessage)
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
-            } else {
-                Text(runtimeState.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
+        } header: {
+            Text(provider.name)
+        } footer: {
+            Text(provider.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
     }
 
     private func isSelectable(_ state: LocalModelState) -> Bool {
@@ -303,9 +390,25 @@ public struct ModelsView: View {
         case .ready, .disabled:
             AnyShapeStyle(.secondary)
         case .missingAPIKey, .privacyConsentRequired:
-            AnyShapeStyle(Color.orange)
+            // A setup-needed prompt, not an error — painted in the app's firm
+            // accent blue so it reads as an actionable next step. The system
+            // accent colour stays legible in both Light and Dark Mode.
+            AnyShapeStyle(Color.accentColor)
         case .unavailable:
             AnyShapeStyle(Color.red)
+        }
+    }
+
+    private func providerStateColor(_ state: ProviderRuntimeState) -> Color {
+        switch state {
+        case .ready:
+            .green
+        case .disabled:
+            .secondary
+        case .missingAPIKey, .privacyConsentRequired:
+            .accentColor
+        case .unavailable:
+            .red
         }
     }
 

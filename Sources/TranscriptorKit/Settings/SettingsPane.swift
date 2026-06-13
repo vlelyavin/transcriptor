@@ -21,7 +21,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     case overlay
     case models
     case storage
-    case cloudProviders
     case privacy
     case advanced
 
@@ -45,8 +44,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Models"
         case .storage:
             "Storage"
-        case .cloudProviders:
-            "Cloud Providers"
         case .privacy:
             "Privacy"
         case .advanced:
@@ -68,8 +65,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "cpu"
         case .storage:
             "internaldrive"
-        case .cloudProviders:
-            "cloud"
         case .privacy:
             "hand.raised"
         case .advanced:
@@ -91,8 +86,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             "Choose default transcription providers, local models, and automation behavior."
         case .storage:
             "Manage retained local history, audio files, and storage limits."
-        case .cloudProviders:
-            "Store API keys in Keychain and review cloud privacy controls."
         case .privacy:
             "Review what stays local, what requires permission, and what remains blocked."
         case .advanced:
@@ -160,14 +153,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
                 "Exclude downloaded model files from cap",
                 "Storage usage",
             ]
-        case .cloudProviders:
-            [
-                "OpenAI API key",
-                "OpenAI model ID",
-                "Groq API key",
-                "Groq model ID",
-                "Cloud privacy consent",
-            ]
         case .privacy:
             [
                 "Local transcription privacy",
@@ -224,8 +209,6 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             ["whisper", "provider", "auto-transcribe", "model"]
         case .storage:
             ["history", "storage", "cap", "prune", "delete"]
-        case .cloudProviders:
-            ["openai", "groq", "api", "keychain", "privacy"]
         case .privacy:
             ["accessibility", "microphone", "permissions", "local", "cloud"]
         case .advanced:

@@ -40,26 +40,58 @@ public final class AppState {
     /// Drives the welcome/setup guide sheet.
     public var isPresentingWelcomeGuide = false
 
-    /// True on first launch (the guide should auto-present).
-    public var shouldAutoPresentWelcomeGuide: Bool { !hasSeenWelcomeGuide }
+    /// Setup is mandatory: the app requires at least one usable transcription
+    /// path (a downloaded local model or a ready cloud provider) before it can
+    /// be used. When this is true the setup gate must be shown and cannot be
+    /// dismissed.
+    public var requiresModelSetup: Bool { !isTranscriptionConfigured }
+
+    /// QA/screenshot hook: when true, the mandatory setup gate is not
+    /// auto-presented, so automated captures of other screens aren't blocked.
+    /// Never set during a normal launch.
+    public var suppressSetupGate = false
+
+    /// The setup gate auto-presents on launch whenever setup is still required.
+    public var shouldAutoPresentWelcomeGuide: Bool { requiresModelSetup && !suppressSetupGate }
+
+    /// The model offered first in the mandatory setup flow — the catalog's
+    /// flagged recommendation, falling back to the first downloadable WhisperKit
+    /// model so there is always a one-click path to a working model.
+    public var recommendedSetupModel: ModelDescriptor? {
+        let whisper = modelCatalog.whisperModels
+        return whisper.first(where: { $0.accentBadgeLabel == "Recommended" }) ?? whisper.first
+    }
 
     /// Presents the setup guide (used by the first-launch auto-present and the
-    /// Overview "set up transcription" banner button).
+    /// Overview "set up transcription" row button).
     public func presentWelcomeGuide() {
         isPresentingWelcomeGuide = true
     }
 
-    /// Marks the guide as seen and dismisses it.
+    /// Dismisses the setup gate. Because setup is mandatory, this only succeeds
+    /// once a transcription path has actually been configured.
     public func dismissWelcomeGuide() {
+        guard isTranscriptionConfigured else { return }
         hasSeenWelcomeGuide = true
         isPresentingWelcomeGuide = false
     }
 
-    /// Dismisses the guide and routes to the Models screen to download a model.
+    /// Starts downloading the recommended model directly from the setup gate, so
+    /// the user never has to leave the flow to get a working model.
     public func beginModelSetup() {
-        hasSeenWelcomeGuide = true
-        isPresentingWelcomeGuide = false
-        sidebarSelection = .screen(.models)
+        guard let model = recommendedSetupModel else { return }
+        whisperModelManager.download(model)
+    }
+
+    /// Selects a freshly downloaded model as the active one. Called by the setup
+    /// gate once the recommended model finishes downloading so the user lands in
+    /// a ready-to-use state automatically.
+    public func finishModelSetupIfReady() {
+        guard let model = recommendedSetupModel,
+              readyLocalModelIDs.contains(model.id),
+              transcriptionPreferences.selectedModelID != model.id
+        else { return }
+        selectLocalModel(model.id)
     }
 
     public var selectedScreen: NavigationScreen {

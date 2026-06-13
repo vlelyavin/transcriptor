@@ -18,9 +18,6 @@ public struct MainWindowView: View {
         } detail: {
             contentView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // When the sidebar is collapsed the detail content fills the full
-                // window width instead of leaving a blank gray gutter on the right.
-                .environment(\.sidebarCollapsed, columnVisibility == .detailOnly)
         }
         .frame(
             minWidth: 640,
@@ -202,9 +199,7 @@ public struct MainWindowView: View {
     }
 
     private var matchingScreens: [NavigationScreen] {
-        NavigationScreen.allCases.filter {
-            $0.title.localizedCaseInsensitiveContains(trimmedSearchText)
-        }
+        NavigationScreen.allCases.filter { $0.matches(query: trimmedSearchText) }
     }
 
     private var settingsSearchResults: [SettingsSearchResult] {
@@ -233,35 +228,25 @@ public struct MainWindowView: View {
     }
 }
 
-/// Environment flag set by `MainWindowView` when the split-view sidebar is
-/// collapsed, so leading-aligned content can expand to fill the freed width.
-private struct SidebarCollapsedKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    var sidebarCollapsed: Bool {
-        get { self[SidebarCollapsedKey.self] }
-        set { self[SidebarCollapsedKey.self] = newValue }
+/// A button style for navigation-like list rows. Unlike `.plain` — which dims
+/// the entire label while the row is pressed — this keeps the label's foreground
+/// colors stable, so only the row background (driven separately by hover) reacts
+/// to interaction, matching native System Settings list rows.
+struct StableRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
     }
 }
 
-/// Pins grouped-form content to a native System Settings-style column: a fixed
-/// readable width hugging the leading edge instead of being centered with large
-/// gaps on both sides when the window is wide. When the sidebar is collapsed the
-/// cap is lifted so the content stretches across the whole window (matching
-/// `white_collapsed.png`), leaving no empty gutter on the right.
+/// Stretches page content to the full available detail width instead of capping
+/// it to a narrow column with empty side gutters. Grouped `Form` already insets
+/// its section cards with native margins, so the only horizontal padding the
+/// user sees is the native row spacing — no artificial page-level gutters.
 struct SettingsContentWidth: ViewModifier {
-    @Environment(\.sidebarCollapsed) private var sidebarCollapsed
-
     func body(content: Content) -> some View {
         content
-            .frame(maxWidth: sidebarCollapsed ? .infinity : 620, alignment: .leading)
-            // Center the capped column when the window is wider than the content
-            // so any extra width is split into balanced gutters (like native
-            // System Settings) instead of a single blank strip on the right.
-            // When the sidebar is collapsed the cap is lifted, so this is a no-op.
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
@@ -334,8 +319,6 @@ extension SettingsPane {
             "cpu.fill"
         case .storage:
             "internaldrive.fill"
-        case .cloudProviders:
-            "cloud.fill"
         case .privacy:
             "hand.raised.fill"
         case .advanced:

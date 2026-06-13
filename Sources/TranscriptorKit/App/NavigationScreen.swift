@@ -40,4 +40,26 @@ public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
             "cpu.fill"
         }
     }
+
+    /// Extra keywords that should surface this screen in sidebar search beyond
+    /// its title. The Models screen now hosts cloud provider setup, so OpenAI,
+    /// Groq, and API-key searches resolve here.
+    public var searchTokens: [String] {
+        switch self {
+        case .overview:
+            ["status", "summary", "home"]
+        case .history:
+            ["transcripts", "recordings", "history"]
+        case .importAudio:
+            ["import", "files", "audio", "drop"]
+        case .models:
+            ["models", "whisper", "parakeet", "openai", "groq", "cloud", "api key", "provider", "download"]
+        }
+    }
+
+    /// True when the query matches this screen's title or one of its tokens.
+    public func matches(query: String) -> Bool {
+        let haystack = ([title] + searchTokens).joined(separator: " ")
+        return haystack.localizedCaseInsensitiveContains(query)
+    }
 }

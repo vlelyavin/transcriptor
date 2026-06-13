@@ -3,8 +3,6 @@ import SwiftUI
 /// The detail form for one settings pane. Settings live in the main window
 /// sidebar (like System Settings), so this renders inside the main split view.
 public struct SettingsPaneDetailView: View {
-    @State private var openAIAPIKeyInput = ""
-    @State private var groqAPIKeyInput = ""
     @Bindable private var appState: AppState
     private let pane: SettingsPane
 
@@ -39,7 +37,6 @@ public struct SettingsPaneDetailView: View {
                 overlaySection
                 transcriptionSections
                 storageSections
-                cloudProviderSections
                 privacySection
                 diagnosticsSection
             }
@@ -58,8 +55,6 @@ public struct SettingsPaneDetailView: View {
             settingsForm { transcriptionSections }
         case .storage:
             settingsForm { storageSections }
-        case .cloudProviders:
-            settingsForm { cloudProviderSections }
         case .privacy:
             settingsForm { privacySection }
         }
@@ -437,33 +432,12 @@ public struct SettingsPaneDetailView: View {
     }
 
     @ViewBuilder
-    private var cloudProviderSections: some View {
-        if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-            providerConfigurationSection(
-                provider: provider,
-                modelID: $appState.providerSettings.openAIModelID,
-                privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                apiKeyInput: $openAIAPIKeyInput
-            )
-        }
-
-        if let provider = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-            providerConfigurationSection(
-                provider: provider,
-                modelID: $appState.providerSettings.groqModelID,
-                privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
-                apiKeyInput: $groqAPIKeyInput
-            )
-        }
-    }
-
-    @ViewBuilder
     private var privacySection: some View {
         Section("Privacy") {
             Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
             Label("Parakeet Local uses FluidAudio Core ML bundles downloaded from Hugging Face and keeps transcription on this Mac.", systemImage: "waveform.badge.mic")
             Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
-            Label("OpenAI and Groq only send audio after you enable the provider, store an API key in Keychain, and acknowledge the privacy warning.", systemImage: "key")
+            Label("OpenAI and Groq only send audio after you store an API key in Keychain and confirm on the Models page that audio may be sent.", systemImage: "key")
             Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
         }
     }
@@ -505,108 +479,6 @@ public struct SettingsPaneDetailView: View {
         .formStyle(.grouped)
     }
 
-    private func providerConfigurationSection(
-        provider: ProviderDescriptor,
-        modelID: Binding<String>,
-        privacyConsent: Binding<Bool>,
-        apiKeyInput: Binding<String>
-    ) -> some View {
-        let runtimeState = appState.providerRuntimeState(for: provider)
-        let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
-        let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
-        let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-        return Section {
-            // Status row reads like a native availability indicator: a colored
-            // dot plus a short state label, with the detail message beneath.
-            LabeledContent {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(providerRuntimeColor(runtimeState))
-                        .frame(width: 7, height: 7)
-                    Text(runtimeState.title)
-                        .foregroundStyle(.secondary)
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Status")
-                    Text(runtimeState.message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            LabeledContent("Model ID") {
-                TextField("Model ID", text: modelID)
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .frame(width: 230)
-            }
-
-            Toggle(isOn: privacyConsent) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Send audio to \(provider.name)")
-                    Text("Required before any audio leaves this Mac for \(provider.name).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            LabeledContent {
-                SecureField(hasStoredKey ? "Stored in Keychain — enter to replace" : "Enter API key", text: apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .frame(width: 230)
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("API Key")
-                    Label(
-                        hasStoredKey ? "Stored in Keychain" : "No key stored",
-                        systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(hasStoredKey ? Color.green : Color.secondary)
-                }
-            }
-
-            HStack(spacing: 8) {
-                Button("Save") {
-                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
-                    apiKeyInput.wrappedValue = ""
-                }
-                .disabled(keyInputEmpty)
-
-                Button("Remove") {
-                    appState.removeAPIKey(for: provider.id)
-                }
-                .disabled(!hasStoredKey)
-
-                Button("Test") {
-                    appState.testAPIKey(for: provider.id)
-                }
-                .disabled(!hasStoredKey)
-
-                Button("Reset") {
-                    apiKeyInput.wrappedValue = ""
-                    appState.resetCloudProvider(provider.id)
-                }
-                .help("Reset \(provider.name): clears the key, consent, and model.")
-            }
-
-            if let validationMessage = validationState.message {
-                Text(validationMessage)
-                    .font(.caption)
-                    .foregroundStyle(validationColor(validationState))
-            }
-        } header: {
-            Text(provider.name)
-        } footer: {
-            Text(provider.summary)
-        }
-    }
-
     private func providerSelectionRow(
         title: String,
         subtitle: String,
@@ -635,32 +507,6 @@ public struct SettingsPaneDetailView: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
-    }
-
-    private func providerRuntimeColor(_ state: ProviderRuntimeState) -> Color {
-        switch state {
-        case .ready:
-            .green
-        case .disabled:
-            .secondary
-        case .missingAPIKey, .privacyConsentRequired:
-            .orange
-        case .unavailable:
-            .red
-        }
-    }
-
-    private func validationColor(_ state: ProviderCredentialValidationState) -> Color {
-        switch state {
-        case .idle:
-            .secondary
-        case .testing:
-            .orange
-        case .succeeded:
-            .green
-        case .failed:
-            .red
-        }
     }
 
     private func megabyteString(for bytes: Int64) -> String {
