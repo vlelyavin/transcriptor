@@ -17,9 +17,7 @@ public struct OverviewView: View {
 
             if !appState.isTranscriptionConfigured {
                 Section {
-                    setupBanner
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                    setupRow
                 }
             }
 
@@ -168,63 +166,47 @@ public struct OverviewView: View {
     }
 
     /// Persistent call-to-action shown until a transcription model (or cloud
-    /// provider) is configured. Launches the setup guide.
-    private var setupBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.title2)
-                .foregroundStyle(Color.accentColor)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Set up transcription")
-                    .font(.body.weight(.semibold))
-                Text("Download a model to turn recordings into text. Until then, Transcriptor still works as a voice recorder.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 8)
-
+    /// provider) is configured. Rendered as a standard grouped Settings row —
+    /// an icon, label, and prominent action button — rather than a custom card,
+    /// matching the way native System Settings surfaces setup recommendations.
+    private var setupRow: some View {
+        LabeledContent {
             Button("Set Up…") {
                 appState.presentWelcomeGuide()
             }
             .buttonStyle(.borderedProminent)
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Set up transcription")
+                        .font(.body.weight(.semibold))
+                    Text("Download a model to turn recordings into text. Until then, Transcriptor still works as a voice recorder.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 0.5)
-        }
-        .padding(.vertical, 4)
     }
 
-    /// A status row whose trailing button jumps to the place where the value
-    /// can actually be changed.
+    /// A status row that navigates to the place where the value can actually be
+    /// changed. The whole row is the click target (like native System Settings
+    /// list rows); the chevron is only a visual affordance.
     private func linkedRow(
         _ title: String,
         destination: SidebarItem,
         @ViewBuilder value: () -> some View
     ) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 8) {
-                value()
-
-                Button {
-                    appState.sidebarSelection = destination
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(.quaternary.opacity(0.7), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help(helpText(for: destination))
-            }
-        }
+        OverviewNavigationRow(
+            title: title,
+            help: helpText(for: destination),
+            action: { appState.sidebarSelection = destination },
+            value: value
+        )
     }
 
     private func helpText(for destination: SidebarItem) -> String {
@@ -263,5 +245,52 @@ public struct OverviewView: View {
         default:
             appState.preferredCloudProvider?.name ?? "WhisperKit Local"
         }
+    }
+}
+
+/// A grouped-form navigation row whose entire surface is clickable and that
+/// subtly highlights on hover, matching native System Settings list rows. The
+/// trailing chevron is a visual indicator only — not the click target.
+private struct OverviewNavigationRow<Value: View>: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+    @ViewBuilder let value: Value
+    @State private var isHovering = false
+
+    init(
+        title: String,
+        help: String,
+        action: @escaping () -> Void,
+        @ViewBuilder value: () -> Value
+    ) {
+        self.title = title
+        self.help = help
+        self.action = action
+        self.value = value()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 12)
+
+                value
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .listRowBackground(isHovering ? Color.primary.opacity(0.06) : Color.clear)
+        .help(help)
     }
 }

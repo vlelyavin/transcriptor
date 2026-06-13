@@ -680,16 +680,15 @@ public final class AppState {
             break
         }
 
-        guard providerSettings.isEnabled(providerID: provider.id) else {
-            return .disabled(message: "Turn on “Enable \(provider.name)” to use this provider.")
-        }
-
+        // A cloud provider becomes usable as soon as both requirements are met:
+        // an API key is stored in Keychain and the user has acknowledged that
+        // audio is sent to that provider. There is no separate enable switch.
         guard hasStoredAPIKey(for: provider.id) else {
-            return .missingAPIKey(message: "Add a \(provider.name) API key in Settings. Audio will stay on this Mac until you do.")
+            return .missingAPIKey(message: "Add your \(provider.name) API key to use this provider. Audio stays on this Mac until you do.")
         }
 
         guard providerSettings.hasPrivacyConsent(for: provider.id) else {
-            return .privacyConsentRequired(message: "Confirm the cloud privacy warning in Settings before sending audio to \(provider.name).")
+            return .privacyConsentRequired(message: "Confirm that audio is sent to \(provider.name) to start using it.")
         }
 
         let configuredModelID = providerSettings.modelID(for: provider.id, fallback: provider.modelLabel)
@@ -818,11 +817,29 @@ public final class AppState {
         storageSettings = StorageSettings()
     }
 
-    public func resetCloudProviderDefaults() {
-        providerSettings.openAIModelID = "gpt-4o-mini-transcribe"
-        providerSettings.groqModelID = "whisper-large-v3-turbo"
-        providerSettings.openAIPrivacyAcknowledged = false
-        providerSettings.groqPrivacyAcknowledged = false
+    /// Resets a single cloud provider to its defaults: restores the default
+    /// model ID, withdraws privacy consent, removes any stored API key, and
+    /// clears its validation state. Other providers are untouched.
+    public func resetCloudProvider(_ providerID: String) {
+        let defaults = ProviderSettings()
+        switch providerID {
+        case "openai":
+            providerSettings.openAIModelID = defaults.openAIModelID
+            providerSettings.openAIPrivacyAcknowledged = false
+            providerSettings.openAIEnabled = false
+        case "groq":
+            providerSettings.groqModelID = defaults.groqModelID
+            providerSettings.groqPrivacyAcknowledged = false
+            providerSettings.groqEnabled = false
+        default:
+            break
+        }
+
+        if hasStoredAPIKey(for: providerID) {
+            removeAPIKey(for: providerID)
+        }
+
+        providerCredentialValidationStates[providerID] = .idle
     }
 
     private func persistPreferences() {

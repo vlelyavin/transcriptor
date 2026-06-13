@@ -82,7 +82,7 @@ public struct SettingsPaneDetailView: View {
 
     @ViewBuilder
     private var transcriptInsertionSection: some View {
-        Section("Transcript Insertion") {
+        Section {
             Toggle("Insert transcript into active app", isOn: $appState.generalSettings.insertTranscriptIntoActiveApp)
             Toggle("Also copy transcript to clipboard", isOn: $appState.generalSettings.alsoCopyTranscriptToClipboard)
             Toggle("Restore previous clipboard after insertion", isOn: $appState.generalSettings.restoreClipboardAfterInsertion)
@@ -101,16 +101,16 @@ public struct SettingsPaneDetailView: View {
                     appState.openAccessibilityPrivacySettings()
                 }
             }
-
+        } header: {
+            Text("Transcript Insertion")
+        } footer: {
             Text("Accessibility access is only required for inserting dictated text into other apps. If access is unavailable, Transcriptor still saves the transcript to history and can copy it to the clipboard instead.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder
     private var applicationSection: some View {
-        Section("Application") {
+        Section {
             Toggle(
                 "Show Transcriptor in menu bar",
                 isOn: $appState.generalSettings.showMenuBarIcon
@@ -129,10 +129,6 @@ public struct SettingsPaneDetailView: View {
                 Text(appState.launchAtLoginStatus.title)
             }
 
-            Text(appState.launchAtLoginStatus.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             HStack {
                 Button("Refresh Status") {
                     appState.refreshLaunchAtLoginStatus()
@@ -142,18 +138,26 @@ public struct SettingsPaneDetailView: View {
                     appState.openLoginItemsSettings()
                 }
             }
+        } header: {
+            Text("Application")
+        } footer: {
+            Text(appState.launchAtLoginStatus.detail)
         }
     }
 
     @ViewBuilder
     private var recordingDetailSection: some View {
-        Section("Microphone & Audio") {
-            Toggle("Save original audio", isOn: $appState.recordingState.savesAudioLocally)
-
-            if !appState.recordingState.savesAudioLocally {
-                Text("This preference is currently partial. Dictation audio is still kept locally for pending transcription and reliable re-transcription until cleanup rules are fully implemented.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+        Section {
+            Toggle(isOn: $appState.recordingState.savesAudioLocally) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Save original audio")
+                    if !appState.recordingState.savesAudioLocally {
+                        Text("Currently partial: dictation audio is still kept locally for pending transcription and reliable re-transcription until cleanup rules are fully implemented.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
             LabeledContent("Permission") {
@@ -165,13 +169,13 @@ public struct SettingsPaneDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             Button("Open Microphone Privacy Settings") {
                 appState.openMicrophonePrivacySettings()
             }
+        } header: {
+            Text("Microphone & Audio")
+        } footer: {
+            Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
         }
     }
 
@@ -226,7 +230,7 @@ public struct SettingsPaneDetailView: View {
 
     @ViewBuilder
     private var overlaySection: some View {
-        Section("Overlay") {
+        Section {
             Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
             Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
             Toggle("Show live audio indicator", isOn: $appState.overlayState.showsLiveAudioIndicator)
@@ -237,13 +241,13 @@ public struct SettingsPaneDetailView: View {
                 }
             }
 
-            Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             Button("Restore Overlay Defaults") {
                 appState.resetOverlayDefaults()
             }
+        } header: {
+            Text("Overlay")
+        } footer: {
+            Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into.")
         }
     }
 
@@ -288,7 +292,7 @@ public struct SettingsPaneDetailView: View {
             }
         }
 
-        Section("Local Provider") {
+        Section {
             Picker("Preferred Local Provider", selection: $appState.transcriptionPreferences.preferredLocalProviderID) {
                 Text("WhisperKit Local").tag("whisperkit-local")
                 Text("Parakeet Local").tag("parakeet-local")
@@ -296,13 +300,13 @@ public struct SettingsPaneDetailView: View {
             .onChange(of: appState.transcriptionPreferences.preferredLocalProviderID) { _, newValue in
                 appState.selectPreferredLocalProvider(newValue)
             }
-
+        } header: {
+            Text("Local Provider")
+        } footer: {
             Text("Choose which local runtime should be preferred when you transcribe without selecting a cloud provider.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
 
-        Section("Default Local Model") {
+        Section {
             // Only downloaded models can be selected; the binding routes through
             // selectLocalModel which rejects undownloaded models.
             Picker(
@@ -321,19 +325,17 @@ public struct SettingsPaneDetailView: View {
                 }
             }
             .disabled(readyLocalModels.isEmpty)
-
+        } header: {
+            Text("Default Local Model")
+        } footer: {
             if readyLocalModels.isEmpty {
                 Text("Download a model below to choose it here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             } else if let selectedModel = appState.selectedModel {
                 Text(selectedModel.availability.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
 
-        Section("Automation") {
+        Section {
             Toggle(
                 "Auto-transcribe after recording or import",
                 isOn: Binding(
@@ -343,22 +345,18 @@ public struct SettingsPaneDetailView: View {
             )
             .disabled(!appState.canEnableAutoTranscribe)
 
-            if !appState.canEnableAutoTranscribe {
-                Text("Download a transcription model to enable automatic transcription.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             if let provider = appState.preferredCloudProvider {
                 Label(provider.privacySummary, systemImage: "icloud")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-
-            if let statusMessage = appState.whisperModelManager.statusMessage {
+        } header: {
+            Text("Automation")
+        } footer: {
+            if !appState.canEnableAutoTranscribe {
+                Text("Download a transcription model to enable automatic transcription.")
+            } else if let statusMessage = appState.whisperModelManager.statusMessage {
                 Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -367,11 +365,39 @@ public struct SettingsPaneDetailView: View {
         appState.modelCatalog.localModels.filter { appState.readyLocalModelIDs.contains($0.id) }
     }
 
+    /// History storage limit bounds: 20 MB up to 2 GB (2 048 MB).
+    private var storageLimitRange: ClosedRange<Int> { 20...2_048 }
+
+    /// Clamps both typed entry and stepper input to `storageLimitRange` so the
+    /// limit can never be set outside the supported bounds.
+    private var storageLimitBinding: Binding<Int> {
+        Binding(
+            get: {
+                min(max(appState.storageSettings.capMegabytes, storageLimitRange.lowerBound), storageLimitRange.upperBound)
+            },
+            set: { newValue in
+                appState.storageSettings.capMegabytes = min(max(newValue, storageLimitRange.lowerBound), storageLimitRange.upperBound)
+            }
+        )
+    }
+
     @ViewBuilder
     private var storageSections: some View {
         Section("Retention") {
-            Stepper(value: $appState.storageSettings.capMegabytes, in: 256...10_240, step: 256) {
-                Text("History storage limit: \(appState.storageSettings.capMegabytes) MB")
+            LabeledContent("History storage limit") {
+                HStack(spacing: 6) {
+                    TextField("", value: storageLimitBinding, format: .number)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 62)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("MB")
+                        .foregroundStyle(.secondary)
+
+                    Stepper("", value: storageLimitBinding, in: storageLimitRange, step: 64)
+                        .labelsHidden()
+                }
             }
 
             Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
@@ -415,7 +441,6 @@ public struct SettingsPaneDetailView: View {
         if let provider = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
             providerConfigurationSection(
                 provider: provider,
-                isEnabled: $appState.providerSettings.openAIEnabled,
                 modelID: $appState.providerSettings.openAIModelID,
                 privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
                 apiKeyInput: $openAIAPIKeyInput
@@ -425,17 +450,10 @@ public struct SettingsPaneDetailView: View {
         if let provider = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
             providerConfigurationSection(
                 provider: provider,
-                isEnabled: $appState.providerSettings.groqEnabled,
                 modelID: $appState.providerSettings.groqModelID,
                 privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
                 apiKeyInput: $groqAPIKeyInput
             )
-        }
-
-        Section {
-            Button("Reset Cloud Provider Defaults") {
-                appState.resetCloudProviderDefaults()
-            }
         }
     }
 
@@ -489,7 +507,6 @@ public struct SettingsPaneDetailView: View {
 
     private func providerConfigurationSection(
         provider: ProviderDescriptor,
-        isEnabled: Binding<Bool>,
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
         apiKeyInput: Binding<String>
@@ -500,7 +517,25 @@ public struct SettingsPaneDetailView: View {
         let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         return Section {
-            Toggle("Enable \(provider.name)", isOn: isEnabled)
+            // Status row reads like a native availability indicator: a colored
+            // dot plus a short state label, with the detail message beneath.
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(providerRuntimeColor(runtimeState))
+                        .frame(width: 7, height: 7)
+                    Text(runtimeState.title)
+                        .foregroundStyle(.secondary)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Status")
+                    Text(runtimeState.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             LabeledContent("Model ID") {
                 TextField("Model ID", text: modelID)
@@ -509,13 +544,31 @@ public struct SettingsPaneDetailView: View {
                     .frame(width: 230)
             }
 
-            Toggle("I understand audio is sent to \(provider.name)", isOn: privacyConsent)
+            Toggle(isOn: privacyConsent) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Send audio to \(provider.name)")
+                    Text("Required before any audio leaves this Mac for \(provider.name).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
-            LabeledContent("API Key") {
+            LabeledContent {
                 SecureField(hasStoredKey ? "Stored in Keychain — enter to replace" : "Enter API key", text: apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("API Key")
+                    Label(
+                        hasStoredKey ? "Stored in Keychain" : "No key stored",
+                        systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(hasStoredKey ? Color.green : Color.secondary)
+                }
             }
 
             HStack(spacing: 8) {
@@ -525,7 +578,7 @@ public struct SettingsPaneDetailView: View {
                 }
                 .disabled(keyInputEmpty)
 
-                Button("Remove", role: .destructive) {
+                Button("Remove") {
                     appState.removeAPIKey(for: provider.id)
                 }
                 .disabled(!hasStoredKey)
@@ -535,25 +588,12 @@ public struct SettingsPaneDetailView: View {
                 }
                 .disabled(!hasStoredKey)
 
-                Spacer()
-
-                Label(
-                    hasStoredKey ? "Key stored in Keychain" : "No key stored",
-                    systemImage: hasStoredKey ? "checkmark.shield" : "key.slash"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Button("Reset") {
+                    apiKeyInput.wrappedValue = ""
+                    appState.resetCloudProvider(provider.id)
+                }
+                .help("Reset \(provider.name): clears the key, consent, and model.")
             }
-
-            if !hasStoredKey, keyInputEmpty {
-                Text("Enter an API key above to enable Save. Test and Remove become available once a key is stored in Keychain.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(runtimeState.message)
-                .font(.caption)
-                .foregroundStyle(providerRuntimeColor(runtimeState))
 
             if let validationMessage = validationState.message {
                 Text(validationMessage)
@@ -575,25 +615,26 @@ public struct SettingsPaneDetailView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                RadioIndicator(isSelected: isSelected)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .foregroundStyle(.primary)
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.6)
+        .opacity(isEnabled ? 1 : 0.55)
     }
 
     private func providerRuntimeColor(_ state: ProviderRuntimeState) -> Color {
@@ -639,6 +680,36 @@ public struct SettingsPaneDetailView: View {
         }
 
         return "Requires Apple Silicon for the current Core ML backend."
+    }
+}
+
+/// A radio button drawn to match the native macOS control: a bordered well when
+/// off, an accent-filled disc with a small white center when on. Used for the
+/// vertical "Preferred Transcription Provider" radio group, where per-row
+/// disabling and subtitles rule out a plain `Picker(.radioGroup)`.
+struct RadioIndicator: View {
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            isSelected ? Color.clear : Color(nsColor: .separatorColor),
+                            lineWidth: 1
+                        )
+                }
+                .shadow(color: .black.opacity(0.07), radius: 0.5, y: 0.5)
+
+            if isSelected {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 5, height: 5)
+            }
+        }
+        .frame(width: 14, height: 14)
     }
 }
 
