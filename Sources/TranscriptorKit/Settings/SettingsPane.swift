@@ -162,10 +162,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             ]
         case .cloudProviders:
             [
-                "Enable OpenAI",
                 "OpenAI API key",
                 "OpenAI model ID",
-                "Enable Groq",
                 "Groq API key",
                 "Groq model ID",
                 "Cloud privacy consent",

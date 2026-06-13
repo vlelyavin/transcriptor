@@ -257,7 +257,11 @@ struct SettingsContentWidth: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: sidebarCollapsed ? .infinity : 620, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Center the capped column when the window is wider than the content
+            // so any extra width is split into balanced gutters (like native
+            // System Settings) instead of a single blank strip on the right.
+            // When the sidebar is collapsed the cap is lifted, so this is a no-op.
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
