@@ -28,8 +28,8 @@ final class CloudProviderErrorRedactionTests: XCTestCase {
             let message = error.localizedDescription
             XCTAssertFalse(message.contains(key), "Raw API key leaked in error: \(message)")
             XCTAssertFalse(message.localizedCaseInsensitiveContains("sk-an"), "Masked key prefix leaked: \(message)")
-            // The useful part of the message is preserved.
-            XCTAssertTrue(message.localizedCaseInsensitiveContains("incorrect api key"))
+            // Auth failures present one unified, provider-agnostic message.
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("the api key was rejected"))
         }
     }
 }

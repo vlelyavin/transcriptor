@@ -7,6 +7,21 @@ public struct OverviewView: View {
         self.appState = appState
     }
 
+    /// Binds the unified "Active model" picker to the app's active target,
+    /// falling back to the first available target when the stored selection is
+    /// no longer ready. Shared logic with the Models page so both stay in sync.
+    private var activeTargetBinding: Binding<AppState.ActiveTarget> {
+        Binding(
+            get: {
+                if let active = appState.activeTarget, appState.availableTargets.contains(active) {
+                    return active
+                }
+                return appState.availableTargets.first ?? .local(appState.transcriptionPreferences.selectedModelID)
+            },
+            set: { appState.selectTarget($0) }
+        )
+    }
+
     public var body: some View {
         Form {
             Section {
@@ -49,12 +64,17 @@ public struct OverviewView: View {
             }
 
             Section {
-                linkedRow("Preferred provider", destination: .screen(.models)) {
-                    Text(preferredProviderTitle)
-                }
-
-                linkedRow("Selected model", destination: .screen(.models)) {
-                    Text(appState.selectedModel?.name ?? "None selected")
+                if appState.availableTargets.isEmpty {
+                    linkedRow("Active model", destination: .screen(.models)) {
+                        Text("None ready")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Picker("Active model", selection: activeTargetBinding) {
+                        ForEach(appState.availableTargets, id: \.self) { target in
+                            Text(appState.targetDisplayName(target)).tag(target)
+                        }
+                    }
                 }
 
                 linkedRow("Ready local models", destination: .screen(.models)) {
@@ -126,42 +146,16 @@ public struct OverviewView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Overview")
+        .onAppear { appState.ensureActiveTargetValid() }
     }
 
     /// Native System Settings-style hero: large app glyph, name, and a one-line
     /// description of what the app does.
     private var heroHeader: some View {
         VStack(spacing: 10) {
-            // Uses the same beveled-tile treatment as the sidebar icons (dark
-            // top-to-bottom gradient with a soft top highlight), scaled up, so
-            // the hero reads as part of the same icon family rather than a
-            // disconnected accent badge.
-            Image(systemName: "waveform")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 64, height: 64)
-                .background {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(white: 0.28), Color(white: 0.16)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
-                .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
+            // The app's own icon (the same artwork shown in the Dock and the
+            // installer), so the Overview hero matches the app's identity.
+            appIcon
 
             Text("Transcriptor")
                 .font(.title2.weight(.bold))
@@ -175,6 +169,12 @@ public struct OverviewView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
+    }
+
+    /// The same beveled waveform tile used as the first sidebar icon, scaled up
+    /// so the hero reads as part of the app's icon family.
+    private var appIcon: some View {
+        SidebarIconView(systemImage: NavigationScreen.overview.systemImage, size: 64)
     }
 
     /// Persistent call-to-action shown until a transcription model (or cloud
@@ -248,16 +248,6 @@ public struct OverviewView: View {
             : "On — needs Accessibility access"
     }
 
-    private var preferredProviderTitle: String {
-        switch appState.transcriptionPreferences.preferredProviderID {
-        case "parakeet-local":
-            "Parakeet Local"
-        case "whisperkit-local":
-            "On-device (Whisper)"
-        default:
-            appState.preferredCloudProvider?.name ?? "On-device (Whisper)"
-        }
-    }
 }
 
 /// A grouped-form navigation row whose entire surface is clickable and that

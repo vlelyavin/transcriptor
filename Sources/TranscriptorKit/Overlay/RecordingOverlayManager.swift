@@ -90,7 +90,7 @@ public final class RecordingOverlayManager {
                     }
                 )
             )
-            panelSize = NSSize(width: 340, height: 210)
+            panelSize = NSSize(width: 320, height: 120)
         }
 
         dimmingPanel.setFrame(screen.frame, display: false)

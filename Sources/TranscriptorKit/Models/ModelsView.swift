@@ -12,12 +12,17 @@ public struct ModelsView: View {
     public var body: some View {
         Form {
             Section("Current Selection") {
-                LabeledContent("Preferred provider") {
-                    Text(preferredProviderTitle)
-                }
-
-                LabeledContent("Selected model") {
-                    Text(appState.selectedModel?.name ?? "None selected")
+                if appState.availableTargets.isEmpty {
+                    LabeledContent("Active model") {
+                        Text("None ready")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Picker("Active model", selection: activeTargetBinding) {
+                        ForEach(appState.availableTargets, id: \.self) { target in
+                            Text(appState.targetDisplayName(target)).tag(target)
+                        }
+                    }
                 }
 
                 LabeledContent("Ready local models") {
@@ -75,6 +80,22 @@ public struct ModelsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Models")
+        .onAppear { appState.ensureActiveTargetValid() }
+    }
+
+    /// Binds the unified "Active model" picker to the app's active target,
+    /// falling back to the first available target when the stored selection is
+    /// no longer ready (e.g. its files were deleted).
+    private var activeTargetBinding: Binding<AppState.ActiveTarget> {
+        Binding(
+            get: {
+                if let active = appState.activeTarget, appState.availableTargets.contains(active) {
+                    return active
+                }
+                return appState.availableTargets.first ?? .local(appState.transcriptionPreferences.selectedModelID)
+            },
+            set: { appState.selectTarget($0) }
+        )
     }
 
     // MARK: - Local model rows
@@ -267,18 +288,6 @@ public struct ModelsView: View {
                 }
                 .disabled(!hasStoredKey)
 
-                if runtimeState.isReady {
-                    if appState.transcriptionPreferences.preferredProviderID == provider.id {
-                        Label("Default", systemImage: "checkmark")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Button("Set as Default") {
-                            appState.transcriptionPreferences.preferredProviderID = provider.id
-                        }
-                    }
-                }
-
                 Spacer()
 
                 Button("Reset") {
@@ -323,8 +332,14 @@ public struct ModelsView: View {
             Button("Load") {
                 load(model)
             }
-        case .downloading, .loading, .deleting:
-            // Transitional — the progress bar/spinner communicates the activity.
+        case .downloading:
+            // Offer a way out of an in-progress download. The progress bar row
+            // below communicates the ongoing activity.
+            Button("Cancel", role: .cancel) {
+                cancelDownload(model)
+            }
+        case .loading, .deleting:
+            // Transitional — the spinner communicates the activity.
             ProgressView()
                 .controlSize(.small)
         case .loaded:
@@ -350,6 +365,14 @@ public struct ModelsView: View {
             appState.parakeetModelManager.download(model)
         } else {
             appState.whisperModelManager.download(model)
+        }
+    }
+
+    private func cancelDownload(_ model: ModelDescriptor) {
+        if model.isParakeetLocalModel {
+            appState.parakeetModelManager.cancelDownload(model)
+        } else {
+            appState.whisperModelManager.cancelDownload(model)
         }
     }
 
@@ -417,17 +440,6 @@ public struct ModelsView: View {
             return "waveform.badge.mic"
         }
         return "waveform"
-    }
-
-    private var preferredProviderTitle: String {
-        switch appState.transcriptionPreferences.preferredProviderID {
-        case "parakeet-local":
-            "Parakeet Local"
-        case "whisperkit-local":
-            "On-device (Whisper)"
-        default:
-            appState.preferredCloudProvider?.name ?? "On-device (Whisper)"
-        }
     }
 
     // MARK: - Cloud provider styling

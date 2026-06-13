@@ -178,7 +178,10 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
 
         switch statusCode {
         case 401, 403:
-            return .missingCredentials(apiMessage ?? "\(descriptor.name) rejected the stored API key or account permissions.")
+            // Unified across providers: the upstream wording differs between
+            // OpenAI and Groq, so present one consistent, non-leaking message.
+            _ = apiMessage
+            return .missingCredentials("The API key was rejected. Check that the key is correct and active, then try again.")
         case 413:
             return .fileTooLarge(apiMessage ?? "\(descriptor.name) rejected the audio upload because it exceeded the provider's current file-size limit.")
         case 429:

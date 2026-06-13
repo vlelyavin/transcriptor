@@ -18,7 +18,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Transcriptor",
-            dependencies: ["TranscriptorKit"]
+            dependencies: ["TranscriptorKit"],
+            resources: [.copy("Resources/AppIcon.icns")]
         ),
         .executableTarget(
             name: "TranscriptorSmokeChecks",

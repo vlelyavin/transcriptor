@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// The compact status overlay shown while recording and during the
+/// transcription that follows. It is deliberately minimal: a single status
+/// glyph, a title, a one-line detail, and — only while it matters — a timer,
+/// a native progress spinner, or Done/Cancel. Everything is built from native
+/// macOS components (SF Symbols with symbol effects, `ProgressView`, system
+/// materials) so it reads as part of the OS rather than a custom widget.
 public struct RecordingOverlayView: View {
     @Bindable private var voiceInputController: VoiceInputController
     private let overlayState: OverlayState
@@ -25,135 +31,95 @@ public struct RecordingOverlayView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: statusSymbol)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: 44, height: 44)
-                .background(statusColor.opacity(0.12), in: Circle())
+        HStack(spacing: 14) {
+            statusGlyph
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(statusTitle)
                     .font(.headline)
 
-                Text(statusSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if showsDuration {
-                Text(durationLabel)
-                    .font(.system(.body, design: .monospaced).weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            if showsProgressIndicator {
-                ProgressView()
-                    .controlSize(.regular)
-            } else if overlayState.showsLiveAudioIndicator {
-                HStack(alignment: .center, spacing: 5) {
-                    ForEach(Array(indicatorValues.enumerated()), id: \.offset) { _, value in
-                        Capsule(style: .continuous)
-                            .fill(indicatorColor)
-                            .frame(width: 5, height: max(6, CGFloat(value) * 36))
-                    }
+                if !statusSubtitle.isEmpty {
+                    Text(statusSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(height: 40)
-                .animation(.easeInOut(duration: 0.16), value: indicatorValues)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            if showsDoneControls {
-                HStack(spacing: 10) {
-                    Button("Cancel", role: .cancel) {
-                        cancelAction()
-                    }
-                    .keyboardShortcut(.cancelAction)
-
-                    Button("Done") {
-                        stopAction()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                }
-                .controlSize(.regular)
-            }
+            trailingAccessory
         }
-        .padding(20)
-        .frame(width: 340)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(width: 320)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.separator, lineWidth: 1)
+                .stroke(.separator, lineWidth: 0.5)
         )
+    }
+
+    // MARK: - Leading glyph
+
+    private var statusGlyph: some View {
+        // The same beveled dark tile used by the app's settings sidebar — one
+        // consistent treatment for every state (no per-state colors).
+        SidebarIconView(systemImage: statusSymbol, size: 40, animated: isListening)
+    }
+
+    // MARK: - Trailing accessory (timer / spinner / actions)
+
+    @ViewBuilder
+    private var trailingAccessory: some View {
+        if showsProgressIndicator {
+            ProgressView()
+                .controlSize(.small)
+        } else if showsDoneControls {
+            VStack(spacing: 6) {
+                Button("Done") { stopAction() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+
+                Button("Cancel", role: .cancel) { cancelAction() }
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
+            }
+        } else if showsTimer {
+            Text(durationLabel)
+                .font(.system(.callout, design: .monospaced).weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: - State derivations
+
+    private var isListening: Bool {
+        supplementalPhase == nil && voiceInputController.state == .recording
     }
 
     private var statusTitle: String {
         if let supplementalPhase {
             switch supplementalPhase {
-            case .transcribing:
-                return "Transcribing"
-            case .inserting:
-                return "Inserting"
-            case .saved:
-                return "Saved"
-            case .error:
-                return "Voice Input Failed"
-            case .setupRequired:
-                return "Setup Required"
-            case .preview:
-                return "Transcript Ready"
-            case .unconfigured:
-                return "Recording Saved"
+            case .transcribing: return "Transcribing"
+            case .inserting: return "Inserting"
+            case .saved: return "Done"
+            case .error: return "Couldn’t Transcribe"
+            case .setupRequired: return "Setup Needed"
+            case .preview: return "Transcript Ready"
+            case .unconfigured: return "Recording Saved"
             }
         }
 
         switch voiceInputController.state {
-        case .recording:
-            return "Listening"
-        case .stopping:
-            return "Finishing"
-        case .pendingTranscription:
-            return "Saved"
-        case .requestingPermission:
-            return "Microphone Access"
-        case .failed:
-            return "Voice Input Failed"
-        case .idle:
-            return "Idle"
-        }
-    }
-
-    private var statusColor: Color {
-        if let supplementalPhase {
-            switch supplementalPhase {
-            case .transcribing, .inserting:
-                return .blue
-            case .saved:
-                return .green
-            case .error:
-                return .red
-            case .setupRequired:
-                return .orange
-            case .preview:
-                return .accentColor
-            case .unconfigured:
-                return .orange
-            }
-        }
-
-        switch voiceInputController.state {
-        case .recording:
-            return .red
-        case .requestingPermission:
-            return .orange
-        case .pendingTranscription:
-            return .green
-        case .failed:
-            return .red
-        default:
-            return .secondary
+        case .recording: return "Listening…"
+        case .stopping: return "Finishing…"
+        case .pendingTranscription: return "Recorded"
+        case .requestingPermission: return "Microphone Access"
+        case .failed: return "Recording Failed"
+        case .idle: return "Idle"
         }
     }
 
@@ -174,102 +140,65 @@ public struct RecordingOverlayView: View {
         switch voiceInputController.state {
         case .recording:
             return recordingMode == .holdToTalk
-                ? "Release the shortcut to finish dictation."
-                : "Speak naturally, then click Done or press the shortcut again."
+                ? "Release the shortcut to finish."
+                : "Click Done or press the shortcut again."
         case .stopping:
-            return "Finishing the current capture and preparing it for transcription."
+            return "Preparing your recording."
         case .pendingTranscription:
-            return "Your recording was saved locally and will stay in history even if transcription finishes later."
+            return "Saved to history."
         case .requestingPermission:
-            return "macOS is requesting microphone access before Transcriptor can start listening."
+            return "Allow microphone access to start."
         case .failed:
-            return voiceInputController.failureMessage ?? "Recording stopped because of an error."
+            return voiceInputController.failureMessage ?? "Something went wrong."
         case .idle:
-            return "Ready"
+            return ""
         }
-    }
-
-    private var durationLabel: String {
-        let elapsed = Int(voiceInputController.elapsedDuration)
-        let minutes = elapsed / 60
-        let seconds = elapsed % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
-    private var showsDoneControls: Bool {
-        supplementalPhase == nil && voiceInputController.state == .recording && recordingMode == .toggleToTalk
-    }
-
-    private var indicatorValues: [Double] {
-        guard supplementalPhase == nil else {
-            return Array(repeating: 0.18, count: max(voiceInputController.liveLevels.bars.count, 10))
-        }
-
-        if voiceInputController.state == .recording {
-            return voiceInputController.liveLevels.bars.map(Double.init)
-        }
-
-        return Array(repeating: 0.18, count: max(voiceInputController.liveLevels.bars.count, 10))
     }
 
     private var statusSymbol: String {
         if let supplementalPhase {
             switch supplementalPhase {
-            case .transcribing:
-                return "waveform.badge.magnifyingglass"
-            case .inserting:
-                return "text.cursor"
-            case .saved:
-                return "checkmark.circle.fill"
-            case .error:
-                return "exclamationmark.triangle.fill"
-            case .setupRequired:
-                return "gearshape.fill"
-            case .preview:
-                return "text.quote"
-            case .unconfigured:
-                return "mic.badge.plus"
+            case .transcribing: return "waveform"
+            case .inserting: return "text.cursor"
+            case .saved: return "checkmark.circle.fill"
+            case .error: return "exclamationmark.triangle.fill"
+            case .setupRequired: return "gearshape.fill"
+            case .preview: return "text.quote"
+            case .unconfigured: return "mic.badge.plus"
             }
         }
 
         switch voiceInputController.state {
-        case .recording:
-            return "mic.fill"
-        case .stopping:
-            return "hourglass"
-        case .pendingTranscription:
-            return "checkmark.circle.fill"
-        case .requestingPermission:
-            return "lock.shield"
-        case .failed:
-            return "exclamationmark.triangle.fill"
-        case .idle:
-            return "mic"
+        case .recording: return "waveform"
+        case .stopping: return "hourglass"
+        case .pendingTranscription: return "checkmark.circle.fill"
+        case .requestingPermission: return "lock.shield"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .idle: return "mic"
         }
     }
 
-    private var indicatorColor: Color {
-        guard supplementalPhase == nil, voiceInputController.state == .recording else {
-            return .secondary.opacity(0.4)
-        }
-
-        return .accentColor
+    private var durationLabel: String {
+        let elapsed = Int(voiceInputController.elapsedDuration)
+        return String(format: "%02d:%02d", elapsed / 60, elapsed % 60)
     }
 
-    private var showsDuration: Bool {
+    private var showsTimer: Bool {
         supplementalPhase == nil
+            && (voiceInputController.state == .recording || voiceInputController.state == .stopping)
+    }
+
+    private var showsDoneControls: Bool {
+        supplementalPhase == nil
+            && voiceInputController.state == .recording
+            && recordingMode == .toggleToTalk
     }
 
     private var showsProgressIndicator: Bool {
-        guard let supplementalPhase else {
-            return false
-        }
-
+        guard let supplementalPhase else { return false }
         switch supplementalPhase {
-        case .transcribing, .inserting:
-            return true
-        case .saved, .error, .setupRequired, .preview, .unconfigured:
-            return false
+        case .transcribing, .inserting: return true
+        case .saved, .error, .setupRequired, .preview, .unconfigured: return false
         }
     }
 }
