@@ -35,25 +35,24 @@ public struct ModelsView: View {
             }
 
             ForEach(appState.modelCatalog.sections) { section in
-                Section {
-                    ForEach(section.models) { model in
-                        localModelRow(model)
+                // Each model is its own grouped card so models are clearly
+                // separated with native spacing. The catalog group title sits
+                // above the first card and its description below the last.
+                ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
+                    Section {
+                        localModelRows(model)
+                    } header: {
+                        if index == 0 {
+                            Text(section.title)
+                        }
+                    } footer: {
+                        if index == section.models.count - 1 {
+                            Text(section.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                } header: {
-                    Text(section.title)
-                } footer: {
-                    Text(section.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-            }
-
-            Section {
-                Text("Cloud transcription is optional. A provider only becomes available after you turn on audio sending, store an API key, and the key passes a test — until then, everything stays on this Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } header: {
-                Text("Cloud Models")
             }
 
             if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
@@ -80,85 +79,89 @@ public struct ModelsView: View {
 
     // MARK: - Local model rows
 
-    /// One downloadable local model. The model name is on the main line with a
-    /// small red/green status indicator beneath it (red = not downloaded, green =
-    /// downloaded and usable), the action button on the trailing edge, and the
-    /// weight/language/speed metadata in a key/value table styled like the
-    /// Current Selection rows. No "Not Downloaded"/"Loaded" text statuses — the
-    /// dot and the available action already make the state clear.
-    private func localModelRow(_ model: ModelDescriptor) -> some View {
+    /// One downloadable local model, emitted as the rows of its own grouped
+    /// `Section`. The header row carries the name, an enlarged red/green status
+    /// dot with a text status beside it, a Select/Selected button, and
+    /// download/delete actions. The Size/Language/Speed/Accuracy/Best-for
+    /// metadata follow as individual section rows so the grouped form draws a
+    /// native separator above Size and after every characteristic.
+    @ViewBuilder
+    private func localModelRows(_ model: ModelDescriptor) -> some View {
         let inventoryItem = inventoryItem(for: model)
         let state = inventoryItem.state
         let isSelected = appState.transcriptionPreferences.selectedModelID == model.id
             && appState.transcriptionPreferences.preferredProviderID == model.localProviderID
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.name + (model.accentBadgeLabel.map { " (\($0))" } ?? ""))
+        HStack(alignment: .center, spacing: 10) {
+            SidebarIconView(systemImage: modelIconSymbol(for: model), size: 30)
 
-                    statusIndicator(color: localStateColor(state), label: localStateAccessibilityLabel(state))
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.name + (model.accentBadgeLabel.map { " (\($0))" } ?? ""))
 
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .help("Selected as the preferred local model")
-                } else if isSelectable(state) {
-                    Button("Select") {
-                        appState.selectLocalModel(model.id)
-                    }
-                    .controlSize(.small)
-                }
-
-                actionButton(for: model, state: state)
-                    .controlSize(.small)
-
-                if canDelete(state) {
-                    Button {
-                        delete(model)
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .controlSize(.small)
-                    .help("Delete downloaded model files")
+                HStack(spacing: 5) {
+                    statusIndicator(color: localStateColor(state), label: localStatusLabel(state))
+                    Text(localStatusLabel(state))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            if let progress = state.progressValue {
-                ProgressView(value: progress)
+            Spacer()
+
+            if isSelected {
+                // The selected model shows an inactive "Selected" button rather
+                // than a bare checkmark, so the relationship to "Select" is clear.
+                Button("Selected") {}
                     .controlSize(.small)
+                    .disabled(true)
+                    .help("This is the selected local model")
+            } else if isSelectable(state) {
+                Button("Select") {
+                    appState.selectLocalModel(model.id)
+                }
+                .controlSize(.small)
             }
 
-            if let detailMessage = state.detailMessage {
-                Text(detailMessage)
-                    .font(.caption)
-                    .foregroundStyle(Color.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            actionButton(for: model, state: state)
+                .controlSize(.small)
 
-            // Metadata table — same key/value treatment as Current Selection.
-            Group {
-                LabeledContent("Size") { Text(model.downloadSizeDescription) }
-                LabeledContent("Language") { Text(model.languageScopeLabel) }
-                LabeledContent("Speed") { Text(model.speedDescription) }
-                LabeledContent("Accuracy") { Text(model.accuracyDescription) }
-                LabeledContent("Best for") { Text(model.intendedUseLabel) }
+            if canDelete(state) {
+                Button {
+                    delete(model)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .controlSize(.small)
+                .help("Delete downloaded model files")
             }
-            .padding(.top, 2)
         }
-        .padding(.vertical, 2)
+
+        if let progress = state.progressValue {
+            ProgressView(value: progress)
+                .controlSize(.small)
+        }
+
+        if let detailMessage = state.detailMessage {
+            Text(detailMessage)
+                .font(.caption)
+                .foregroundStyle(Color.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        // Each metadata row is a direct child of the Section, so the grouped
+        // form inserts a separator above Size and after every characteristic.
+        LabeledContent("Size") { Text(model.downloadSizeDescription) }
+        LabeledContent("Language") { Text(model.languageScopeLabel) }
+        LabeledContent("Speed") { Text(model.speedDescription) }
+        LabeledContent("Accuracy") { Text(model.accuracyDescription) }
+        LabeledContent("Best for") { Text(model.intendedUseLabel) }
     }
 
-    /// A small colored status dot with no visible text label — the action button
-    /// and metadata carry the rest of the meaning, matching native lists.
+    /// A colored status dot sized to match native macOS status indicators.
     private func statusIndicator(color: Color, label: String) -> some View {
         Circle()
             .fill(color)
-            .frame(width: 7, height: 7)
+            .frame(width: 10, height: 10)
             .accessibilityLabel(label)
     }
 
@@ -187,35 +190,46 @@ public struct ModelsView: View {
         }()
 
         return Section {
-            // 1. Top line: Status (red/green indicator) + the consent switch.
-            LabeledContent {
-                HStack(spacing: 12) {
-                    statusIndicator(color: providerStateColor(runtimeState), label: runtimeState.title)
-                    Text(runtimeState.title)
-                        .font(.caption)
-                        .foregroundStyle(providerStateStyle(runtimeState))
+            // Header row mirrors the local model cards: an icon tile, the
+            // provider name, and a status dot + requirement text beneath it.
+            // The "send audio" consent switch sits on the trailing edge.
+            HStack(alignment: .center, spacing: 10) {
+                SidebarIconView(systemImage: providerIconSymbol(for: provider), size: 30)
 
-                    Toggle("Send audio to \(provider.name)", isOn: privacyConsent)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .help("Send audio to \(provider.name). Required before any audio leaves this Mac.")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(provider.name)
+
+                    HStack(spacing: 5) {
+                        statusIndicator(color: providerStateColor(runtimeState), label: runtimeState.title)
+                        Text(cloudStatusText(runtimeState))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-            } label: {
-                Text("Status")
+
+                Spacer()
+
+                Toggle("Send audio to \(provider.name)", isOn: privacyConsent)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .help("Send audio to \(provider.name). Required before any audio leaves this Mac.")
             }
 
-            // 2. Below status: connection status, then the editable details.
-            Text(runtimeState.message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            LabeledContent("Model ID") {
+            LabeledContent {
                 TextField("Model ID", text: modelID)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Model ID")
+                    Text(modelIDHint(for: provider))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .disabled(!hasConsent)
 
@@ -280,8 +294,6 @@ public struct ModelsView: View {
                     .foregroundStyle(validationStateStyle(validationState))
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } header: {
-            Text(provider.name)
         } footer: {
             Text(provider.summary)
                 .font(.caption)
@@ -377,23 +389,34 @@ public struct ModelsView: View {
         }
     }
 
-    private func localStateAccessibilityLabel(_ state: LocalModelState) -> String {
+    /// User-facing status shown next to the indicator dot.
+    private func localStatusLabel(_ state: LocalModelState) -> String {
         switch state {
-        case .downloaded, .loaded:
+        case .loaded:
+            "Ready"
+        case .downloaded:
             "Downloaded"
         case .notDownloaded:
             "Not downloaded"
         case .downloading:
-            "Downloading"
+            "Downloading…"
         case .loading:
-            "Loading"
+            "Loading…"
         case .deleting:
-            "Deleting"
+            "Removing…"
         case .failed:
-            "Error"
+            "Failed"
         case .unavailable:
             "Unavailable"
         }
+    }
+
+    /// Icon glyph for a local model's header tile, by engine family.
+    private func modelIconSymbol(for model: ModelDescriptor) -> String {
+        if model.isParakeetLocalModel {
+            return "waveform.badge.mic"
+        }
+        return "waveform"
     }
 
     private var preferredProviderTitle: String {
@@ -414,8 +437,27 @@ public struct ModelsView: View {
         state.isReady ? .green : .red
     }
 
-    private func providerStateStyle(_ state: ProviderRuntimeState) -> AnyShapeStyle {
-        state.isReady ? AnyShapeStyle(Color.green) : AnyShapeStyle(.secondary)
+    /// Icon glyph for a cloud provider's header tile.
+    private func providerIconSymbol(for provider: ProviderDescriptor) -> String {
+        "cloud"
+    }
+
+    /// The status text shown beneath a cloud provider's name: the current
+    /// requirement to finish setup, or "Ready" once the provider is usable.
+    private func cloudStatusText(_ state: ProviderRuntimeState) -> String {
+        state.isReady ? "Ready" : state.message
+    }
+
+    /// A short, provider-specific hint on where to find a valid model ID.
+    private func modelIDHint(for provider: ProviderDescriptor) -> String {
+        switch provider.id {
+        case "openai":
+            "Find model IDs in the OpenAI dashboard under API → Models (e.g. gpt-4o-mini-transcribe)."
+        case "groq":
+            "Find model IDs on the Groq Console models page (e.g. whisper-large-v3)."
+        default:
+            "Use a transcription model ID from \(provider.name)'s documentation."
+        }
     }
 
     private func validationStateStyle(_ state: ProviderCredentialValidationState) -> AnyShapeStyle {

@@ -111,17 +111,38 @@ public struct HistoryView: View {
                     emptyState
                 } else {
                     List(filteredEntries, selection: isCompact ? .constant(nil) : $selectedEntryID) { entry in
-                        Button {
-                            selectedEntryID = entry.id
-                            if isCompact {
-                                isCompactDetailVisible = true
+                        HStack(spacing: 8) {
+                            Button {
+                                selectedEntryID = entry.id
+                                if isCompact {
+                                    isCompactDetailVisible = true
+                                }
+                            } label: {
+                                historyRow(entry)
+                                    .contentShape(Rectangle())
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                        } label: {
-                            historyRow(entry)
-                                .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+
+                            // A trailing delete affordance so an item can be
+                            // removed directly from the list (not only via the
+                            // context menu or the detail "More…" menu). Routes
+                            // through the same confirmation alert.
+                            Button {
+                                entryPendingDeletion = entry
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                            .help("Delete this item")
                         }
-                        .buttonStyle(.plain)
                         .tag(entry.id)
+                        .swipeActions(edge: .trailing) {
+                            Button("Delete", role: .destructive) {
+                                entryPendingDeletion = entry
+                            }
+                        }
                         .contextMenu {
                             if canTriggerTranscription(for: entry) {
                                 Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
