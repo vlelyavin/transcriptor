@@ -106,6 +106,10 @@ public struct MainWindowView: View {
             }
         }
         .listStyle(.sidebar)
+        // Native System Settings keeps a permanent sidebar — there is no
+        // collapse control. NavigationSplitView inserts one automatically, so
+        // remove it and pin the column to `.all` for the same fixed-sidebar feel.
+        .toolbar(removing: .sidebarToggle)
         .safeAreaInset(edge: .top, spacing: 0) {
             sidebarSearchField
         }
@@ -255,14 +259,17 @@ struct SettingsContentWidth: ViewModifier {
 /// is a soft top highlight rather than a hard stroke, matching macOS.
 struct SidebarIconView: View {
     let systemImage: String
+    var size: CGFloat = 20
+
+    private var cornerRadius: CGFloat { size * 0.26 }
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: size * 0.55, weight: .medium))
             .foregroundStyle(.white)
-            .frame(width: 20, height: 20)
+            .frame(width: size, height: size)
             .background {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [Color(white: 0.28), Color(white: 0.16)],
@@ -272,7 +279,7 @@ struct SidebarIconView: View {
                     )
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
                             colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
