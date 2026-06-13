@@ -62,6 +62,9 @@ public final class AppState {
     public var suppressSetupGate = false
 
     /// The setup gate auto-presents on launch whenever setup is still required.
+    /// Because setup is mandatory, once a model and Accessibility access are
+    /// configured this is permanently false and the popup never re-appears — so
+    /// a fully set-up user only ever sees it on the initial run.
     public var shouldAutoPresentWelcomeGuide: Bool { requiresSetup && !suppressSetupGate }
 
     /// The model offered first in the mandatory setup flow — the catalog's
