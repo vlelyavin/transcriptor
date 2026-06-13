@@ -31,10 +31,6 @@ public struct ImportAudioView: View {
                     Text(".mp3, .m4a, .wav, .ogg, .oga, .opus")
                 }
 
-                Text("Telegram voice messages export as Ogg Opus audio and are converted to WAV automatically on import.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 LabeledContent("Storage") {
                     Text("Copied into Transcriptor-managed storage")
                         .foregroundStyle(.secondary)
@@ -62,7 +58,9 @@ public struct ImportAudioView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(appState.recentImports) { item in
-                        recentImportRow(item: item)
+                        RecentImportRow(item: item) {
+                            appState.openHistoryEntry(item.id)
+                        }
                     }
                 }
             }
@@ -120,42 +118,6 @@ public struct ImportAudioView: View {
         }
     }
 
-    private func recentImportRow(item: RecentImportItem) -> some View {
-        Button {
-            appState.openHistoryEntry(item.id)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
-                    .foregroundStyle(item.status == .failed ? AnyShapeStyle(.yellow) : AnyShapeStyle(.secondary))
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.fileName)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(item.format.fileExtensionLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, 2)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Open “\(item.fileName)” in History")
-    }
-
     private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
         guard providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
             appState.importFeedbackMessage = "Drop .mp3, .m4a, .wav, .ogg, .oga, or .opus files from Finder."
@@ -187,6 +149,52 @@ public struct ImportAudioView: View {
         }
 
         return true
+    }
+}
+
+/// A recent-import row that behaves like a native navigation list row: the whole
+/// row is the click target, it tints subtly on hover, and the label keeps stable
+/// foreground colors on press (via `StableRowButtonStyle`). The trailing chevron
+/// is a visual indicator only.
+private struct RecentImportRow: View {
+    let item: RecentImportItem
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: item.status == .failed ? "exclamationmark.triangle" : "waveform")
+                    .foregroundStyle(item.status == .failed ? AnyShapeStyle(.yellow) : AnyShapeStyle(.secondary))
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.fileName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text("\(relativeDate(item.importedAt)) • \(durationLabel(item.durationSeconds)) • \(item.status.title)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(item.format.fileExtensionLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(StableRowButtonStyle())
+        .onHover { isHovering = $0 }
+        .listRowBackground(isHovering ? Color.primary.opacity(0.06) : Color.clear)
+        .help("Open “\(item.fileName)” in History")
     }
 
     private func durationLabel(_ duration: Int) -> String {

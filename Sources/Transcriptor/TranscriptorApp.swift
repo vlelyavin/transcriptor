@@ -53,6 +53,9 @@ struct TranscriptorApp: App {
             appState.hasSeenWelcomeGuide = false
         } else if environment.keys.contains(where: { $0.hasPrefix("TRANSCRIPTOR_QA_") }) {
             appState.hasSeenWelcomeGuide = true
+            // The setup gate is mandatory at runtime, but for QA captures of
+            // other screens it would otherwise cover everything — suppress it.
+            appState.suppressSetupGate = true
         }
 
         if let rawScreen = environment["TRANSCRIPTOR_QA_SCREEN"],

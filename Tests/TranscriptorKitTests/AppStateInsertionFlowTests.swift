@@ -97,6 +97,46 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
     }
 
+    // MARK: - Mandatory setup gate
+
+    func testSetupGateRequiredWhenNothingConfigured() throws {
+        let appState = try makeContext(secrets: [:]).appState
+
+        XCTAssertFalse(appState.isTranscriptionConfigured)
+        XCTAssertTrue(appState.requiresModelSetup)
+        XCTAssertTrue(appState.shouldAutoPresentWelcomeGuide)
+        XCTAssertNotNil(appState.recommendedSetupModel, "There must always be a recommended model to offer.")
+    }
+
+    func testSetupGateCannotBeDismissedUntilConfigured() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        appState.presentWelcomeGuide()
+        XCTAssertTrue(appState.isPresentingWelcomeGuide)
+
+        // Dismissal is blocked while setup is still required.
+        appState.dismissWelcomeGuide()
+        XCTAssertTrue(appState.isPresentingWelcomeGuide)
+    }
+
+    func testSetupGateDismissesOnceProviderIsReady() throws {
+        let appState = try makeReadyCloudContext().appState
+        appState.presentWelcomeGuide()
+
+        XCTAssertFalse(appState.requiresModelSetup)
+        XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
+
+        appState.dismissWelcomeGuide()
+        XCTAssertFalse(appState.isPresentingWelcomeGuide)
+    }
+
+    func testSuppressSetupGateBlocksAutoPresentForQA() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        appState.suppressSetupGate = true
+
+        XCTAssertTrue(appState.requiresModelSetup)
+        XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
+    }
+
     // MARK: - Helpers
 
     private struct Context {

@@ -132,6 +132,10 @@ public struct OverviewView: View {
     /// description of what the app does.
     private var heroHeader: some View {
         VStack(spacing: 10) {
+            // Uses the same beveled-tile treatment as the sidebar icons (dark
+            // top-to-bottom gradient with a soft top highlight), scaled up, so
+            // the hero reads as part of the same icon family rather than a
+            // disconnected accent badge.
             Image(systemName: "waveform")
                 .font(.system(size: 30, weight: .semibold))
                 .foregroundStyle(.white)
@@ -140,7 +144,7 @@ public struct OverviewView: View {
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+                                colors: [Color(white: 0.28), Color(white: 0.16)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -148,8 +152,16 @@ public struct OverviewView: View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
                 }
+                .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
 
             Text("Transcriptor")
                 .font(.title2.weight(.bold))
@@ -288,7 +300,7 @@ private struct OverviewNavigationRow<Value: View>: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(StableRowButtonStyle())
         .onHover { isHovering = $0 }
         .listRowBackground(isHovering ? Color.primary.opacity(0.06) : Color.clear)
         .help(help)

@@ -8,15 +8,25 @@ final class SettingsPaneSearchTests: XCTestCase {
     }
 
     func testTitleMatchIsCaseInsensitive() {
-        XCTAssertEqual(SettingsPane.matching(query: "cloud"), [.cloudProviders, .privacy])
-        XCTAssertEqual(SettingsPane.matching(query: "CLOUD"), [.cloudProviders, .privacy])
+        // The dedicated Cloud Providers pane was removed; cloud setup now lives
+        // on the Models screen, so "cloud" only matches the Privacy pane here.
+        XCTAssertEqual(SettingsPane.matching(query: "cloud"), [.privacy])
+        XCTAssertEqual(SettingsPane.matching(query: "CLOUD"), [.privacy])
     }
 
     func testSearchTokensMatch() {
         XCTAssertTrue(SettingsPane.matching(query: "hotkey").contains(.keyboardShortcut))
-        XCTAssertTrue(SettingsPane.matching(query: "openai").contains(.cloudProviders))
         XCTAssertTrue(SettingsPane.matching(query: "login").contains(.general))
         XCTAssertTrue(SettingsPane.matching(query: "microphone").contains(.recording))
+    }
+
+    func testCloudProviderSearchResolvesToModelsScreen() {
+        // OpenAI/Groq are configured on the Models screen now, so cloud-provider
+        // searches surface that screen rather than a settings pane.
+        XCTAssertFalse(SettingsPane.allCases.map(\.title).contains("Cloud Providers"))
+        XCTAssertTrue(NavigationScreen.models.matches(query: "openai"))
+        XCTAssertTrue(NavigationScreen.models.matches(query: "groq"))
+        XCTAssertTrue(NavigationScreen.models.matches(query: "api key"))
     }
 
     func testNoMatchesReturnsEmpty() {
