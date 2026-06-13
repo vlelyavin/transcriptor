@@ -63,6 +63,10 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
     --options runtime \
     --sign "${DEVELOPER_ID_APPLICATION}" \
     "${APP_BUNDLE}"
+else
+  # Ad-hoc sign so Gatekeeper reports the normal "unidentified developer"
+  # prompt (clearable via right-click -> Open) instead of "is damaged".
+  codesign --force --deep --sign - "${APP_BUNDLE}"
 fi
 
 echo "Built app bundle at ${APP_BUNDLE}"
