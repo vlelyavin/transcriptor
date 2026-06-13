@@ -94,19 +94,19 @@ public struct WelcomeGuideView: View {
     }
 
     private var howItWorks: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             stepRow(
-                number: 1,
+                symbol: "command",
                 title: "Press \(appState.recordingState.hotkey.displayString)",
                 detail: "Start dictation from anywhere with your global shortcut."
             )
             stepRow(
-                number: 2,
+                symbol: "waveform",
                 title: "Speak",
                 detail: "A compact overlay shows a live indicator while you talk."
             )
             stepRow(
-                number: 3,
+                symbol: "text.cursor",
                 title: "Get your transcript",
                 detail: "It's inserted into the active text field, or shown for review."
             )
@@ -114,13 +114,14 @@ public struct WelcomeGuideView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func stepRow(number: Int, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text("\(number)")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.accentColor))
+    /// A feature row in Apple's "Welcome to…" style: a leading tinted SF Symbol
+    /// (no filled badge), a title, and a one-line description.
+    private func stepRow(symbol: String, title: String, detail: String) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(systemName: symbol)
+                .font(.system(size: 22))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, alignment: .center)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -214,7 +215,7 @@ public struct WelcomeGuideView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: done ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(Color.accentColor))
+                    .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -232,9 +233,10 @@ public struct WelcomeGuideView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            (done ? Color.green : Color.accentColor).opacity(0.10),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(.separator, lineWidth: 0.5)
         )
     }
 
