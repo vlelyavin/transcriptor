@@ -81,32 +81,48 @@ public struct ImportAudioView: View {
         }
     }
 
+    /// A native-feeling drop well, styled like the upload surfaces macOS uses in
+    /// system panels: a large rounded card on a neutral material, a glyph inside a
+    /// tinted circle, a clear primary line with a secondary hint, and a bordered
+    /// "Choose Files…" button. The whole well tints toward the accent color and its
+    /// border switches to a dashed accent stroke while a drag is hovering.
     private var dropZone: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 26, weight: .regular))
-                .foregroundStyle(isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 64, height: 64)
+                .background(Color.accentColor.opacity(isDropTargeted ? 0.22 : 0.12), in: Circle())
 
-            Text(isDropTargeted ? "Release to import audio" : "Drop audio files here")
-                .font(.headline)
+            VStack(spacing: 4) {
+                Text(isDropTargeted ? "Release to import" : "Drag audio files here")
+                    .font(.headline)
 
-            Text("or")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("MP3, M4A, WAV, OGG, OGA, or OPUS")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
             Button("Choose Files…") {
                 isFileImporterPresented = true
             }
+            .controlSize(.large)
             .keyboardShortcut("I", modifiers: [.command, .shift])
         }
-        .frame(maxWidth: .infinity, minHeight: 160)
-        .padding(16)
-        .background(isDropTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.08)) : AnyShapeStyle(.quaternary.opacity(0.4)), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 220)
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isDropTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.06)) : AnyShapeStyle(.quaternary.opacity(0.4)))
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                .foregroundStyle(isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.separator),
+                    style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: isDropTargeted ? [7, 5] : [])
+                )
         }
+        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
             handleDroppedProviders(providers)
         }

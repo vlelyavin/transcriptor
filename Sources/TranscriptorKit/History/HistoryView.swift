@@ -185,7 +185,7 @@ public struct HistoryView: View {
                     .listStyle(.inset(alternatesRowBackgrounds: false))
                 }
             }
-            .searchable(text: $searchText, prompt: "Search transcripts, filenames, or models")
+            .searchable(text: $searchText, prompt: "Search transcripts or filenames")
         }
     }
 
@@ -228,12 +228,28 @@ public struct HistoryView: View {
         .padding(.bottom, 8)
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        ContentUnavailableView(
-            searchText.isEmpty ? "No History Yet" : "No Matching Transcripts",
-            systemImage: "text.quote",
-            description: Text(searchText.isEmpty ? "Record or import audio to build a durable local history." : "Try a different filter or search term.")
-        )
+        if searchText.isEmpty {
+            // A quiet, single-line empty state — a soft glyph and one short line,
+            // centered, with no call-to-action paragraph.
+            VStack(spacing: 10) {
+                Image(systemName: "text.quote")
+                    .font(.system(size: 34, weight: .regular))
+                    .foregroundStyle(.tertiary)
+
+                Text("No history yet")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView(
+                "No Matching Transcripts",
+                systemImage: "magnifyingglass",
+                description: Text("Try a different filter or search term.")
+            )
+        }
     }
 
     private func detailPane(isCompact: Bool) -> some View {

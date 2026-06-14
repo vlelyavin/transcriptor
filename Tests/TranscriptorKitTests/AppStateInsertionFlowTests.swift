@@ -97,43 +97,46 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
     }
 
-    // MARK: - Mandatory setup gate
+    // MARK: - Welcome guide (first-launch, non-mandatory)
 
-    func testSetupGateRequiredWhenNothingConfigured() throws {
+    func testWelcomeGuideAutoPresentsOnFirstLaunch() throws {
         let appState = try makeContext(secrets: [:]).appState
+        appState.hasSeenWelcomeGuide = false
 
-        XCTAssertFalse(appState.isTranscriptionConfigured)
-        XCTAssertTrue(appState.requiresModelSetup)
+        // Setup is no longer mandatory, but the guide is still offered the first
+        // time, regardless of whether a model exists yet.
         XCTAssertTrue(appState.shouldAutoPresentWelcomeGuide)
         XCTAssertNotNil(appState.recommendedSetupModel, "There must always be a recommended model to offer.")
     }
 
-    func testSetupGateCannotBeDismissedUntilConfigured() throws {
+    func testWelcomeGuideCanBeDismissedWithoutConfiguring() throws {
         let appState = try makeContext(secrets: [:]).appState
+        appState.hasSeenWelcomeGuide = false
         appState.presentWelcomeGuide()
         XCTAssertTrue(appState.isPresentingWelcomeGuide)
 
-        // Dismissal is blocked while setup is still required.
-        appState.dismissWelcomeGuide()
-        XCTAssertTrue(appState.isPresentingWelcomeGuide)
-    }
-
-    func testSetupGateDismissesOnceProviderIsReady() throws {
-        let appState = try makeReadyCloudContext().appState
-        appState.presentWelcomeGuide()
-
-        XCTAssertFalse(appState.requiresModelSetup)
-        XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
-
+        // Downloading a model is optional: dismissal always succeeds and is
+        // remembered, so the guide never auto-presents again.
         appState.dismissWelcomeGuide()
         XCTAssertFalse(appState.isPresentingWelcomeGuide)
+        XCTAssertTrue(appState.hasSeenWelcomeGuide)
+        XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
+    }
+
+    func testTranscriptionReadinessNeedsModelWhenNothingConfigured() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        // Force the launch scan to be considered complete.
+        appState.dismissWelcomeGuide()
+        XCTAssertFalse(appState.isTranscriptionConfigured)
+        // After the launch scan, an unconfigured app reports it needs a model.
+        XCTAssertNotEqual(appState.transcriptionReadiness, .ready)
     }
 
     func testSuppressSetupGateBlocksAutoPresentForQA() throws {
         let appState = try makeContext(secrets: [:]).appState
+        appState.hasSeenWelcomeGuide = false
         appState.suppressSetupGate = true
 
-        XCTAssertTrue(appState.requiresModelSetup)
         XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
     }
 

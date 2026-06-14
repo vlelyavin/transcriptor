@@ -31,19 +31,12 @@ public struct SettingsPaneDetailView: View {
                 shortcutSections
             }
         case .advanced:
-            // Single catch-all for everything non-essential. Transcription
-            // provider/model selection lives on the dedicated Models screen, not
-            // here, to avoid duplicate settings.
+            // Recording, Overlay, Storage, and Privacy now each have their own
+            // sidebar page, so Advanced holds only the diagnostics that don't fit
+            // a primary category.
             settingsForm {
-                recordingDetailSection
-                overlaySection
-                storageSections
-                privacySection
                 diagnosticsSection
             }
-        // The panes below are no longer listed in the sidebar but remain
-        // reachable via Overview deep links and sidebar search, each showing a
-        // focused slice of the Advanced settings.
         case .recording:
             settingsForm {
                 voiceInputSection
@@ -265,19 +258,7 @@ public struct SettingsPaneDetailView: View {
     private var storageSections: some View {
         Section("Retention") {
             LabeledContent("History storage limit") {
-                HStack(spacing: 6) {
-                    TextField("", value: storageLimitBinding, format: .number)
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 62)
-                        .textFieldStyle(.roundedBorder)
-
-                    Text("MB")
-                        .foregroundStyle(.secondary)
-
-                    Stepper("", value: storageLimitBinding, in: storageLimitRange, step: 64)
-                        .labelsHidden()
-                }
+                MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
             }
 
             Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
