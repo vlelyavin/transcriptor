@@ -25,9 +25,18 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
 
     public var id: String { rawValue }
 
-    /// The categories shown as always-visible rows in the sidebar. Everything
-    /// else is reachable through Advanced, Overview deep links, or search.
-    public static let sidebarVisiblePanes: [SettingsPane] = [.general, .keyboardShortcut, .advanced]
+    /// Every settings category is shown as its own always-visible row in the
+    /// sidebar, like System Settings, so each page can be reached directly
+    /// instead of being buried under Advanced or only reachable via search.
+    public static let sidebarVisiblePanes: [SettingsPane] = [
+        .general,
+        .recording,
+        .keyboardShortcut,
+        .overlay,
+        .storage,
+        .privacy,
+        .advanced,
+    ]
 
     public var title: String {
         switch self {
@@ -82,7 +91,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         case .privacy:
             "Review what stays local, what requires permission, and what remains blocked."
         case .advanced:
-            "Less-common options for recording, overlay, storage, and privacy."
+            "Diagnostics and less-common options."
         }
     }
 
@@ -147,10 +156,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             ]
         case .advanced:
             [
-                "Microphone and audio",
-                "Overlay options",
-                "Storage limit",
-                "Privacy summary",
+                "Last insertion attempt",
+                "Insertion diagnostics",
             ]
         }
     }
@@ -193,7 +200,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         case .privacy:
             ["accessibility", "microphone", "permissions", "local", "cloud"]
         case .advanced:
-            ["advanced", "more", "extra", "diagnostics", "options"]
+            ["advanced", "more", "extra", "diagnostics", "options", "insertion"]
         }
     }
 }

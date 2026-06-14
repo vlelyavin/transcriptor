@@ -49,6 +49,26 @@ public final class VoiceInputController {
         state == .recording
     }
 
+    /// Re-reads the current microphone authorization from the system. Used by the
+    /// onboarding flow to reflect a permission the user just granted in System
+    /// Settings without starting a recording.
+    public func refreshPermissionStatus() {
+        permissionStatus = recorder.authorizationStatus()
+    }
+
+    /// Prompts for microphone access if it has never been decided. When access
+    /// was already granted or denied, this just refreshes the cached status (a
+    /// denied user must change it in System Settings).
+    @discardableResult
+    public func requestMicrophonePermission() async -> Bool {
+        permissionStatus = recorder.authorizationStatus()
+        if permissionStatus == .undetermined {
+            let granted = await recorder.requestPermission()
+            permissionStatus = granted ? .granted : .denied
+        }
+        return permissionStatus == .granted
+    }
+
     public func replaceOnRecordingFinished(_ handler: @escaping @MainActor (RecordedAudioAsset) -> Void) {
         onRecordingFinished = handler
     }

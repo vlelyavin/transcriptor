@@ -1,10 +1,34 @@
 import SwiftUI
 
 public struct OverviewView: View {
-    private let appState: AppState
+    @Bindable private var appState: AppState
 
     public init(appState: AppState) {
         self.appState = appState
+    }
+
+    /// History storage limit bounds, shared with the Storage settings pane:
+    /// 20 MB up to 2 GB.
+    private var storageLimitRange: ClosedRange<Int> { 20...2_048 }
+
+    private var storageLimitBinding: Binding<Int> {
+        Binding(
+            get: {
+                min(max(appState.storageSettings.capMegabytes, storageLimitRange.lowerBound), storageLimitRange.upperBound)
+            },
+            set: { newValue in
+                appState.storageSettings.capMegabytes = min(max(newValue, storageLimitRange.lowerBound), storageLimitRange.upperBound)
+            }
+        )
+    }
+
+    /// Auto-transcribe is only meaningful once a transcription model exists; the
+    /// binding mirrors the guard used on the Import and Models screens.
+    private var autoTranscribeBinding: Binding<Bool> {
+        Binding(
+            get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+            set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+        )
     }
 
     /// Binds the unified "Active model" picker to the app's active target,
@@ -30,7 +54,7 @@ public struct OverviewView: View {
                     .listRowBackground(Color.clear)
             }
 
-            if !appState.isTranscriptionConfigured {
+            if appState.transcriptionReadiness == .needsModel {
                 Section {
                     setupRow
                 }
@@ -42,28 +66,35 @@ public struct OverviewView: View {
                         .font(.system(.body, design: .monospaced))
                 }
 
-                linkedRow("Input mode", destination: .settings(.general)) {
-                    Text(appState.recordingState.mode.title)
+                Picker("Input mode", selection: $appState.recordingState.mode) {
+                    ForEach(RecordingMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
                 }
 
                 linkedRow("Current state", destination: .settings(.advanced)) {
                     Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
-                linkedRow("Overlay", destination: .settings(.general)) {
-                    Text(appState.overlayState.isEnabled ? "Enabled" : "Disabled")
-                        .foregroundStyle(.secondary)
-                }
+                Toggle("Overlay", isOn: $appState.overlayState.isEnabled)
 
-                linkedRow("Insert into active app", destination: .settings(.general)) {
-                    Text(insertionStatusText)
-                        .foregroundStyle(.secondary)
+                Toggle("Insert into active app", isOn: $appState.generalSettings.insertTranscriptIntoActiveApp)
+
+                if appState.generalSettings.insertTranscriptIntoActiveApp,
+                   appState.accessibilityPermissionStatus != .granted {
+                    Text("Needs Accessibility access to type into other apps.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
             } header: {
                 Text("Voice Input")
             }
 
             Section {
+                LabeledContent("Status") {
+                    transcriptionStatusLabel
+                }
+
                 if appState.availableTargets.isEmpty {
                     linkedRow("Active model", destination: .screen(.models)) {
                         Text("None ready")
@@ -81,11 +112,14 @@ public struct OverviewView: View {
                     Text("\(appState.readyLocalModelIDs.count)")
                 }
 
-                linkedRow("Auto-transcribe", destination: .screen(.models)) {
-                    Text(appState.transcriptionPreferences.autoTranscribeAfterCapture ? "On" : "Off")
-                }
+                Toggle("Auto-transcribe", isOn: autoTranscribeBinding)
+                    .disabled(!appState.canEnableAutoTranscribe)
             } header: {
                 Text("Transcription")
+            } footer: {
+                if appState.transcriptionReadiness == .needsModel {
+                    Text("Transcription isn't possible yet. Download at least one model from the Models page to start turning recordings into text.")
+                }
             }
 
             Section {
@@ -93,8 +127,8 @@ public struct OverviewView: View {
                     Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
                 }
 
-                linkedRow("History limit", destination: .settings(.storage)) {
-                    Text("\(appState.storageSettings.capMegabytes) MB")
+                LabeledContent("History limit") {
+                    MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
                 }
 
                 linkedRow("History items", destination: .screen(.history)) {
@@ -110,15 +144,10 @@ public struct OverviewView: View {
                 Text("Storage")
             }
 
-            Section {
-                if appState.historyStore.entries.isEmpty {
-                    ContentUnavailableView(
-                        "No Recent History",
-                        systemImage: "clock.arrow.circlepath",
-                        description: Text("Record or import audio to start building transcript history.")
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
+            // Recent History is only shown once there is history to show — an
+            // empty placeholder section adds noise on a fresh install.
+            if !appState.historyStore.entries.isEmpty {
+                Section {
                     ForEach(appState.historyStore.entries.prefix(5)) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.displayName)
@@ -139,9 +168,9 @@ public struct OverviewView: View {
                     Button("Open History") {
                         appState.sidebarSelection = .screen(.history)
                     }
+                } header: {
+                    Text("Recent History")
                 }
-            } header: {
-                Text("Recent History")
             }
         }
         .formStyle(.grouped)
@@ -230,22 +259,43 @@ public struct OverviewView: View {
         }
     }
 
+    /// A compact readiness indicator in the native System Settings idiom: a small
+    /// status dot (green when ready, red when a model is missing) with plain gray
+    /// label text — no colored text, no checkmark glyph. A spinner stands in for
+    /// the dot during the brief launch scan.
+    @ViewBuilder
+    private var transcriptionStatusLabel: some View {
+        switch appState.transcriptionReadiness {
+        case .preparing:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Preparing…")
+                    .foregroundStyle(.secondary)
+            }
+        case .ready:
+            statusDot(color: .green, text: "Ready")
+        case .needsModel:
+            statusDot(color: .red, text: "No model downloaded")
+        }
+    }
+
+    private func statusDot(color: Color, text: String) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(text)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func megabyteString(for bytes: Int64) -> String {
         String(format: "%.2f MB", Double(bytes) / 1_048_576)
     }
 
     private func formattedDate(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
-    }
-
-    private var insertionStatusText: String {
-        guard appState.generalSettings.insertTranscriptIntoActiveApp else {
-            return "Off"
-        }
-
-        return appState.accessibilityPermissionStatus == .granted
-            ? "On"
-            : "On — needs Accessibility access"
     }
 
 }

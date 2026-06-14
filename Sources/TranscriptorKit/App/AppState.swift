@@ -37,35 +37,58 @@ public final class AppState {
         didSet { UserDefaults.standard.set(hasSeenWelcomeGuide, forKey: AppState.welcomeGuideDefaultsKey) }
     }
 
-    /// Drives the welcome/setup guide sheet.
+    /// Drives the welcome guide sheet.
     public var isPresentingWelcomeGuide = false
 
-    /// Setup is mandatory: the app requires at least one usable transcription
-    /// path (a downloaded local model or a ready cloud provider) before it can
-    /// be used. When this is true the setup gate must be shown and cannot be
-    /// dismissed.
+    /// Whether transcription still needs a usable path (a downloaded local model
+    /// or a ready cloud provider). This is informational — the app is fully
+    /// usable as a recorder before a model exists — so it drives status copy and
+    /// notices, not a hard gate.
     public var requiresModelSetup: Bool { !isTranscriptionConfigured }
 
-    /// Inserting dictated text into other apps — the app's core value — needs
-    /// macOS Accessibility access, so it is a required part of initial setup.
+    /// Inserting dictated text into other apps needs macOS Accessibility access.
     public var isAccessibilityGranted: Bool { accessibilityPermissionStatus == .granted }
 
     public var requiresAccessibilitySetup: Bool { !isAccessibilityGranted }
 
-    /// Initial setup is mandatory and complete only when BOTH a transcription
-    /// model is configured AND Accessibility access is granted.
+    /// Whether microphone capture is authorized. Recording is impossible without
+    /// it, so onboarding asks for it alongside Accessibility.
+    public var isMicrophoneGranted: Bool { voiceInputController.permissionStatus == .granted }
+
+    /// True while either recommended permission or a transcription model is still
+    /// missing. Informational only (used by the Overview status); it no longer
+    /// blocks dismissing the welcome guide.
     public var requiresSetup: Bool { requiresModelSetup || requiresAccessibilitySetup }
 
-    /// QA/screenshot hook: when true, the mandatory setup gate is not
-    /// auto-presented, so automated captures of other screens aren't blocked.
-    /// Never set during a normal launch.
+    /// QA/screenshot hook: when true, the welcome guide is not auto-presented, so
+    /// automated captures of other screens aren't blocked. Never set during a
+    /// normal launch.
     public var suppressSetupGate = false
 
-    /// The setup gate auto-presents on launch whenever setup is still required.
-    /// Because setup is mandatory, once a model and Accessibility access are
-    /// configured this is permanently false and the popup never re-appears — so
-    /// a fully set-up user only ever sees it on the initial run.
-    public var shouldAutoPresentWelcomeGuide: Bool { requiresSetup && !suppressSetupGate }
+    /// The welcome guide is shown once, on the very first launch. After the user
+    /// completes (or skips through) it, `hasSeenWelcomeGuide` is set and it never
+    /// auto-presents again — they can still reopen it from Overview.
+    public var shouldAutoPresentWelcomeGuide: Bool { !hasSeenWelcomeGuide && !suppressSetupGate }
+
+    /// Coarse transcription readiness for status surfaces. `.preparing` covers the
+    /// brief window after launch while installed models are still being scanned
+    /// and loaded; `.ready` means at least one usable path exists; `.needsModel`
+    /// means the user must download a model before transcription is possible.
+    public enum TranscriptionReadiness: Sendable {
+        case preparing
+        case ready
+        case needsModel
+    }
+
+    /// True from launch until the initial model scan/load finishes, so status
+    /// surfaces can show "Preparing…" instead of momentarily claiming no model.
+    public private(set) var isPreparingModelsOnLaunch = true
+
+    public var transcriptionReadiness: TranscriptionReadiness {
+        if isTranscriptionConfigured { return .ready }
+        if isPreparingModelsOnLaunch { return .preparing }
+        return .needsModel
+    }
 
     /// The model offered first in the mandatory setup flow — the catalog's
     /// flagged recommendation, falling back to the first downloadable WhisperKit
@@ -75,18 +98,25 @@ public final class AppState {
         return whisper.first(where: { $0.accentBadgeLabel == "Recommended" }) ?? whisper.first
     }
 
-    /// Presents the setup guide (used by the first-launch auto-present and the
+    /// Presents the welcome guide (used by the first-launch auto-present and the
     /// Overview "set up transcription" row button).
     public func presentWelcomeGuide() {
         isPresentingWelcomeGuide = true
     }
 
-    /// Dismisses the setup gate. Because setup is mandatory, this only succeeds
-    /// once a transcription path has actually been configured.
+    /// Dismisses the welcome guide and records that it has been seen. Setup is no
+    /// longer mandatory, so this always succeeds — the user can start exploring
+    /// and download a model later.
     public func dismissWelcomeGuide() {
-        guard !requiresSetup else { return }
         hasSeenWelcomeGuide = true
         isPresentingWelcomeGuide = false
+    }
+
+    /// Closes the welcome guide and navigates to the Models page so the user can
+    /// pick and download a transcription model when they choose to.
+    public func openModelsFromWelcomeGuide() {
+        dismissWelcomeGuide()
+        sidebarSelection = .screen(.models)
     }
 
     /// Starts downloading the recommended model directly from the setup gate, so
@@ -404,9 +434,11 @@ public final class AppState {
     /// Loads the active local model automatically so transcription is ready
     /// without a manual "Load" step.
     public func autoLoadSelectedModelOnLaunch() async {
+        isPreparingModelsOnLaunch = true
         await whisperModelManager.refresh()
         await parakeetModelManager.refresh()
         loadSelectedModelIfDownloaded()
+        isPreparingModelsOnLaunch = false
     }
 
     public func loadSelectedModelIfDownloaded() {
@@ -919,6 +951,18 @@ public final class AppState {
         }
 
         NSWorkspace.shared.open(url)
+    }
+
+    /// Prompts for microphone access from the onboarding flow. If access was
+    /// already decided, this just refreshes the cached status.
+    public func requestMicrophonePermission() async {
+        await voiceInputController.requestMicrophonePermission()
+    }
+
+    /// Re-reads microphone authorization (e.g. after returning from System
+    /// Settings) so onboarding reflects a freshly granted permission.
+    public func refreshMicrophonePermissionStatus() {
+        voiceInputController.refreshPermissionStatus()
     }
 
     public func requestAccessibilityPermissionPrompt() {
