@@ -38,6 +38,11 @@ fi
 if [[ -n "${NOTARY_PROFILE:-}" ]]; then
   xcrun notarytool submit "${DMG_PATH}" --keychain-profile "${NOTARY_PROFILE}" --wait
   xcrun stapler staple "${DMG_PATH}"
+  echo "Notarized and stapled — opens with no Gatekeeper warning."
+else
+  echo
+  echo "NOTE: DMG is not notarized. Recipients clear the quarantine flag once:"
+  echo "  xattr -dr com.apple.quarantine /Applications/${APP_NAME}.app"
 fi
 
 echo "Built DMG at ${DMG_PATH}"
