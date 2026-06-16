@@ -13,6 +13,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Distribution DMGs are signed neutrally — ad-hoc, or with a Developer ID if
+# configured — never with the machine-local dev cert, so the artifact is
+# identical no matter who builds it (local or CI).
+export CODESIGN_ADHOC=1
 "${ROOT_DIR}/scripts/build_release.sh"
 
 if [[ ! -d "${APP_BUNDLE}" ]]; then

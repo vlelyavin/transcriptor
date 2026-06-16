@@ -69,7 +69,13 @@ cat > "${INFO_PLIST}" <<'PLIST'
 </plist>
 PLIST
 
-LOCAL_IDENTITY="${LOCAL_CODESIGN_IDENTITY:-}"
+# The local dev identity is used AUTOMATICALLY whenever it exists (create it with
+# scripts/setup_local_signing_cert.sh). Its signature is certificate-based and
+# identical across rebuilds, so macOS keeps the app's Microphone / Accessibility
+# grants instead of resetting them every build. Override the name with
+# LOCAL_CODESIGN_IDENTITY, or force a neutral ad-hoc signature with
+# CODESIGN_ADHOC=1 (distribution builds set this — see package_dmg.sh).
+LOCAL_IDENTITY="${LOCAL_CODESIGN_IDENTITY:-Transcriptor Local Dev}"
 LOCAL_KEYCHAIN="${HOME}/Library/Keychains/transcriptor-codesign.keychain-db"
 LOCAL_KEYCHAIN_PWD="${LOCAL_CODESIGN_KEYCHAIN_PASSWORD:-transcriptor-local}"
 
@@ -83,11 +89,7 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
     --sign "${DEVELOPER_ID_APPLICATION}" \
     "${APP_BUNDLE}"
   echo "Signed for distribution with '${DEVELOPER_ID_APPLICATION}'."
-elif [[ -n "${LOCAL_IDENTITY}" ]] && security find-identity -p codesigning 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
-  # Stable LOCAL dev identity: its signature is certificate-based and identical
-  # across rebuilds, so macOS keeps the app's Microphone / Accessibility grants
-  # instead of resetting them every build. Create it with
-  # scripts/setup_local_signing_cert.sh.
+elif [[ "${CODESIGN_ADHOC:-0}" != "1" ]] && security find-identity -p codesigning 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
   [[ -f "${LOCAL_KEYCHAIN}" ]] && security unlock-keychain -p "${LOCAL_KEYCHAIN_PWD}" "${LOCAL_KEYCHAIN}" 2>/dev/null || true
   codesign --force --deep --keychain "${LOCAL_KEYCHAIN}" --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
   echo "Signed with local dev identity '${LOCAL_IDENTITY}' (TCC grants persist across rebuilds)."

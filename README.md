@@ -128,8 +128,8 @@ NOTARY_PROFILE="transcriptor-notary" bash scripts/package_dmg.sh
 Ad-hoc signing changes the app's signature on every build, so macOS resets its Microphone and Accessibility grants each time. Sign local builds with a fixed self-signed certificate so the grants persist:
 
 ```sh
-bash scripts/setup_local_signing_cert.sh          # one-time: creates the cert
-LOCAL_CODESIGN_IDENTITY="Transcriptor Local Dev" bash scripts/build_release.sh
+bash scripts/setup_local_signing_cert.sh   # one-time: create the cert
+bash scripts/build_release.sh              # auto-signs with it from now on
 ```
 
 The certificate is self-signed and only affects your own machine — it does nothing for distribution (other Macs don't trust it). Undo with `scripts/setup_local_signing_cert.sh --remove`.
