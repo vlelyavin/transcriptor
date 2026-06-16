@@ -69,17 +69,36 @@ cat > "${INFO_PLIST}" <<'PLIST'
 </plist>
 PLIST
 
+LOCAL_IDENTITY="${LOCAL_CODESIGN_IDENTITY:-}"
+LOCAL_KEYCHAIN="${HOME}/Library/Keychains/transcriptor-codesign.keychain-db"
+LOCAL_KEYCHAIN_PWD="${LOCAL_CODESIGN_KEYCHAIN_PASSWORD:-transcriptor-local}"
+
 if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
+  # Distribution signing: hardened runtime + secure timestamp, ready for
+  # notarization (see scripts/package_dmg.sh).
   codesign \
     --force \
     --timestamp \
     --options runtime \
     --sign "${DEVELOPER_ID_APPLICATION}" \
     "${APP_BUNDLE}"
+  echo "Signed for distribution with '${DEVELOPER_ID_APPLICATION}'."
+elif [[ -n "${LOCAL_IDENTITY}" ]] && security find-identity -p codesigning 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
+  # Stable LOCAL dev identity: its signature is certificate-based and identical
+  # across rebuilds, so macOS keeps the app's Microphone / Accessibility grants
+  # instead of resetting them every build. Create it with
+  # scripts/setup_local_signing_cert.sh.
+  [[ -f "${LOCAL_KEYCHAIN}" ]] && security unlock-keychain -p "${LOCAL_KEYCHAIN_PWD}" "${LOCAL_KEYCHAIN}" 2>/dev/null || true
+  codesign --force --deep --keychain "${LOCAL_KEYCHAIN}" --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
+  echo "Signed with local dev identity '${LOCAL_IDENTITY}' (TCC grants persist across rebuilds)."
 else
   # Ad-hoc sign so Gatekeeper reports the normal "unidentified developer"
-  # prompt (clearable via right-click -> Open) instead of "is damaged".
+  # prompt (clearable via right-click -> Open) instead of "is damaged". NOTE:
+  # the ad-hoc cdhash changes every build, so the app's Microphone /
+  # Accessibility grants reset each rebuild — run
+  # scripts/setup_local_signing_cert.sh once to stop that.
   codesign --force --deep --sign - "${APP_BUNDLE}"
+  echo "Ad-hoc signed (permissions reset on rebuild; see scripts/setup_local_signing_cert.sh)."
 fi
 
 echo "Built app bundle at ${APP_BUNDLE}"

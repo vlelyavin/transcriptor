@@ -26,12 +26,17 @@ Transcriptor is a free local-first macOS speech-to-text app for fast dictation, 
 
 ## Install
 
-1. Download the latest DMG from the GitHub Pages install page or the latest GitHub Release.
-2. Open `Transcriptor.dmg`.
-3. Drag `Transcriptor.app` into `Applications`.
-4. Launch Transcriptor from `Applications`.
+1. Download `Transcriptor.dmg` from the [latest GitHub Release](https://github.com/vlelyavin/transcriptor/releases/latest).
+2. Open the DMG and drag `Transcriptor.app` into `Applications`.
+3. Launch Transcriptor from `Applications`.
 
-Unsigned local builds may show a Gatekeeper warning until the app is signed and notarized. Packaging details live in [docs/PACKAGING.md](docs/PACKAGING.md).
+**If macOS says the app "is damaged" or "can't be opened":** the current builds are not yet notarized by Apple, so macOS quarantines them after download. Clear the quarantine flag once — this is safe, it only removes the "downloaded from the internet" marker:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Transcriptor.app
+```
+
+Then open the app normally. A notarized build (see [Building and Distribution](#building-and-distribution)) removes this step entirely. Packaging details also live in [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## First Run
 
@@ -92,6 +97,42 @@ Parakeet Local is a beta Apple Silicon-only path in the current build, and it st
 ### Why can launch at login say “Needs Packaged App”?
 
 That status appears when you run Transcriptor from `swift run` or a raw development executable. Launch at login only works from a packaged `Transcriptor.app`.
+
+## Building and Distribution
+
+Build a packaged app and a distributable disk image from the CLI:
+
+```sh
+bash scripts/build_release.sh   # compiles release → dist/Transcriptor.app
+bash scripts/package_dmg.sh     # builds the app + packages it → dist/Transcriptor.dmg
+```
+
+How the app is signed — and therefore how smooth the install is for other people — depends on what's available:
+
+| Tier | Cost | What users see | How |
+| --- | --- | --- | --- |
+| **Notarized (Developer ID)** | Apple Developer Program, $99/year | Double-click to open, no warnings | Set `DEVELOPER_ID_APPLICATION` + `NOTARY_PROFILE`; `package_dmg.sh` signs, notarizes, and staples |
+| **Ad-hoc (default)** | Free | Works, but each user clears quarantine once (`xattr -dr com.apple.quarantine …`) | Nothing — this is the fallback |
+
+Notarization is the **only** way to get a fully warning-free install, and it needs the paid membership (the notary service itself is free once you're enrolled). Because Transcriptor relies on the Accessibility API, global hotkeys, and inserting text into arbitrary apps, it is distributed **directly** (Developer ID + notarization), not via the sandboxed Mac App Store. To enable notarization:
+
+```sh
+export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"
+xcrun notarytool store-credentials transcriptor-notary \
+  --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
+NOTARY_PROFILE="transcriptor-notary" bash scripts/package_dmg.sh
+```
+
+### Stable permissions during local development
+
+Ad-hoc signing changes the app's signature on every build, so macOS resets its Microphone and Accessibility grants each time. Sign local builds with a fixed self-signed certificate so the grants persist:
+
+```sh
+bash scripts/setup_local_signing_cert.sh          # one-time: creates the cert
+LOCAL_CODESIGN_IDENTITY="Transcriptor Local Dev" bash scripts/build_release.sh
+```
+
+The certificate is self-signed and only affects your own machine — it does nothing for distribution (other Macs don't trust it). Undo with `scripts/setup_local_signing_cert.sh --remove`.
 
 ## Developer Docs
 
