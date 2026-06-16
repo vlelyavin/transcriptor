@@ -7,9 +7,10 @@ public struct OverviewView: View {
         self.appState = appState
     }
 
-    /// History storage limit bounds, shared with the Storage settings pane:
-    /// 20 MB up to 2 GB.
-    private var storageLimitRange: ClosedRange<Int> { 20...2_048 }
+    /// History storage limit bounds, shared with the Storage settings pane: the
+    /// lower bound tracks current usage (so the cap can't be set below the space
+    /// history already uses), up to 2 GB.
+    private var storageLimitRange: ClosedRange<Int> { appState.minimumHistoryLimitMegabytes...2_048 }
 
     private var storageLimitBinding: Binding<Int> {
         Binding(
@@ -91,22 +92,7 @@ public struct OverviewView: View {
             }
 
             Section {
-                LabeledContent("Status") {
-                    transcriptionStatusLabel
-                }
-
-                if appState.availableTargets.isEmpty {
-                    linkedRow("Active model", destination: .screen(.models)) {
-                        Text("None ready")
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Picker("Active model", selection: activeTargetBinding) {
-                        ForEach(appState.availableTargets, id: \.self) { target in
-                            Text(appState.targetDisplayName(target)).tag(target)
-                        }
-                    }
-                }
+                activeModelRow
 
                 linkedRow("Ready local models", destination: .screen(.models)) {
                     Text("\(appState.readyLocalModelIDs.count)")
@@ -259,33 +245,83 @@ public struct OverviewView: View {
         }
     }
 
+    /// The unified "Active model" row: a tile icon and title on the left, the
+    /// live readiness status directly beneath the title, and the model selector
+    /// on the trailing edge. This folds what used to be two separate rows
+    /// ("Status" + "Active model") into one, matching how native System Settings
+    /// pairs a primary control with its current state.
+    private var activeModelRow: some View {
+        HStack(spacing: 12) {
+            SidebarIconView(systemImage: NavigationScreen.models.systemImage, size: 32)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Active Model")
+                transcriptionStatusLabel
+            }
+
+            Spacer(minLength: 12)
+
+            activeModelSelector
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// Trailing model selector. With ready targets it's a native pop-up picker;
+    /// with none, it offers a one-tap jump to the Models page to download one.
+    @ViewBuilder
+    private var activeModelSelector: some View {
+        if appState.availableTargets.isEmpty {
+            Button("Download…") {
+                appState.sidebarSelection = .screen(.models)
+            }
+        } else {
+            Picker("Active model", selection: activeTargetBinding) {
+                ForEach(appState.availableTargets, id: \.self) { target in
+                    Text(appState.targetDisplayName(target)).tag(target)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+    }
+
     /// A compact readiness indicator in the native System Settings idiom: a small
     /// status dot (green when ready, red when a model is missing) with plain gray
     /// label text — no colored text, no checkmark glyph. A spinner stands in for
-    /// the dot during the brief launch scan.
+    /// the dot while the launch scan runs or the selected model loads into memory.
     @ViewBuilder
     private var transcriptionStatusLabel: some View {
-        switch appState.transcriptionReadiness {
-        case .preparing:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Preparing…")
-                    .foregroundStyle(.secondary)
+        if appState.isSelectedModelLoading {
+            busyStatus("Loading model…")
+        } else {
+            switch appState.transcriptionReadiness {
+            case .preparing:
+                busyStatus("Preparing…")
+            case .ready:
+                statusDot(color: .green, text: "Ready")
+            case .needsModel:
+                statusDot(color: .red, text: "No model downloaded")
             }
-        case .ready:
-            statusDot(color: .green, text: "Ready")
-        case .needsModel:
-            statusDot(color: .red, text: "No model downloaded")
+        }
+    }
+
+    private func busyStatus(_ text: String) -> some View {
+        HStack(spacing: 5) {
+            ProgressView()
+                .controlSize(.small)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
     private func statusDot(color: Color, text: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: 10, height: 10)
             Text(text)
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }

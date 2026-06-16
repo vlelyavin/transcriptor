@@ -24,7 +24,7 @@ struct ResultOverlayView: View {
             }
         }
         .padding(18)
-        .frame(width: 380)
+        .frame(width: 460)
         .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -72,9 +72,11 @@ struct ResultOverlayView: View {
 
             HStack(spacing: 8) {
                 Button("Show All") { actions.showAll(payload.entryID) }
+                    .fixedSize()
 
                 Button("Copy") { actions.copy(payload.entryID) }
                     .disabled(payload.transcript.isEmpty)
+                    .fixedSize()
 
                 retranscribeMenu(payload.entryID)
 

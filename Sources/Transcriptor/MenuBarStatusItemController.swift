@@ -101,12 +101,15 @@ final class MenuBarStatusItemController: NSObject {
         }
 
         let workflowState = workflowState
+        // The app's identity glyph (the waveform from its Dock icon) rendered as
+        // a single-color template — no tile background — so it matches the menu
+        // bar's other monochrome items and adapts to light/dark automatically.
         button.image = NSImage(
-            systemSymbolName: workflowState.symbolName,
+            systemSymbolName: "waveform",
             accessibilityDescription: "Transcriptor"
         )
         button.image?.isTemplate = true
-        button.contentTintColor = workflowState.tintColor
+        button.contentTintColor = nil
         button.toolTip = tooltipText(for: workflowState)
     }
 

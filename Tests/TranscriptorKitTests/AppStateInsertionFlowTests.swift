@@ -46,10 +46,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
 
         XCTAssertEqual(context.insertionService.insertedTexts, ["Dictated text"])
-        if case .saved = appState.overlaySupplementalPhase {
-        } else {
-            XCTFail("Expected saved overlay phase, got \(String(describing: appState.overlaySupplementalPhase))")
-        }
+        // A successful straight-to-field insertion dismisses the overlay quietly
+        // rather than surfacing a redundant "saved" confirmation — the transcript
+        // is already persisted to history.
+        XCTAssertNil(appState.overlaySupplementalPhase)
     }
 
     func testMissingSetupShowsUnconfiguredCardAndKeepsRecording() throws {
