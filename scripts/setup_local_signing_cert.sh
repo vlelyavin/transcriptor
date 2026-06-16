@@ -42,8 +42,8 @@ fi
 
 if security find-identity -p codesigning 2>/dev/null | grep -q "${IDENTITY}"; then
   echo "Local signing identity '${IDENTITY}' already present. Nothing to do."
-  echo "Build a stable local install with:"
-  echo "  LOCAL_CODESIGN_IDENTITY=\"${IDENTITY}\" bash scripts/build_release.sh"
+  echo "scripts/build_release.sh signs with it automatically; just rebuild:"
+  echo "  bash scripts/build_release.sh"
   exit 0
 fi
 
@@ -108,9 +108,10 @@ echo
 if security find-identity -p codesigning | grep -q "${IDENTITY}"; then
   echo "✅ Created stable local signing identity: '${IDENTITY}'"
   echo
-  echo "Next: build a stable local install (one final permission re-grant, then"
-  echo "grants persist across all future rebuilds):"
-  echo "  LOCAL_CODESIGN_IDENTITY=\"${IDENTITY}\" bash scripts/build_release.sh"
+  echo "scripts/build_release.sh now signs with it automatically, so Microphone /"
+  echo "Accessibility grants persist across rebuilds. Rebuild + reinstall once"
+  echo "(one final permission re-grant), then you're set:"
+  echo "  bash scripts/build_release.sh"
 else
   echo "⚠️  Identity created but not visible to codesign. Check:"
   echo "  security find-identity -p codesigning"
