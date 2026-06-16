@@ -198,6 +198,17 @@ public final class AppState {
     public var importFeedbackMessage: String?
     public var historyActionMessage: String?
     public var overlaySupplementalPhase: OverlaySupplementalPhase?
+
+    /// The absolute lower bound for the history storage cap, in megabytes — the
+    /// limit can never be set below the space history already occupies, so the
+    /// user can't configure a cap that would immediately prune their existing
+    /// recordings. Mirrors the bytes the cap is actually enforced against
+    /// (`totalManagedBytes`, which excludes downloaded models) and stays within
+    /// the supported 20 MB … 2 GB range.
+    public var minimumHistoryLimitMegabytes: Int {
+        let usedMegabytes = Int((Double(storageUsage.totalManagedBytes) / 1_048_576).rounded(.up))
+        return min(max(20, usedMegabytes), 2_048)
+    }
     public let modelCatalog: ModelCatalog
     public let providerCatalog: ProviderCatalog
     public let voiceInputController: VoiceInputController
@@ -457,6 +468,20 @@ public final class AppState {
 
     public var selectedModel: ModelDescriptor? {
         modelCatalog.model(id: transcriptionPreferences.selectedModelID)
+    }
+
+    /// True while the selected local model's weights are being read into memory
+    /// (state `.loading`). The files already exist, so this is distinct from
+    /// `.needsModel`: status surfaces should say "Loading…" rather than implying
+    /// nothing is downloaded, and not claim "Ready" until the load completes.
+    public var isSelectedModelLoading: Bool {
+        guard let model = selectedModel else {
+            return false
+        }
+        let state = model.isParakeetLocalModel
+            ? parakeetModelManager.item(for: model.id)?.state
+            : whisperModelManager.item(for: model.id)?.state
+        return state == .loading
     }
 
     public var recentImports: [RecentImportItem] {
@@ -1192,6 +1217,12 @@ public final class AppState {
     }
 
     private func beginVoiceInputCapture() {
+        // A new capture supersedes any lingering result card (preview, "saved",
+        // unconfigured, …). Clearing it here guarantees the recording overlay is
+        // shown for the fresh take instead of staying hidden behind a stale card
+        // — the main symptom of toggle-to-talk "behaving weirdly".
+        setOverlaySupplementalPhase(nil)
+
         guard generalSettings.insertTranscriptIntoActiveApp else {
             pendingInsertionEntryID = nil
             transcriptInsertionService.clearCapturedTarget()
@@ -1224,10 +1255,11 @@ public final class AppState {
             historyActionMessage = outcome.message
 
             switch outcome {
-            case let .inserted(message):
-                // Pasted straight into the focused field — quick confirmation.
-                setOverlaySupplementalPhase(.saved(message))
-                scheduleOverlaySupplementalClear(after: .seconds(1.6))
+            case .inserted:
+                // Pasted straight into the focused field. The transcript is
+                // already saved to history, so dismiss the overlay quietly
+                // rather than surfacing a redundant "success" confirmation.
+                dismissOverlayResult()
             case .copiedToClipboard, .savedOnly:
                 // No focused field to paste into — show the interactive preview.
                 presentTranscriptPreview(for: entry)

@@ -34,11 +34,14 @@ public struct RecordingOverlayView: View {
         HStack(spacing: 14) {
             statusGlyph
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(statusTitle)
                     .font(.headline)
 
-                if !statusSubtitle.isEmpty {
+                if showsLiveMeter {
+                    LiveAudioMeter(levels: voiceInputController.liveLevels)
+                        .frame(height: 14)
+                } else if !statusSubtitle.isEmpty {
                     Text(statusSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -77,14 +80,20 @@ public struct RecordingOverlayView: View {
                 .controlSize(.small)
         } else if showsDoneControls {
             VStack(spacing: 6) {
+                // Deliberately NO `.keyboardShortcut` here. A keyboard shortcut
+                // (Return/Esc) only fires when its window is the key window, which
+                // would force this non-activating overlay to steal key-window
+                // status from the app the user is dictating into — the cross-app
+                // split that froze the meter, wedged the global shortcut, and
+                // misrouted Cmd+V in toggle mode. Stop via the global shortcut or
+                // a mouse click on Done (delivered via `acceptsFirstMouse` without
+                // keying the panel). See `RecordingOverlayManager.FloatingOverlayPanel`.
                 Button("Done") { stopAction() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .keyboardShortcut(.defaultAction)
 
                 Button("Cancel", role: .cancel) { cancelAction() }
                     .controlSize(.small)
-                    .keyboardShortcut(.cancelAction)
             }
         } else if showsTimer {
             Text(durationLabel)
@@ -98,6 +107,13 @@ public struct RecordingOverlayView: View {
 
     private var isListening: Bool {
         supplementalPhase == nil && voiceInputController.state == .recording
+    }
+
+    /// While actively recording, the static "what to do next" subtitle is
+    /// replaced by a live level meter so the user can see the app is hearing
+    /// them — unless they've turned the indicator off in Overlay settings.
+    private var showsLiveMeter: Bool {
+        isListening && overlayState.showsLiveAudioIndicator
     }
 
     private var statusTitle: String {
@@ -200,5 +216,36 @@ public struct RecordingOverlayView: View {
         case .transcribing, .inserting: return true
         case .saved, .error, .setupRequired, .preview, .unconfigured: return false
         }
+    }
+}
+
+/// A compact, native-feeling live input meter: a row of capsule bars driven by
+/// the recorder's per-band levels. It gives immediate visual confirmation that
+/// the microphone is picking up the user's voice.
+private struct LiveAudioMeter: View {
+    let levels: AudioLevelSnapshot
+
+    var body: some View {
+        GeometryReader { proxy in
+            let bars = levels.bars
+            let count = max(bars.count, 1)
+            let spacing: CGFloat = 3
+            let barWidth = max(2, (proxy.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
+
+            HStack(alignment: .center, spacing: spacing) {
+                ForEach(bars.indices, id: \.self) { index in
+                    let magnitude = CGFloat(min(max(bars[index], 0), 1))
+                    Capsule(style: .continuous)
+                        .fill(Color.accentColor.opacity(0.35 + 0.65 * magnitude))
+                        .frame(
+                            width: barWidth,
+                            height: max(2, proxy.size.height * magnitude)
+                        )
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
+            .animation(.linear(duration: 0.05), value: levels.bars)
+        }
+        .accessibilityHidden(true)
     }
 }

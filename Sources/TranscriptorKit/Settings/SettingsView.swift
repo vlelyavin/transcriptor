@@ -5,6 +5,7 @@ import SwiftUI
 public struct SettingsPaneDetailView: View {
     @Bindable private var appState: AppState
     private let pane: SettingsPane
+    @State private var showClearHistoryConfirmation = false
 
     public init(pane: SettingsPane, appState: AppState) {
         self.pane = pane
@@ -238,8 +239,9 @@ public struct SettingsPaneDetailView: View {
         }
     }
 
-    /// History storage limit bounds: 20 MB up to 2 GB (2 048 MB).
-    private var storageLimitRange: ClosedRange<Int> { 20...2_048 }
+    /// History storage limit bounds: the lower bound tracks current usage (so the
+    /// cap can't be set below the space history already uses), up to 2 GB.
+    private var storageLimitRange: ClosedRange<Int> { appState.minimumHistoryLimitMegabytes...2_048 }
 
     /// Clamps both typed entry and stepper input to `storageLimitRange` so the
     /// limit can never be set outside the supported bounds.
@@ -294,6 +296,27 @@ public struct SettingsPaneDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+        }
+
+        Section {
+            Button("Clear History…", role: .destructive) {
+                showClearHistoryConfirmation = true
+            }
+            .disabled(appState.historyStore.entries.isEmpty)
+            .confirmationDialog(
+                "Delete all history?",
+                isPresented: $showClearHistoryConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete All", role: .destructive) {
+                    appState.deleteAllHistory()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone.")
+            }
+        } footer: {
+            Text("Removes all saved transcripts and their audio. Downloaded models are not affected.")
         }
     }
 

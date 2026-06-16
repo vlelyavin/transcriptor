@@ -1,5 +1,6 @@
 import Carbon
 import Foundation
+import os
 
 public enum GlobalHotkeyRegistrationError: Error, LocalizedError {
     case invalidConfiguration
@@ -24,6 +25,7 @@ public final class GlobalHotkeyManager {
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "hotkey")
 
     public init(configuration: HotkeyConfiguration = HotkeyConfiguration()) {
         self.currentConfiguration = configuration
@@ -101,8 +103,10 @@ public final class GlobalHotkeyManager {
         let eventKind = GetEventKind(eventRef)
         switch eventKind {
         case UInt32(kEventHotKeyPressed):
+            log.notice("hotkey pressed")
             onPressed?()
         case UInt32(kEventHotKeyReleased):
+            log.notice("hotkey released")
             onReleased?()
         default:
             return OSStatus(eventNotHandledErr)

@@ -43,6 +43,15 @@ public final class VoiceInputController {
             }
             self.liveLevels = snapshot
         }
+        recorder.onRecordingError = { [weak self] error in
+            guard let self, self.state == .recording else {
+                return
+            }
+            // The recorder aborted an in-progress capture on its own (e.g. the
+            // no-audio watchdog fired for a dead AirPods route). Surface it as a
+            // normal failure so the overlay shows the message instead of hanging.
+            self.transitionToFailure(message: error.localizedDescription)
+        }
     }
 
     public var isRecording: Bool {

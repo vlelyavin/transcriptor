@@ -343,6 +343,13 @@ final class CapturedTextTarget: @unchecked Sendable {
 
 @MainActor
 final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
+    /// Upper bound (seconds) on any single Accessibility message. Short on
+    /// purpose: capture happens on the main actor at record start, so this is
+    /// the longest the recording overlay can ever freeze waiting on another
+    /// app's AX server. Responsive apps answer in well under this; unresponsive
+    /// ones time out and we degrade gracefully to clipboard insertion.
+    private static let axMessagingTimeout: Float = 0.5
+
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
     }
@@ -373,12 +380,22 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         }
 
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        // Bound every Accessibility message to this app. Without a timeout, a
+        // single `AXUIElementCopyAttributeValue` to a busy or AX-unfriendly
+        // frontmost app blocks the calling thread for the system default (~6s,
+        // and effectively forever for a wedged app). Because capture runs on the
+        // main actor the instant recording starts, that block freezes the whole
+        // recording overlay — the "randomly hangs, can't do anything" symptom.
+        // A short timeout caps any freeze; a slow app simply isn't captured and
+        // insertion falls back to the clipboard, which is the right trade-off.
+        AXUIElementSetMessagingTimeout(appElement, Self.axMessagingTimeout)
         var focusedValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue) == .success,
               let focusedValue else {
             return nil
         }
         let focusedElement = focusedValue as! AXUIElement
+        AXUIElementSetMessagingTimeout(focusedElement, Self.axMessagingTimeout)
 
         let role = stringAttribute(kAXRoleAttribute as CFString, on: focusedElement)
         let isSecureField = role == "AXSecureTextField"

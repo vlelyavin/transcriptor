@@ -105,6 +105,7 @@ private actor SleepGate {
 
 private final class MockAudioRecorderService: AudioRecorderServing, @unchecked Sendable {
     var onLevelsDidChange: (@MainActor @Sendable (AudioLevelSnapshot) -> Void)?
+    var onRecordingError: (@MainActor @Sendable (Error) -> Void)?
     var isRecording = false
 
     var permissionStatus: MicrophonePermissionStatus
