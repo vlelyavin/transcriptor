@@ -28,11 +28,15 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     /// Every settings category is shown as its own always-visible row in the
     /// sidebar, like System Settings, so each page can be reached directly
     /// instead of being buried under Advanced or only reachable via search.
+    ///
+    /// `.overlay` is intentionally omitted: the overlay settings are hidden for
+    /// now (the recording overlay still works on its defaults). The case is kept
+    /// so the rendering/search code stays exhaustive and the page is trivial to
+    /// re-surface later — just add `.overlay` back here.
     public static let sidebarVisiblePanes: [SettingsPane] = [
         .general,
         .recording,
         .keyboardShortcut,
-        .overlay,
         .storage,
         .privacy,
         .advanced,
@@ -96,14 +100,15 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     }
 
     /// Panes whose title, subtitle, or search tokens match the query.
-    /// An empty or whitespace-only query returns every pane.
+    /// An empty or whitespace-only query returns every visible pane. Hidden panes
+    /// (not in `sidebarVisiblePanes`) are never surfaced.
     public static func matching(query: String) -> [SettingsPane] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return SettingsPane.allCases
+            return SettingsPane.sidebarVisiblePanes
         }
 
-        return SettingsPane.allCases.filter { pane in
+        return SettingsPane.sidebarVisiblePanes.filter { pane in
             let haystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
             return haystack.localizedCaseInsensitiveContains(trimmed)
         }
@@ -170,7 +175,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             return []
         }
 
-        return SettingsPane.allCases.compactMap { pane in
+        return SettingsPane.sidebarVisiblePanes.compactMap { pane in
             let paneHaystack = ([pane.title, pane.subtitle] + pane.searchTokens).joined(separator: " ")
             let paneMatches = paneHaystack.localizedCaseInsensitiveContains(trimmed)
             let matchedSettings = pane.settingTitles.filter {

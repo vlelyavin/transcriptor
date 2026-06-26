@@ -2,9 +2,17 @@ import XCTest
 @testable import TranscriptorKit
 
 final class SettingsPaneSearchTests: XCTestCase {
-    func testEmptyQueryReturnsAllPanes() {
-        XCTAssertEqual(SettingsPane.matching(query: ""), SettingsPane.allCases)
-        XCTAssertEqual(SettingsPane.matching(query: "   "), SettingsPane.allCases)
+    func testEmptyQueryReturnsVisiblePanes() {
+        XCTAssertEqual(SettingsPane.matching(query: ""), SettingsPane.sidebarVisiblePanes)
+        XCTAssertEqual(SettingsPane.matching(query: "   "), SettingsPane.sidebarVisiblePanes)
+    }
+
+    func testHiddenOverlayPaneIsNotSearchable() {
+        // The Overlay pane is hidden for now (see `sidebarVisiblePanes`); it must
+        // not surface in the sidebar list or via search, even on its own keyword.
+        XCTAssertFalse(SettingsPane.sidebarVisiblePanes.contains(.overlay))
+        XCTAssertFalse(SettingsPane.matching(query: "overlay").contains(.overlay))
+        XCTAssertFalse(SettingsPane.searchResults(matching: "overlay").map(\.pane).contains(.overlay))
     }
 
     func testTitleMatchIsCaseInsensitive() {

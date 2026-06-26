@@ -155,4 +155,19 @@ public final class WhisperModelManager {
     public func downloadedWhisperModels() -> [ModelDescriptor] {
         catalog.whisperModels.filter { inventory[$0.id]?.state == .downloaded || inventory[$0.id]?.state == .loaded }
     }
+
+    /// Models eligible to be the active selection: downloaded, loaded, or
+    /// currently loading into memory. Mirrors `downloadedWhisperModels()` but
+    /// keeps a model in the list *while its weights load*, so the menu bar
+    /// selector doesn't drop the just-picked model for the seconds a load takes.
+    public func selectableWhisperModels() -> [ModelDescriptor] {
+        catalog.whisperModels.filter {
+            switch inventory[$0.id]?.state {
+            case .downloaded, .loaded, .loading:
+                return true
+            default:
+                return false
+            }
+        }
+    }
 }

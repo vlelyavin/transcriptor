@@ -1,5 +1,7 @@
 import Accelerate
+import AudioToolbox
 import AVFoundation
+import CoreAudio
 import Foundation
 import os
 
@@ -84,6 +86,12 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     private var bufferCount = 0
     private var bufferWatchdog: Task<Void, Never>?
     private var configChangeObserver: NSObjectProtocol?
+    // Guards the route-change handler against re-entrancy while it tears down and
+    // re-establishes the tap.
+    private var isReconfiguringRoute = false
+    // The human-readable name of the input device this recording is bound to,
+    // used in diagnostics and the no-audio watchdog message. Set at start.
+    private var activeInputDeviceName = "the selected input device"
 
     public init(storage: RecordingStorage = RecordingStorage()) {
         self.storage = storage
@@ -123,20 +131,31 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        // Use the input node's OUTPUT format for both the file and the tap — NOT
-        // its `inputFormat`. For the built-in mic the two are identical, which is
-        // why the old code worked there. But for Bluetooth devices (AirPods run
-        // the mic in low-rate HFP mode) the hardware input format and the format
-        // the node actually delivers to the graph DIFFER, so installing a tap
-        // with `inputFormat` throws a format-mismatch and `engine.start()` fails —
-        // the "system was unable to record your voice" error with AirPods. The
-        // output format is, by definition, what the tap delivers, so it always
-        // matches.
+
+        // Explicitly bind the engine's input to the CURRENT system default input
+        // device via Core Audio, instead of letting AVAudioEngine pick a device
+        // implicitly and lazily. This is the key to recording from AirPods (and
+        // other Bluetooth mics): opening the chosen device here forces macOS to
+        // activate its HFP microphone route NOW, at a deterministic moment, so the
+        // Bluetooth profile negotiation starts immediately rather than racing the
+        // first buffer. It also guarantees we capture the device the user actually
+        // selected, not a stale one the engine cached. Falls back to the engine
+        // default if the device can't be resolved or bound, so the built-in-mic
+        // path is never made worse.
+        let boundDeviceName = bindCurrentDefaultInputDevice(to: inputNode)
+
+        // The input node's OUTPUT format is, by definition, what the tap delivers,
+        // so it always matches (unlike `inputFormat`, which for AirPods runs the
+        // mic in a different low-rate HFP format and made `installTap` throw). We
+        // tap with `format: nil` and build the output file from the delivered
+        // buffer instead, so this value is used only for validation + the log line.
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
-        let inputDeviceName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "unknown"
+        activeInputDeviceName = boundDeviceName
+            ?? AVCaptureDevice.default(for: .audio)?.localizedName
+            ?? "the selected input device"
         let hardwareFormat = inputNode.inputFormat(forBus: 0)
-        log.notice("startRecording: input=\(inputDeviceName, privacy: .public) tap=\(recordingFormat.sampleRate, privacy: .public)Hz/\(recordingFormat.channelCount, privacy: .public)ch hw=\(hardwareFormat.sampleRate, privacy: .public)Hz/\(hardwareFormat.channelCount, privacy: .public)ch")
+        log.notice("startRecording: input=\(self.activeInputDeviceName, privacy: .public) tap=\(recordingFormat.sampleRate, privacy: .public)Hz/\(recordingFormat.channelCount, privacy: .public)ch hw=\(hardwareFormat.sampleRate, privacy: .public)Hz/\(hardwareFormat.channelCount, privacy: .public)ch")
 
         // A just-connected or mid-route-change device can momentarily report a
         // zero sample rate / channel count. Recording with that yields an invalid
@@ -151,39 +170,23 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         sampleRate = recordingFormat.sampleRate
 
         let outputURL = try storage.nextRecordingURL()
-        guard let file = try? AVAudioFile(forWriting: outputURL, settings: recordingFormat.settings) else {
-            throw AudioRecorderError.unableToCreateOutputFile
-        }
 
         recordingStartedAt = .now
         totalFramesRecorded = 0
         lastLevels = .zero
         self.outputURL = outputURL
-        self.outputFile = file
+        // Created lazily from the first delivered buffer's real format (see
+        // `outputFileMatching`) so the file always matches what the tap delivers.
+        self.outputFile = nil
         self.engine = engine
         resetBufferTracking()
         installConfigChangeObserver(for: engine)
 
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self, let outputFile = self.outputFile else {
-                return
-            }
-
-            self.markBufferReceived()
-
-            do {
-                try outputFile.write(from: buffer)
-                self.totalFramesRecorded += AVAudioFramePosition(buffer.frameLength)
-            } catch {
-                self.storeLatestLevels(self.lastLevels)
-                return
-            }
-
-            let analyzedLevels = Self.analyzeLevels(from: buffer, previous: self.lastLevels)
-            self.lastLevels = analyzedLevels
-            self.storeLatestLevels(analyzedLevels)
-        }
+        // `format: nil` → deliver buffers in the input node's real output format
+        // (whatever the current device negotiated), instead of forcing a format
+        // that may not match the live AirPods / HFP route. Extracted so the
+        // route-change handler can re-establish delivery identically.
+        installRecordingTap(on: inputNode)
 
         // Pre-allocate engine resources before starting. This both surfaces
         // configuration problems early and smooths the first start on Bluetooth
@@ -264,6 +267,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         recordingStartedAt = nil
         totalFramesRecorded = 0
         isRecording = false
+        isReconfiguringRoute = false
         lastLevels = .zero
 
         levelLock.lock()
@@ -271,6 +275,25 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         didReceiveBuffer = false
         bufferCount = 0
         levelLock.unlock()
+    }
+
+    /// Returns the output file, creating it lazily from the FIRST delivered
+    /// buffer's format. Because the file is built from the exact format the tap
+    /// delivers, `write(from:)` can never fail on a format mismatch — the AirPods
+    /// / HFP failure where the device runs at a different rate (e.g. 24 kHz) than
+    /// the format queried before the engine started.
+    private func outputFileMatching(_ format: AVAudioFormat) throws -> AVAudioFile {
+        if let outputFile {
+            return outputFile
+        }
+        guard let outputURL else {
+            throw AudioRecorderError.unableToCreateOutputFile
+        }
+        let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
+        outputFile = file
+        sampleRate = format.sampleRate
+        log.notice("output file → \(format.sampleRate, privacy: .public)Hz/\(format.channelCount, privacy: .public)ch")
+        return file
     }
 
     /// Records that the tap delivered a buffer (called on the real-time audio
@@ -299,36 +322,213 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         levelLock.unlock()
     }
 
+    // MARK: - Input device selection (Core Audio)
+
+    /// Binds the engine's input node to the current system default input device
+    /// and returns that device's name. Setting the AUHAL's current device opens
+    /// exactly that device for input, which is what forces a Bluetooth mic
+    /// (AirPods) to switch into its HFP capture profile — the step the implicit
+    /// AVAudioEngine default left to chance, and the reason AirPods recordings
+    /// arrived empty. Returns `nil` (leaving the engine on its default device) if
+    /// the device can't be resolved or the property can't be set, so the
+    /// built-in-mic path is never made worse.
+    @discardableResult
+    private func bindCurrentDefaultInputDevice(to inputNode: AVAudioInputNode) -> String? {
+        guard let deviceID = Self.currentDefaultInputDeviceID() else {
+            log.notice("input device: no system default input; using engine default")
+            return nil
+        }
+        guard let audioUnit = inputNode.audioUnit else {
+            log.notice("input device: input node has no audio unit; using engine default")
+            return nil
+        }
+
+        var device = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &device,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        let name = Self.deviceName(for: deviceID)
+        guard status == noErr else {
+            log.error("input device: failed to bind \(name, privacy: .public) (status \(status, privacy: .public)); using engine default")
+            return nil
+        }
+
+        log.notice("input device: bound \(name, privacy: .public) (id \(deviceID, privacy: .public))")
+        return name
+    }
+
+    /// The current system default input device ID, or `nil` if none is set.
+    private static func currentDefaultInputDeviceID() -> AudioDeviceID? {
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &size,
+            &deviceID
+        )
+        guard status == noErr, deviceID != kAudioObjectUnknown else {
+            return nil
+        }
+        return deviceID
+    }
+
+    /// A human-readable name for a Core Audio device, for diagnostics.
+    private static func deviceName(for deviceID: AudioDeviceID) -> String {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        // `kAudioObjectPropertyName` returns a +1-retained CFString; capture it as
+        // `Unmanaged` and consume that reference so it is neither leaked nor
+        // over-released.
+        var unmanagedName: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &unmanagedName)
+        guard status == noErr, let name = unmanagedName?.takeRetainedValue() else {
+            return "input device \(deviceID)"
+        }
+        return name as String
+    }
+
     private func installConfigChangeObserver(for engine: AVAudioEngine) {
         if let configChangeObserver {
             NotificationCenter.default.removeObserver(configChangeObserver)
         }
-        // A Bluetooth route flip (e.g. AirPods switching to the HFP mic profile)
-        // posts this and can silently stop the input. Logging it makes such a
-        // stall visible in the diagnostics instead of looking like a freeze.
+        // A Bluetooth route flip (e.g. AirPods switching from A2DP to the HFP mic
+        // profile the instant the mic is requested) posts this and STOPS the tap
+        // from delivering any further buffers — the recording captures ~0.1s and
+        // then nothing. We react by re-establishing capture for the new route.
         configChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
             queue: .main
         ) { [weak self] _ in
-            self?.log.notice("audio route/configuration changed mid-session (AVAudioEngineConfigurationChange)")
+            self?.handleConfigurationChange()
+        }
+    }
+
+    /// Installs the capture tap on the given input node. Shared by
+    /// `startRecording` and `handleConfigurationChange` so a mid-session route
+    /// switch can re-establish buffer delivery with identical handling.
+    private func installRecordingTap(on inputNode: AVAudioInputNode) {
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
+            guard let self else {
+                return
+            }
+
+            self.markBufferReceived()
+
+            // Analyze levels BEFORE any file I/O so the live meter keeps moving
+            // even when a write hiccups — it must never freeze on a write error.
+            // (The old stale-levels-and-return path is what stuck the equalizer.)
+            let analyzedLevels = Self.analyzeLevels(from: buffer, previous: self.lastLevels)
+            self.lastLevels = analyzedLevels
+            self.storeLatestLevels(analyzedLevels)
+
+            // Write to a file whose format matches the delivered buffer. AirPods /
+            // Bluetooth deliver a different rate than the format queried before the
+            // engine started, so a file created from that earlier format made every
+            // write throw → an empty recording. Building it from the buffer's own
+            // format (once, before any frames) keeps every write valid.
+            do {
+                let file = try self.outputFileMatching(buffer.format)
+                try file.write(from: buffer)
+                self.totalFramesRecorded += AVAudioFramePosition(buffer.frameLength)
+            } catch {
+                self.log.error("buffer write failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Re-establishes capture after the audio route changes mid-recording. This
+    /// is THE fix for AirPods (and other Bluetooth mics): they start in A2DP at a
+    /// high sample rate, deliver one buffer, then flip to the lower-rate HFP mic
+    /// profile — which silently kills the existing tap. We re-attach the tap (so
+    /// buffers resume) and recreate the output file from the new format (so writes
+    /// don't fail on the rate change). The fraction of a second of pre-flip audio
+    /// is discarded, which is inaudible compared to losing the whole recording.
+    private func handleConfigurationChange() {
+        guard isRecording, let engine, !isReconfiguringRoute else {
+            return
+        }
+        isReconfiguringRoute = true
+        defer { isReconfiguringRoute = false }
+
+        let inputNode = engine.inputNode
+        let newFormat = inputNode.outputFormat(forBus: 0)
+        log.notice("route changed mid-session → \(newFormat.sampleRate, privacy: .public)Hz/\(newFormat.channelCount, privacy: .public)ch; re-establishing capture")
+
+        // Safe to reset the file here: the old tap is removed before the new one
+        // is installed, so no audio-thread callback touches `outputFile` in
+        // between. The next buffer recreates it at the route's new format.
+        inputNode.removeTap(onBus: 0)
+        outputFile = nil
+        totalFramesRecorded = 0
+
+        guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
+            log.error("route change reported an invalid format; capture cannot resume")
+            return
+        }
+
+        installRecordingTap(on: inputNode)
+
+        if !engine.isRunning {
+            engine.prepare()
+            do {
+                try engine.start()
+                log.notice("engine restarted after route change")
+            } catch {
+                log.error("engine restart after route change failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // The route just changed and we re-established capture. If no audio has
+        // arrived yet — the AirPods A2DP→HFP flip is exactly this case — give the
+        // new route a fresh watchdog window instead of letting the original timer
+        // abort a recording that is only now about to start delivering buffers.
+        if !hasReceivedBuffer() {
+            startBufferWatchdog()
         }
     }
 
     /// Guards against the "engine started but no audio ever arrives" failure —
     /// the typical AirPods / Bluetooth symptom where the overlay sits on
-    /// "Listening…" forever. If no tap buffer lands shortly after start, stop and
+    /// "Listening…" forever. If no tap buffer lands within the window, stop and
     /// surface an actionable error rather than leaving a frozen overlay.
+    ///
+    /// The window is deliberately generous (4s): a Bluetooth mic switching from
+    /// the A2DP playback profile to the HFP mic profile routinely delivers no
+    /// buffers for 1.5–3s while the link negotiates, and a shorter window aborted
+    /// valid AirPods recordings before the first buffer ever arrived (the root of
+    /// "I tried multiple times — no results"). The built-in mic delivers within
+    /// ~100ms, so it never waits. A route change mid-handshake restarts this
+    /// window (see `handleConfigurationChange`).
     private func startBufferWatchdog() {
         bufferWatchdog?.cancel()
         bufferWatchdog = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(1_500))
+            try? await Task.sleep(for: .milliseconds(4_000))
             guard let self, !Task.isCancelled, self.isRecording, !self.hasReceivedBuffer() else {
                 return
             }
 
-            let deviceName = AVCaptureDevice.default(for: .audio)?.localizedName ?? "the selected input device"
-            self.log.error("watchdog: no audio buffers 1.5s after start from \(deviceName, privacy: .public)")
+            let deviceName = self.activeInputDeviceName
+            self.log.error("watchdog: no audio buffers 4s after start from \(deviceName, privacy: .public)")
             self.engine?.inputNode.removeTap(onBus: 0)
             self.engine?.stop()
             let onError = self.onRecordingError
@@ -348,16 +548,18 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         levelLock.unlock()
     }
 
-    /// Publishes the latest captured levels to the UI at a steady 30 Hz. A
+    /// Publishes the latest captured levels to the UI at a steady ~20 Hz. A
     /// single long-lived task — never one per buffer — so the meter tracks the
     /// input smoothly and can never stall behind a backlog of per-buffer hops.
+    /// 20 Hz (not 30) keeps the overlay's main-thread render load low enough that
+    /// it never starves global-hotkey handling during a recording.
     private func startLevelPump() {
         levelPump?.cancel()
         levelPump = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 self.onLevelsDidChange?(self.readLatestLevels())
-                try? await Task.sleep(for: .milliseconds(33))
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }

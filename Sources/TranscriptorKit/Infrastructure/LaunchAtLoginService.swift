@@ -155,7 +155,14 @@ public final class LaunchAtLoginService: LaunchAtLoginServing {
         case .requiresApproval:
             return .requiresApproval
         case .notFound:
-            return .needsPackagedApp
+            // The bundle is packaged (we already passed the `isPackagedApp`
+            // guard), but its login item simply isn't registered yet — the
+            // normal state SMAppService reports before the first `register()`.
+            // Treat it as "off, but registerable" so the toggle stays enabled
+            // and the user can switch it on, instead of the misleading "Needs
+            // Packaged App", which wrongly disabled the control for a real
+            // installed app.
+            return .disabled
         @unknown default:
             return .failed("Transcriptor encountered an unknown launch-at-login status.")
         }

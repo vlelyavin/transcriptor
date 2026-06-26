@@ -244,7 +244,14 @@ private struct LiveAudioMeter: View {
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
-            .animation(.linear(duration: 0.05), value: levels.bars)
+            // No per-frame `.animation` here. The levels are already smoothed in
+            // the recorder (see `smoothedSnapshot`), so animating every ~20–30 Hz
+            // update only spawned overlapping Core Animation transactions that
+            // saturated the main run loop — starving the global-hotkey handlers
+            // so a toggle-mode "stop" press wasn't processed until recording
+            // ended (the "overlay won't close / equalizer sticks" bug, confirmed
+            // in the logs). Driving the bars straight off the smoothed data stays
+            // visually smooth without the continuous animation churn.
         }
         .accessibilityHidden(true)
     }

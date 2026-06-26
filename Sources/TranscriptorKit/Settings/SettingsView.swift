@@ -63,8 +63,6 @@ public struct SettingsPaneDetailView: View {
                     Text(mode.title).tag(mode)
                 }
             }
-
-            Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
         }
     }
 
