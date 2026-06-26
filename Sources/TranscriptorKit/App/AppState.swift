@@ -437,6 +437,24 @@ public final class AppState {
 
         refreshStorageState()
 
+        // Re-read system-managed statuses whenever Transcriptor returns to the
+        // front — e.g. after the user grants Accessibility or Microphone access
+        // in System Settings, or approves the login item. Without this, those
+        // surfaces stayed stale until the next relaunch (the app showed
+        // "Accessibility: not granted" right after the user had granted it).
+        // The token is retained by NotificationCenter for the app's lifetime;
+        // `[weak self]` keeps it from outliving AppState, so no manual removal
+        // is needed (and a nonisolated deinit couldn't touch it anyway).
+        _ = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshSystemStatuses()
+            }
+        }
+
         Task { [weak self] in
             await self?.autoLoadSelectedModelOnLaunch()
         }
@@ -494,6 +512,23 @@ public final class AppState {
     public var readyLocalModelIDs: Set<String> {
         Set(whisperModelManager.downloadedWhisperModels().map(\.id))
             .union(parakeetModelManager.downloadedParakeetModels().map(\.id))
+    }
+
+    /// `readyLocalModelIDs` plus any model whose weights are currently loading.
+    /// A loading model must still count as a selectable active target so the
+    /// unified "Active model" picker keeps showing the model the user just chose
+    /// (or the one being restored on launch) instead of snapping to a different
+    /// model for the few seconds the load takes — which read as "it forgot my
+    /// model" on relaunch and "it shows the old model" right after switching.
+    public var selectableLocalModelIDs: Set<String> {
+        var ids = readyLocalModelIDs
+        for (id, item) in whisperModelManager.inventory where item.state == .loading {
+            ids.insert(id)
+        }
+        for (id, item) in parakeetModelManager.inventory where item.state == .loading {
+            ids.insert(id)
+        }
+        return ids
     }
 
     /// True when there is at least one usable transcription path: a downloaded
@@ -570,10 +605,12 @@ public final class AppState {
             return
         }
 
-        // A local model can only be selected once its files are downloaded or
-        // loaded — selecting an undownloaded model would only fail at transcribe
-        // time and falsely imply transcription is ready.
-        guard readyLocalModelIDs.contains(modelID) else {
+        // A local model can only be selected once its files are downloaded,
+        // loaded, or mid-load — selecting an undownloaded model would only fail
+        // at transcribe time and falsely imply transcription is ready. (A model
+        // that is currently loading counts: re-selecting it is a harmless no-op
+        // and keeps the picker stable.)
+        guard selectableLocalModelIDs.contains(modelID) else {
             historyActionMessage = "Download \(model.name) before selecting it."
             return
         }
@@ -611,7 +648,7 @@ public final class AppState {
     /// then fully set-up cloud providers.
     public var availableTargets: [ActiveTarget] {
         var targets: [ActiveTarget] = []
-        for model in modelCatalog.localModels where readyLocalModelIDs.contains(model.id) {
+        for model in modelCatalog.localModels where selectableLocalModelIDs.contains(model.id) {
             targets.append(.local(model.id))
         }
         for provider in providerCatalog.providers where providerRuntimeState(for: provider).isReady {
@@ -624,7 +661,7 @@ public final class AppState {
     public var activeTarget: ActiveTarget? {
         if isLocalProviderID(transcriptionPreferences.preferredProviderID) {
             let modelID = transcriptionPreferences.selectedModelID
-            return readyLocalModelIDs.contains(modelID) ? .local(modelID) : nil
+            return selectableLocalModelIDs.contains(modelID) ? .local(modelID) : nil
         }
 
         let providerID = transcriptionPreferences.preferredProviderID
@@ -1022,6 +1059,17 @@ public final class AppState {
         transcriptInsertionService.refreshPermissionStatus()
         accessibilityPermissionStatus = transcriptInsertionService.accessibilityPermissionStatus
         refreshTranscriptInsertionDebugSnapshot()
+    }
+
+    /// Re-reads the system-managed statuses that can change while Transcriptor is
+    /// in the background — Accessibility and Microphone permissions, and the
+    /// login-item registration — so Settings and Overview reflect them live when
+    /// the user switches back, not only after a relaunch. Wired to
+    /// `NSApplication.didBecomeActive`.
+    public func refreshSystemStatuses() {
+        refreshAccessibilityPermissionStatus()
+        refreshLaunchAtLoginStatus()
+        voiceInputController.refreshPermissionStatus()
     }
 
     public func resetHotkeyToRecommendedDefault() {

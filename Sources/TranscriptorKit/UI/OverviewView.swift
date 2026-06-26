@@ -77,8 +77,6 @@ public struct OverviewView: View {
                     Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
-                Toggle("Overlay", isOn: $appState.overlayState.isEnabled)
-
                 Toggle("Insert into active app", isOn: $appState.generalSettings.insertTranscriptIntoActiveApp)
 
                 if appState.generalSettings.insertTranscriptIntoActiveApp,

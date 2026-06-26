@@ -1,9 +1,11 @@
 import AppKit
 import Observation
+import os
 import SwiftUI
 
 @MainActor
 public final class RecordingOverlayManager {
+    private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "overlay")
     private var dimmingPanel: NSPanel?
     private var panel: NSPanel?
     private var voiceInputController: VoiceInputController?
@@ -50,6 +52,8 @@ public final class RecordingOverlayManager {
             .pendingTranscription,
             .failed,
         ].contains(voiceInputController.state) || supplementalPhase != nil
+
+        log.notice("refresh: state=\(voiceInputController.state.rawValue, privacy: .public) supplemental=\(String(describing: supplementalPhase), privacy: .public) shouldShow=\(shouldShow, privacy: .public)")
 
         guard shouldShow else {
             hidePanels(animated: true)
@@ -270,6 +274,7 @@ public final class RecordingOverlayManager {
     }
 
     private func hidePanels(animated: Bool) {
+        log.notice("hide panels (animated=\(animated, privacy: .public))")
         hideTask?.cancel()
         guard let panel, let dimmingPanel else {
             return
@@ -296,6 +301,7 @@ public final class RecordingOverlayManager {
     }
 
     private func scheduleHide(after duration: Duration) {
+        log.notice("schedule auto-hide in \(String(describing: duration), privacy: .public)")
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)

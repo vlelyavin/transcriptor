@@ -1,9 +1,11 @@
 import Foundation
 import Observation
+import os
 
 @MainActor
 @Observable
 public final class VoiceInputController {
+    private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "voice")
     public private(set) var state: VoiceInputControllerState = .idle
     public private(set) var elapsedDuration: TimeInterval = 0
     public private(set) var lastSavedRecording: RecordedAudioAsset?
@@ -99,11 +101,15 @@ public final class VoiceInputController {
     }
 
     public func hotkeyPressed() {
-        Task { await handleHotkeyPressed() }
+        // `.userInitiated` so the global shortcut — the user's reliable way to
+        // start and (in toggle mode) stop — preempts lower-priority main-actor
+        // work such as live-meter rendering, instead of queueing behind it. A
+        // starved stop press was the "won't stop / can't close the overlay" bug.
+        Task(priority: .userInitiated) { await handleHotkeyPressed() }
     }
 
     public func hotkeyReleased() {
-        Task { await handleHotkeyReleased() }
+        Task(priority: .userInitiated) { await handleHotkeyReleased() }
     }
 
     public func handleToolbarAction() async {
@@ -115,6 +121,7 @@ public final class VoiceInputController {
     }
 
     public func handleHotkeyPressed() async {
+        log.notice("hotkey pressed: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
         switch recordingModeProvider() {
         case .holdToTalk:
             await startRecordingIfNeeded()
@@ -128,6 +135,7 @@ public final class VoiceInputController {
     }
 
     public func handleHotkeyReleased() async {
+        log.notice("hotkey released: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
         guard recordingModeProvider() == .holdToTalk else {
             return
         }
@@ -150,6 +158,7 @@ public final class VoiceInputController {
 
     private func startRecordingIfNeeded() async {
         guard state == .idle || state == .failed else {
+            log.notice("start ignored: busy (state=\(self.state.rawValue, privacy: .public))")
             return
         }
 
@@ -168,21 +177,26 @@ public final class VoiceInputController {
         }
 
         do {
+            log.notice("starting recording")
             _ = try recorder.startRecording()
             onRecordingStarted()
             state = .recording
             recordingStartedAt = .now
             startElapsedTimer()
+            log.notice("recording active")
         } catch {
+            log.error("startRecording threw: \(error.localizedDescription, privacy: .public)")
             transitionToFailure(message: error.localizedDescription)
         }
     }
 
     private func stopRecordingIfNeeded() async {
         guard state == .recording else {
+            log.notice("stop ignored: not recording (state=\(self.state.rawValue, privacy: .public))")
             return
         }
 
+        log.notice("stopping recording")
         state = .stopping
         stopElapsedTimer()
 
@@ -239,6 +253,7 @@ public final class VoiceInputController {
     }
 
     private func transitionToFailure(message: String) {
+        log.error("voice input failed: \(message, privacy: .public)")
         stopElapsedTimer()
         recordingStartedAt = nil
         elapsedDuration = 0

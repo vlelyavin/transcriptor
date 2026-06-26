@@ -109,7 +109,12 @@ final class MenuBarStatusItemController: NSObject {
             accessibilityDescription: "Transcriptor"
         )
         button.image?.isTemplate = true
-        button.contentTintColor = nil
+        // Tint the identity waveform to signal live workflow state — red while
+        // recording, blue while transcribing, orange on a failure — so the menu
+        // bar gives an at-a-glance recording indicator even when the system mic
+        // glyph isn't showing (e.g. a Bluetooth route that failed to start).
+        // Idle leaves it `nil`: the default monochrome template color.
+        button.contentTintColor = workflowState.tintColor
         button.toolTip = tooltipText(for: workflowState)
     }
 
@@ -168,8 +173,8 @@ final class MenuBarStatusItemController: NSObject {
     /// active one; picking an entry switches and loads that model.
     private func buildActiveModelSubmenu() -> NSMenu {
         let submenu = NSMenu()
-        let availableModels = appState.whisperModelManager.downloadedWhisperModels()
-            + appState.parakeetModelManager.downloadedParakeetModels()
+        let availableModels = appState.whisperModelManager.selectableWhisperModels()
+            + appState.parakeetModelManager.selectableParakeetModels()
 
         guard !availableModels.isEmpty else {
             let emptyItem = NSMenuItem(

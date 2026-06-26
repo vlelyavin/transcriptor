@@ -8,6 +8,13 @@ APP_BUNDLE="${DIST_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
+# Actually compile the release build FIRST. `--show-bin-path` only prints the
+# output path and does NOT build, so without this explicit step the script would
+# package whatever stale binary was last left in .build/release. That was a real
+# bug: fixes that compiled fine in debug never reached the packaged/installed
+# app, so the running app kept showing old behavior no matter how often it was
+# "rebuilt".
+( cd "${ROOT_DIR}" && swift build -c release )
 BIN_PATH="$(cd "${ROOT_DIR}" && swift build -c release --show-bin-path)"
 EXECUTABLE_PATH="${BIN_PATH}/${APP_NAME}"
 INFO_PLIST="${CONTENTS_DIR}/Info.plist"
