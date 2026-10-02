@@ -3,6 +3,7 @@ import SwiftUI
 public struct ModelsView: View {
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
+    @State private var customAPIKeyInput = ""
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
@@ -75,6 +76,16 @@ public struct ModelsView: View {
                     modelID: $appState.providerSettings.groqModelID,
                     privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
                     apiKeyInput: $groqAPIKeyInput
+                )
+            }
+
+            if let custom = appState.providerCatalog.providers.first(where: { $0.id == "custom" }) {
+                cloudProviderSection(
+                    provider: custom,
+                    modelID: $appState.providerSettings.customModelID,
+                    privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
+                    apiKeyInput: $customAPIKeyInput,
+                    baseURL: $appState.providerSettings.customBaseURL
                 )
             }
         }
@@ -198,7 +209,8 @@ public struct ModelsView: View {
         provider: ProviderDescriptor,
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
-        apiKeyInput: Binding<String>
+        apiKeyInput: Binding<String>,
+        baseURL: Binding<String>? = nil
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
@@ -238,6 +250,24 @@ public struct ModelsView: View {
                     .help("Send audio to \(provider.name). Required before any audio leaves this Mac.")
             }
 
+            if let baseURL {
+                LabeledContent {
+                    TextField("https://host/v1", text: baseURL)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                        .frame(width: 230)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Server URL")
+                        Text("Base URL of an OpenAI-compatible API; Transcriptor calls <URL>/audio/transcriptions.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(!hasConsent)
+            }
+
             LabeledContent {
                 TextField("Model ID", text: modelID)
                     .textFieldStyle(.roundedBorder)
@@ -263,7 +293,7 @@ public struct ModelsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("API Key")
                     // Plain gray status text — no icons.
-                    Text(hasStoredKey ? "Stored in Keychain" : "No key stored")
+                    Text(hasStoredKey ? "Stored in Keychain" : (provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -281,7 +311,7 @@ public struct ModelsView: View {
                     appState.testAPIKey(for: provider.id, enteredKey: apiKeyInput.wrappedValue)
                     apiKeyInput.wrappedValue = ""
                 }
-                .disabled(!hasConsent || (keyInputEmpty && !hasStoredKey) || isTesting)
+                .disabled(!hasConsent || (keyInputEmpty && !hasStoredKey && provider.requiresAPIKey) || isTesting)
 
                 Button("Remove") {
                     appState.removeAPIKey(for: provider.id)
@@ -466,7 +496,9 @@ public struct ModelsView: View {
         case "openai":
             "Find model IDs in the OpenAI dashboard under API → Models (e.g. gpt-4o-mini-transcribe)."
         case "groq":
-            "Find model IDs on the Groq Console models page (e.g. whisper-large-v3)."
+            "Find model IDs on the Groq Console models page (e.g. whisper-large-v3-turbo)."
+        case "custom":
+            "The model name your server expects (e.g. whisper-1)."
         default:
             "Use a transcription model ID from \(provider.name)'s documentation."
         }

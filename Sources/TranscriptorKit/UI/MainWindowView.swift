@@ -6,6 +6,7 @@ public struct MainWindowView: View {
     @Bindable private var voiceInputController: VoiceInputController
     @State private var sidebarSearchText = ProcessInfo.processInfo.environment["TRANSCRIPTOR_QA_SEARCH"] ?? ""
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @Environment(\.openWindow) private var openWindow
 
     public init(appState: AppState) {
         self.appState = appState
@@ -33,6 +34,8 @@ public struct MainWindowView: View {
             WelcomeGuideView(appState: appState)
         }
         .onAppear {
+            let openWindow = openWindow
+            appState.openMainWindowAction = { openWindow(id: AppState.mainWindowID) }
             if appState.shouldAutoPresentWelcomeGuide {
                 appState.presentWelcomeGuide()
             }

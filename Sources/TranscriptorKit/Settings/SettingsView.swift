@@ -57,12 +57,22 @@ public struct SettingsPaneDetailView: View {
 
     @ViewBuilder
     private var voiceInputSection: some View {
-        Section("Voice Input") {
+        Section {
             Picker("Voice Input Mode", selection: $appState.recordingState.mode) {
                 ForEach(RecordingMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
             }
+
+            Picker("Language", selection: $appState.transcriptionPreferences.transcriptionLanguage) {
+                ForEach(TranscriptionLanguage.choices) { language in
+                    Text(language.title).tag(language.code)
+                }
+            }
+        } header: {
+            Text("Voice Input")
+        } footer: {
+            Text("Applies to every model and provider. Automatic detection is unreliable on short phrases — pick your language if dictation comes back in the wrong one.")
         }
     }
 
@@ -103,6 +113,11 @@ public struct SettingsPaneDetailView: View {
             )
 
             Toggle(
+                "Always show Dock icon",
+                isOn: $appState.generalSettings.showDockIcon
+            )
+
+            Toggle(
                 "Launch at login",
                 isOn: Binding(
                     get: { appState.generalSettings.launchAtLoginEnabled },
@@ -127,7 +142,7 @@ public struct SettingsPaneDetailView: View {
         } header: {
             Text("Application")
         } footer: {
-            Text(appState.launchAtLoginStatus.detail)
+            Text(appState.launchAtLoginStatus.detail + " Without the Dock icon, Transcriptor lives in the menu bar and shows in the Dock only while its window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
         }
     }
 

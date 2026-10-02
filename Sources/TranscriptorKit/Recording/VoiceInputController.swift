@@ -21,6 +21,13 @@ public final class VoiceInputController {
     private var recordingStartedAt: Date?
     private var onRecordingStarted: @MainActor () -> Void
     private var onRecordingFinished: @MainActor (RecordedAudioAsset) -> Void
+    private var onRecordingDiscarded: @MainActor () -> Void = {}
+
+    /// Captures shorter than this are accidental taps of the shortcut: no
+    /// engine can transcribe them (Parakeet rejects < 300 ms outright; Whisper
+    /// returns nothing or hallucinates), and they used to pile up as failed
+    /// history items.
+    public static let minimumRecordingDuration: TimeInterval = 0.5
 
     public init(
         recorder: AudioRecorderServing,
@@ -82,6 +89,10 @@ public final class VoiceInputController {
 
     public func replaceOnRecordingFinished(_ handler: @escaping @MainActor (RecordedAudioAsset) -> Void) {
         onRecordingFinished = handler
+    }
+
+    public func replaceOnRecordingDiscarded(_ handler: @escaping @MainActor () -> Void) {
+        onRecordingDiscarded = handler
     }
 
     public func replaceOnRecordingStarted(_ handler: @escaping @MainActor () -> Void) {
@@ -157,7 +168,10 @@ public final class VoiceInputController {
     }
 
     private func startRecordingIfNeeded() async {
-        guard state == .idle || state == .failed else {
+        // `.pendingTranscription` is only a short "saved" flash after a stop;
+        // the recorder is already free, so a quick follow-up dictation must
+        // start instead of being dropped as "busy".
+        guard state == .idle || state == .failed || state == .pendingTranscription else {
             log.notice("start ignored: busy (state=\(self.state.rawValue, privacy: .public))")
             return
         }
@@ -202,6 +216,13 @@ public final class VoiceInputController {
 
         do {
             let savedRecording = try recorder.stopRecording()
+            guard savedRecording.preciseDuration >= Self.minimumRecordingDuration else {
+                log.notice("discarding \(savedRecording.preciseDuration, privacy: .public)s capture (accidental tap)")
+                try? FileManager.default.removeItem(at: savedRecording.url)
+                resetToIdle()
+                onRecordingDiscarded()
+                return
+            }
             lastSavedRecording = savedRecording
             onRecordingFinished(savedRecording)
             state = .pendingTranscription

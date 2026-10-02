@@ -30,6 +30,12 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var groqPrivacyAcknowledged: Bool
     public var openAICredentialValidated: Bool
     public var groqCredentialValidated: Bool
+    public var transcriptionLanguage: String
+    public var showDockIcon: Bool
+    public var customBaseURL: String
+    public var customModelID: String
+    public var customPrivacyAcknowledged: Bool
+    public var customCredentialValidated: Bool
 
     public init(
         launchAtLoginEnabled: Bool = false,
@@ -59,7 +65,13 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
         openAICredentialValidated: Bool = false,
-        groqCredentialValidated: Bool = false
+        groqCredentialValidated: Bool = false,
+        transcriptionLanguage: String = "",
+        showDockIcon: Bool = false,
+        customBaseURL: String = "",
+        customModelID: String = "whisper-1",
+        customPrivacyAcknowledged: Bool = false,
+        customCredentialValidated: Bool = false
     ) {
         self.launchAtLoginEnabled = launchAtLoginEnabled
         self.showMenuBarIcon = showMenuBarIcon
@@ -89,6 +101,12 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.groqPrivacyAcknowledged = groqPrivacyAcknowledged
         self.openAICredentialValidated = openAICredentialValidated
         self.groqCredentialValidated = groqCredentialValidated
+        self.transcriptionLanguage = transcriptionLanguage
+        self.showDockIcon = showDockIcon
+        self.customBaseURL = customBaseURL
+        self.customModelID = customModelID
+        self.customPrivacyAcknowledged = customPrivacyAcknowledged
+        self.customCredentialValidated = customCredentialValidated
     }
 }
 
@@ -121,6 +139,12 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var groqPrivacyAcknowledged: Bool?
     var openAICredentialValidated: Bool?
     var groqCredentialValidated: Bool?
+    var transcriptionLanguage: String?
+    var showDockIcon: Bool?
+    var customBaseURL: String?
+    var customModelID: String?
+    var customPrivacyAcknowledged: Bool?
+    var customCredentialValidated: Bool?
 }
 
 @MainActor
@@ -172,7 +196,13 @@ public final class AppPreferencesStore {
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
             groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
             openAICredentialValidated: decoded.openAICredentialValidated ?? false,
-            groqCredentialValidated: decoded.groqCredentialValidated ?? false
+            groqCredentialValidated: decoded.groqCredentialValidated ?? false,
+            transcriptionLanguage: decoded.transcriptionLanguage ?? "",
+            showDockIcon: decoded.showDockIcon ?? false,
+            customBaseURL: decoded.customBaseURL ?? "",
+            customModelID: decoded.customModelID ?? "whisper-1",
+            customPrivacyAcknowledged: decoded.customPrivacyAcknowledged ?? false,
+            customCredentialValidated: decoded.customCredentialValidated ?? false
         )
     }
 
@@ -205,7 +235,13 @@ public final class AppPreferencesStore {
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
-            groqCredentialValidated: snapshot.groqCredentialValidated
+            groqCredentialValidated: snapshot.groqCredentialValidated,
+            transcriptionLanguage: snapshot.transcriptionLanguage,
+            showDockIcon: snapshot.showDockIcon,
+            customBaseURL: snapshot.customBaseURL,
+            customModelID: snapshot.customModelID,
+            customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
+            customCredentialValidated: snapshot.customCredentialValidated
         )
 
         guard let data = try? encoder.encode(codableSnapshot) else {

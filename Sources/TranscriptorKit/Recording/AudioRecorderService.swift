@@ -218,7 +218,8 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         engine?.stop()
         log.notice("stopRecording: frames=\(self.totalFramesRecorded, privacy: .public) buffers=\(self.bufferCount, privacy: .public)")
 
-        let durationSeconds = Int((Double(totalFramesRecorded) / sampleRate).rounded())
+        let preciseDuration = Double(totalFramesRecorded) / sampleRate
+        let durationSeconds = Int(preciseDuration.rounded())
         let fileSizeBytes: Int64
 
         do {
@@ -234,7 +235,8 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             url: outputURL,
             createdAt: recordingStartedAt,
             durationSeconds: durationSeconds,
-            fileSizeBytes: fileSizeBytes
+            fileSizeBytes: fileSizeBytes,
+            preciseDuration: preciseDuration
         )
     }
 

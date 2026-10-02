@@ -17,6 +17,8 @@ public struct TranscriptorTranscriptionJob: Identifiable, Equatable, Sendable {
     public let requestedModelName: String
     public let sourceType: HistorySourceType
     public let requestedAt: Date
+    /// ISO-639-1 language hint, `nil` = let the engine detect the language.
+    public let language: String?
 
     public init(
         id: UUID = UUID(),
@@ -27,7 +29,8 @@ public struct TranscriptorTranscriptionJob: Identifiable, Equatable, Sendable {
         requestedModelID: String,
         requestedModelName: String,
         sourceType: HistorySourceType,
-        requestedAt: Date = .now
+        requestedAt: Date = .now,
+        language: String? = nil
     ) {
         self.id = id
         self.historyEntryID = historyEntryID
@@ -38,6 +41,7 @@ public struct TranscriptorTranscriptionJob: Identifiable, Equatable, Sendable {
         self.requestedModelName = requestedModelName
         self.sourceType = sourceType
         self.requestedAt = requestedAt
+        self.language = language
     }
 }
 

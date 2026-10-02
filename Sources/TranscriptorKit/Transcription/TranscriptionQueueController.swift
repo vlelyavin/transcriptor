@@ -35,6 +35,7 @@ private struct QueuedTranscriptionRequest: Equatable, Sendable {
     var providerName: String
     var modelID: String
     var modelName: String
+    var language: String?
 }
 
 @MainActor
@@ -99,14 +100,16 @@ public final class TranscriptionQueueController {
         providerID: String,
         providerName: String,
         modelID: String,
-        modelName: String
+        modelName: String,
+        language: String? = nil
     ) {
         let request = QueuedTranscriptionRequest(
             entryID: entryID,
             providerID: providerID,
             providerName: providerName,
             modelID: modelID,
-            modelName: modelName
+            modelName: modelName,
+            language: language
         )
 
         if activeJob?.entryID == entryID {
@@ -210,7 +213,8 @@ public final class TranscriptionQueueController {
             requestedProviderName: request.providerName,
             requestedModelID: request.modelID,
             requestedModelName: request.modelName,
-            sourceType: entry.sourceType
+            sourceType: entry.sourceType,
+            language: request.language
         )
 
         do {

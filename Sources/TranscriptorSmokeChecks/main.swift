@@ -22,7 +22,7 @@ struct TranscriptorSmokeChecks {
         expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
 
         let providers = ProviderCatalog.defaultCatalog
-        expect(providers.providers.map(\.id) == ["openai", "groq"], "Provider catalog includes the implemented OpenAI and Groq providers.", failures: &failures)
+        expect(providers.providers.map(\.id) == ["openai", "groq", "custom"], "Provider catalog includes OpenAI, Groq, and the custom OpenAI-compatible server.", failures: &failures)
 
         if failures.isEmpty {
             print("Transcriptor smoke checks passed.")

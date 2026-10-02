@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public protocol HTTPDataLoading: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
@@ -15,6 +16,10 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     private let secretStore: any SecretStore
     private let urlSession: any HTTPDataLoading
     private let fileManager: FileManager
+    /// Runtime base URL for providers whose endpoint is user-configured (the
+    /// custom server). Lock-protected so the main actor can update it
+    /// synchronously before a request is queued.
+    private let baseURLOverride = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     public init(
         descriptor: ProviderDescriptor,
@@ -30,30 +35,93 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         self.displayName = descriptor.name
     }
 
+    public nonisolated func setBaseURL(_ url: URL?) {
+        baseURLOverride.withLock { $0 = url }
+    }
+
+    private var baseURL: URL {
+        baseURLOverride.withLock { $0 } ?? descriptor.baseURL
+    }
+
     public func validateCredentials(modelID: String) async throws {
-        let apiKey = try requireAPIKey()
-        var request = URLRequest(url: descriptor.baseURL.appending(path: "models"))
+        let apiKey = try resolveAPIKey()
+        var request = URLRequest(url: baseURL.appending(path: "models"))
         request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 20
+        authorize(&request, apiKey: apiKey)
 
         let (data, response) = try await urlSession.data(for: request)
         let httpResponse = try requireHTTPResponse(response)
+
+        // Self-hosted / proxy servers frequently implement only the
+        // transcription endpoint. For the custom server, fall back to a real
+        // (tiny, silent) transcription request — the exact path dictation uses.
+        if !descriptor.requiresAPIKey, [404, 405, 501].contains(httpResponse.statusCode) {
+            try await validateByTranscribingSilence(modelID: modelID, apiKey: apiKey)
+            return
+        }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
         }
 
+        // Built-in vendors list their models, so a missing ID is almost
+        // certainly a typo. Custom servers often list nothing or aliases, so
+        // a reachable, authorized endpoint is enough there.
+        guard descriptor.requiresAPIKey else {
+            return
+        }
         let decoded = try JSONDecoder().decode(CloudModelsListResponse.self, from: data)
         guard decoded.data.contains(where: { $0.id == modelID }) else {
             throw TranscriptionError.unsupportedModel("\(descriptor.name) does not currently expose the configured model '\(modelID)'.")
         }
     }
 
+    private func validateByTranscribingSilence(modelID: String, apiKey: String?) async throws {
+        let directory = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let audioURL = directory.appendingPathComponent("validation.wav")
+        try Self.silentWAV(seconds: 0.6).write(to: audioURL)
+
+        let body = try multipartBody(for: audioURL, modelID: modelID, language: nil)
+        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
+        request.httpMethod = "POST"
+        request.httpBody = body.body
+        request.timeoutInterval = 30
+        request.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
+        authorize(&request, apiKey: apiKey)
+
+        let (data, response) = try await urlSession.data(for: request)
+        let httpResponse = try requireHTTPResponse(response)
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+    }
+
+    /// 16 kHz mono 16-bit PCM silence.
+    static func silentWAV(seconds: Double) -> Data {
+        let sampleRate: UInt32 = 16_000
+        let sampleCount = UInt32(Double(sampleRate) * seconds)
+        let dataSize = sampleCount * 2
+        var data = Data()
+        func append<T: FixedWidthInteger>(_ value: T) {
+            withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+        }
+        data.append(contentsOf: Array("RIFF".utf8)); append(UInt32(36) + dataSize)
+        data.append(contentsOf: Array("WAVE".utf8))
+        data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
+        append(sampleRate); append(sampleRate * 2); append(UInt16(2)); append(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); append(dataSize)
+        data.append(Data(count: Int(dataSize)))
+        return data
+    }
+
     public func transcribe(
         job: TranscriptionJob,
         progressHandler: @escaping @Sendable (TranscriptionProgress) -> Void
     ) async throws -> TranscriptionResult {
-        let apiKey = try requireAPIKey()
+        let apiKey = try resolveAPIKey()
         guard fileManager.fileExists(atPath: job.audioFileURL.path) else {
             throw TranscriptionError.missingAudioFile("The audio file for this history item could not be found.")
         }
@@ -75,11 +143,14 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID)
-        var request = URLRequest(url: descriptor.baseURL.appending(path: "audio/transcriptions"))
+        let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID, language: job.language)
+        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
         request.httpMethod = "POST"
         request.httpBody = requestBody.body
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // Long dictations upload several MB; the 60 s default is too tight on
+        // a slow uplink.
+        request.timeoutInterval = 120
+        authorize(&request, apiKey: apiKey)
         request.setValue(requestBody.contentType, forHTTPHeaderField: "Content-Type")
 
         progressHandler(
@@ -121,12 +192,22 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         )
     }
 
-    private func requireAPIKey() throws -> String {
-        guard let secret = try secretStore.secret(for: descriptor.keychainAccount), !secret.isEmpty else {
+    /// The stored key, or `nil` for a keyless custom server.
+    private func resolveAPIKey() throws -> String? {
+        let secret = try secretStore.secret(for: descriptor.keychainAccount)
+        if let secret, !secret.isEmpty {
+            return secret
+        }
+        guard !descriptor.requiresAPIKey else {
             throw TranscriptionError.missingCredentials("Add a \(descriptor.name) API key in Settings before using cloud transcription.")
         }
+        return nil
+    }
 
-        return secret
+    private func authorize(_ request: inout URLRequest, apiKey: String?) {
+        if let apiKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
     }
 
     private func requireHTTPResponse(_ response: URLResponse) throws -> HTTPURLResponse {
@@ -137,7 +218,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         return httpResponse
     }
 
-    private func multipartBody(for audioURL: URL, modelID: String) throws -> MultipartBody {
+    private func multipartBody(for audioURL: URL, modelID: String, language: String?) throws -> MultipartBody {
         let boundary = "Boundary-\(UUID().uuidString)"
         let audioData = try Data(contentsOf: audioURL, options: .mappedIfSafe)
         var body = Data()
@@ -156,6 +237,15 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
         body.appendMultipartLine("")
         body.appendMultipartLine("0")
+
+        // Without a hint, auto-detection on short clips often picks the wrong
+        // language (short Russian phrases came back transliterated to Latin).
+        if let language, !language.isEmpty {
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="language""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine(language)
+        }
 
         body.appendMultipartLine("--\(boundary)")
         body.appendMultipartLine(#"Content-Disposition: form-data; name="file"; filename="\#(audioURL.lastPathComponent)""#)

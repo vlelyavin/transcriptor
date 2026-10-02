@@ -190,6 +190,49 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
     }
 
+    func testUntestedCloudSelectionIsNotSilentlyReplacedByLocalModel() throws {
+        let appState = try makeContext(secrets: ["groq-api-key": "gsk_test"]).appState
+        appState.providerSettings.groqPrivacyAcknowledged = true
+        appState.transcriptionPreferences.preferredProviderID = "groq"
+        let groq = try XCTUnwrap(appState.providerCatalog.provider(id: "groq"))
+        XCTAssertTrue(appState.providerRuntimeState(for: groq).isAwaitingValidation)
+
+        appState.dismissWelcomeGuide()
+        appState.ensureActiveTargetValid()
+
+        XCTAssertEqual(appState.transcriptionPreferences.preferredProviderID, "groq")
+        XCTAssertEqual(appState.activeTarget, .cloud("groq"))
+    }
+
+    func testLanguagePreferenceRoundTripsThroughPreferences() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        appState.transcriptionPreferences.transcriptionLanguage = "ru"
+        XCTAssertEqual(appState.transcriptionPreferences.languageHint, "ru")
+        appState.transcriptionPreferences.transcriptionLanguage = ""
+        XCTAssertNil(appState.transcriptionPreferences.languageHint)
+    }
+
+    func testCustomServerNeedsURLButNotKey() throws {
+        let appState = try makeContext(secrets: [:]).appState
+        let custom = try XCTUnwrap(appState.providerCatalog.provider(id: "custom"))
+        appState.providerSettings.customPrivacyAcknowledged = true
+
+        if case .missingAPIKey = appState.providerRuntimeState(for: custom) {
+        } else {
+            XCTFail("Expected the server URL to be required first")
+        }
+
+        appState.providerSettings.customBaseURL = "http://10.0.0.5:8000/v1"
+        XCTAssertTrue(appState.providerRuntimeState(for: custom).isAwaitingValidation)
+
+        appState.providerSettings.customCredentialValidated = true
+        XCTAssertTrue(appState.providerRuntimeState(for: custom).isReady)
+
+        // Pointing at another server invalidates the earlier test.
+        appState.providerSettings.customBaseURL = "http://10.0.0.6:8000/v1"
+        XCTAssertFalse(appState.providerSettings.customCredentialValidated)
+    }
+
     // MARK: - Helpers
 
     private struct Context {

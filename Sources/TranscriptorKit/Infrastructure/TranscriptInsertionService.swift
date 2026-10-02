@@ -459,7 +459,9 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
             return false
         }
 
-        selectedRange.location = clampedLocation + text.count
+        // CFRange/NSRange count UTF-16 units; `String.count` counts grapheme
+        // clusters, so any emoji or combined character used to misplace the caret.
+        selectedRange.location = clampedLocation + (text as NSString).length
         selectedRange.length = 0
         if let newSelection = axValue(for: selectedRange) {
             _ = AXUIElementSetAttributeValue(target.focusedElement, kAXSelectedTextRangeAttribute as CFString, newSelection)

@@ -161,7 +161,12 @@ public final class AppState {
         }
     }
     public var generalSettings: GeneralSettings {
-        didSet { persistPreferences() }
+        didSet {
+            persistPreferences()
+            if oldValue.showDockIcon != generalSettings.showDockIcon {
+                Self.applyDockIconPolicy(showDockIcon: generalSettings.showDockIcon)
+            }
+        }
     }
     public var recordingState: RecordingState {
         didSet {
@@ -190,7 +195,16 @@ public final class AppState {
         }
     }
     public var providerSettings: ProviderSettings {
-        didSet { persistPreferences() }
+        didSet {
+            persistPreferences()
+            if oldValue.customBaseURL != providerSettings.customBaseURL {
+                customTranscriptionProvider.setBaseURL(providerSettings.customBaseURLValue)
+                // A different server invalidates the previous test result.
+                if oldValue.customCredentialValidated {
+                    providerSettings.customCredentialValidated = false
+                }
+            }
+        }
     }
     public var historyStore: HistoryStore
     public var storageUsage = ManagedStorageUsage()
@@ -217,6 +231,7 @@ public final class AppState {
     public let parakeetTranscriptionProvider: ParakeetLocalTranscriptionProvider
     public let openAITranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let groqTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
+    public let customTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let whisperModelManager: WhisperModelManager
     public let parakeetModelManager: ParakeetModelManager
     public let transcriptionQueueController: TranscriptionQueueController
@@ -287,6 +302,10 @@ public final class AppState {
             descriptor: providerCatalog.provider(id: "groq")!,
             secretStore: secretStore
         )
+        let customProvider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: providerCatalog.provider(id: "custom") ?? ProviderCatalog.defaultCatalog.provider(id: "custom")!,
+            secretStore: secretStore
+        )
         let whisperModelManager = WhisperModelManager(
             catalog: modelCatalog,
             provider: localTranscriptionProvider
@@ -296,7 +315,7 @@ public final class AppState {
             provider: parakeetTranscriptionProvider
         )
         let transcriptionQueueController = TranscriptionQueueController(
-            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider]
+            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider, customProvider]
         )
         let transcriptionTargetResolver = TranscriptionTargetResolver(
             modelCatalog: modelCatalog,
@@ -331,7 +350,8 @@ public final class AppState {
             showMenuBarIcon: snapshot.showMenuBarIcon,
             insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
             alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
-            restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion
+            restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion,
+            showDockIcon: snapshot.showDockIcon
         )
         self.recordingState = RecordingState(
             mode: recordingMode,
@@ -349,7 +369,8 @@ public final class AppState {
             selectedModelID: snapshot.selectedModelID,
             autoTranscribeAfterCapture: snapshot.autoTranscribeAfterCapture,
             preferredLocalProviderID: snapshot.preferredLocalProviderID,
-            preferredProviderID: snapshot.preferredProviderID
+            preferredProviderID: snapshot.preferredProviderID,
+            transcriptionLanguage: snapshot.transcriptionLanguage
         )
         self.storageSettings = StorageSettings(
             capMegabytes: snapshot.historyLimitMegabytes,
@@ -364,8 +385,14 @@ public final class AppState {
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
-            groqCredentialValidated: snapshot.groqCredentialValidated
+            groqCredentialValidated: snapshot.groqCredentialValidated,
+            customBaseURL: snapshot.customBaseURL,
+            customModelID: snapshot.customModelID,
+            customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
+            customCredentialValidated: snapshot.customCredentialValidated
         )
+        customProvider.setBaseURL(self.providerSettings.customBaseURLValue)
+        Self.prefersDockIcon = snapshot.showDockIcon
         self.historyStore = HistoryStore(entries: persistedEntries)
         self.modelCatalog = modelCatalog
         self.providerCatalog = providerCatalog
@@ -375,6 +402,7 @@ public final class AppState {
         self.parakeetTranscriptionProvider = parakeetTranscriptionProvider
         self.openAITranscriptionProvider = openAIProvider
         self.groqTranscriptionProvider = groqProvider
+        self.customTranscriptionProvider = customProvider
         self.whisperModelManager = whisperModelManager
         self.parakeetModelManager = parakeetModelManager
         self.transcriptionQueueController = transcriptionQueueController
@@ -391,6 +419,14 @@ public final class AppState {
         }
         voiceInputController.replaceOnRecordingFinished { [weak self] recording in
             self?.appendPendingRecording(recording)
+        }
+        voiceInputController.replaceOnRecordingDiscarded { [weak self] in
+            guard let self else {
+                return
+            }
+            self.transcriptInsertionService.clearCapturedTarget()
+            self.refreshTranscriptInsertionDebugSnapshot()
+            self.setOverlaySupplementalPhase(nil)
         }
         voiceInputController.replaceRecordingModeProvider { [weak self] in
             self?.recordingState.mode ?? .holdToTalk
@@ -455,6 +491,16 @@ public final class AppState {
             }
         }
 
+        _ = NotificationCenter.default.addObserver(
+            forName: .transcriptorShowMainWindowRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.showMainWindow()
+            }
+        }
+
         Task { [weak self] in
             await self?.autoLoadSelectedModelOnLaunch()
         }
@@ -468,6 +514,19 @@ public final class AppState {
         await parakeetModelManager.refresh()
         loadSelectedModelIfDownloaded()
         isPreparingModelsOnLaunch = false
+        validatePreferredCloudProviderIfNeeded()
+    }
+
+    /// A preferred cloud provider with consent and a stored key, whose key was
+    /// never tested (or was replaced), is tested automatically once at launch
+    /// instead of leaving dictation broken until the user finds the Test
+    /// button.
+    private func validatePreferredCloudProviderIfNeeded() {
+        guard let provider = preferredCloudProvider,
+              providerRuntimeState(for: provider).isAwaitingValidation else {
+            return
+        }
+        testAPIKey(for: provider.id)
     }
 
     public func loadSelectedModelIfDownloaded() {
@@ -596,7 +655,7 @@ public final class AppState {
         } else if selectedSettingsPane == nil {
             sidebarSelection = .settings(.general)
         }
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        showMainWindow()
     }
 
     public func selectLocalModel(_ modelID: String) {
@@ -651,8 +710,11 @@ public final class AppState {
         for model in modelCatalog.localModels where selectableLocalModelIDs.contains(model.id) {
             targets.append(.local(model.id))
         }
-        for provider in providerCatalog.providers where providerRuntimeState(for: provider).isReady {
-            targets.append(.cloud(provider.id))
+        for provider in providerCatalog.providers {
+            let state = providerRuntimeState(for: provider)
+            if state.isReady || state.isAwaitingValidation {
+                targets.append(.cloud(provider.id))
+            }
         }
         return targets
     }
@@ -665,8 +727,11 @@ public final class AppState {
         }
 
         let providerID = transcriptionPreferences.preferredProviderID
-        guard let provider = providerCatalog.provider(id: providerID),
-              providerRuntimeState(for: provider).isReady else {
+        guard let provider = providerCatalog.provider(id: providerID) else {
+            return nil
+        }
+        let state = providerRuntimeState(for: provider)
+        guard state.isReady || state.isAwaitingValidation else {
             return nil
         }
         return .cloud(providerID)
@@ -686,7 +751,14 @@ public final class AppState {
     /// or were deleted), so the displayed selection always matches what would
     /// actually run. A no-op when the current selection is already valid or when
     /// nothing is ready.
+    ///
+    /// Never runs while the launch inventory scan is in flight: until both
+    /// model managers have refreshed, a perfectly valid downloaded model looks
+    /// missing and the user's choice would be overwritten.
     public func ensureActiveTargetValid() {
+        guard !isPreparingModelsOnLaunch else {
+            return
+        }
         if activeTarget == nil, let first = availableTargets.first {
             selectTarget(first)
         }
@@ -697,7 +769,12 @@ public final class AppState {
         case let .local(modelID):
             return modelCatalog.model(id: modelID)?.name ?? modelID
         case let .cloud(providerID):
-            return providerCatalog.provider(id: providerID)?.name ?? providerID
+            guard let provider = providerCatalog.provider(id: providerID) else {
+                return providerID
+            }
+            return providerRuntimeState(for: provider).isAwaitingValidation
+                ? "\(provider.name) (key not tested)"
+                : provider.name
         }
     }
 
@@ -799,7 +876,8 @@ public final class AppState {
                 providerID: plan.providerID,
                 providerName: plan.providerName,
                 modelID: plan.modelID,
-                modelName: plan.modelName
+                modelName: plan.modelName,
+                language: transcriptionPreferences.languageHint
             )
             historyActionMessage = "Queued \(entry.displayName) for \(plan.providerName) transcription."
         } catch {
@@ -898,7 +976,11 @@ public final class AppState {
             return .privacyConsentRequired(message: "Turn on “Send audio to \(provider.name)” to set it up. Audio stays on this Mac until you do.")
         }
 
-        guard hasStoredAPIKey(for: provider.id) else {
+        if provider.id == "custom", providerSettings.customBaseURLValue == nil {
+            return .missingAPIKey(message: "Enter the server URL (e.g. https://host/v1) to continue.")
+        }
+
+        guard hasStoredAPIKey(for: provider.id) || !provider.requiresAPIKey else {
             return .missingAPIKey(message: "Add your \(provider.name) API key to continue.")
         }
 
@@ -981,7 +1063,7 @@ public final class AppState {
             }
         }
 
-        guard hasStoredAPIKey(for: providerID) else {
+        guard hasStoredAPIKey(for: providerID) || !provider.requiresAPIKey else {
             providerCredentialValidationStates[providerID] = .failed("Add a \(provider.name) API key before testing.")
             return
         }
@@ -1098,6 +1180,10 @@ public final class AppState {
             providerSettings.groqModelID = defaults.groqModelID
             providerSettings.groqPrivacyAcknowledged = false
             providerSettings.groqEnabled = false
+        case "custom":
+            providerSettings.customBaseURL = defaults.customBaseURL
+            providerSettings.customModelID = defaults.customModelID
+            providerSettings.customPrivacyAcknowledged = false
         default:
             break
         }
@@ -1140,7 +1226,13 @@ public final class AppState {
                 openAIPrivacyAcknowledged: providerSettings.openAIPrivacyAcknowledged,
                 groqPrivacyAcknowledged: providerSettings.groqPrivacyAcknowledged,
                 openAICredentialValidated: providerSettings.openAICredentialValidated,
-                groqCredentialValidated: providerSettings.groqCredentialValidated
+                groqCredentialValidated: providerSettings.groqCredentialValidated,
+                transcriptionLanguage: transcriptionPreferences.transcriptionLanguage,
+                showDockIcon: generalSettings.showDockIcon,
+                customBaseURL: providerSettings.customBaseURL,
+                customModelID: providerSettings.customModelID,
+                customPrivacyAcknowledged: providerSettings.customPrivacyAcknowledged,
+                customCredentialValidated: providerSettings.customCredentialValidated
             )
         )
     }
@@ -1452,14 +1544,49 @@ public final class AppState {
         }
     }
 
+    /// Whether the user wants a permanent Dock icon. Read by the app delegate,
+    /// which owns the activation policy (Dock icon while a window is open,
+    /// menu-bar-only otherwise).
+    public private(set) static var prefersDockIcon = false
+    public static let mainWindowID = "main"
+
+    /// Re-creates the main window after the user closed it. SwiftUI releases a
+    /// closed window, so iterating `NSApp.windows` finds nothing to bring back;
+    /// the menu bar item uses this instead. Captured from the window's
+    /// `openWindow` environment action.
+    @ObservationIgnored public var openMainWindowAction: (() -> Void)?
+
+    /// Brings the main window forward, recreating it if it was closed.
+    public func showMainWindow() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let mainWindows = NSApplication.shared.windows.filter { $0.canBecomeMain && !($0 is NSPanel) }
+        if mainWindows.isEmpty {
+            openMainWindowAction?()
+        } else {
+            mainWindows.forEach { $0.makeKeyAndOrderFront(nil) }
+        }
+    }
+
+    public static func applyDockIconPolicy(showDockIcon: Bool) {
+        prefersDockIcon = showDockIcon
+        NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
+    }
+
     private func cloudProvider(for providerID: String) -> (any CloudTranscriptionProvider)? {
         switch providerID {
         case "openai":
             openAITranscriptionProvider
         case "groq":
             groqTranscriptionProvider
+        case "custom":
+            customTranscriptionProvider
         default:
             nil
         }
     }
+}
+
+public extension Notification.Name {
+    static let transcriptorDockIconPreferenceChanged = Notification.Name("TranscriptorDockIconPreferenceChanged")
+    static let transcriptorShowMainWindowRequested = Notification.Name("TranscriptorShowMainWindowRequested")
 }

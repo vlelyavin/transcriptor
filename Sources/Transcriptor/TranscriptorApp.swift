@@ -2,20 +2,55 @@ import AppKit
 import SwiftUI
 import TranscriptorKit
 
-/// Promotes the process to a regular foreground app and activates it on launch.
+/// Owns the activation policy. Transcriptor is a menu bar app
+/// (`LSUIElement`): it shows a Dock icon — and takes part in Cmd-Tab — only
+/// while one of its windows is open, or always when the user turned on
+/// "Show Dock icon".
 ///
-/// Without this, an executable launched outside a fully-registered app bundle
-/// (e.g. `swift run`, or a freshly built bundle that LaunchServices hasn't
-/// indexed) can come up as an accessory/background process: its window can't
-/// become key, so keystrokes leak to whatever app was frontmost — the reported
-/// "typing into search goes to the previous app" bug. Forcing `.regular` also
-/// ensures the app participates in the system light/dark appearance instead of
-/// being stuck in the default aqua (light) appearance.
+/// While a window is open the app is promoted to `.regular`. That also keeps
+/// the fix for the original bug this delegate was written for: a process that
+/// comes up as accessory/background (e.g. `swift run`) can't make its window
+/// key, so keystrokes leaked to the previously active app, and it ignored the
+/// system light/dark appearance.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        applyDockIcon()
+        let center = NotificationCenter.default
+        for name in [
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didBecomeMainNotification,
+            NSWindow.willCloseNotification,
+            NSWindow.didChangeOcclusionStateNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            .transcriptorDockIconPreferenceChanged,
+        ] {
+            center.addObserver(self, selector: #selector(windowSetChanged(_:)), name: name, object: nil)
+        }
+        updateActivationPolicy()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc
+    private func windowSetChanged(_ notification: Notification) {
+        // `willClose` fires while the window is still visible; re-evaluate on
+        // the next runloop turn, after it is gone.
+        DispatchQueue.main.async { [weak self] in
+            self?.updateActivationPolicy()
+        }
+    }
+
+    private func updateActivationPolicy() {
+        let hasOpenWindow = NSApp.windows.contains { window in
+            window.isVisible && window.canBecomeMain && !(window is NSPanel)
+        }
+        let desired: NSApplication.ActivationPolicy = (AppState.prefersDockIcon || hasOpenWindow) ? .regular : .accessory
+        guard NSApp.activationPolicy() != desired else {
+            return
+        }
+        NSApp.setActivationPolicy(desired)
+        if desired == .regular {
+            applyDockIcon()
+        }
     }
 
     /// Sets the Dock icon from the bundled AppIcon at runtime. The static
@@ -30,14 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Launching the app again (Spotlight, Finder, Dock) while it runs must
+    /// always bring the window back — with the menu bar icon hidden and no
+    /// Dock icon, that is the only way in.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            for window in sender.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .transcriptorShowMainWindowRequested, object: nil)
         return true
+    }
+
+    /// A menu bar app keeps running after its window is closed.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }
 
@@ -137,7 +175,9 @@ struct TranscriptorApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        // A single window: re-opening it from the menu bar must not stack
+        // duplicates.
+        Window("Transcriptor", id: AppState.mainWindowID) {
             MainWindowView(appState: appState)
         }
         .windowResizability(.contentSize)

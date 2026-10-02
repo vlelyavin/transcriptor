@@ -68,4 +68,14 @@ public enum ProviderRuntimeState: Equatable, Sendable {
     /// True when the provider is fully set up and usable. Drives the green/red
     /// status indicator: green only when ready, red for every not-ready state.
     public var isReady: Bool { isSelectable }
+
+    /// Fully configured (consent + key/URL) but the key hasn't passed a live
+    /// test yet. Such a provider stays the user's choice — it is never
+    /// silently swapped for a local model.
+    public var isAwaitingValidation: Bool {
+        if case .needsValidation = self {
+            return true
+        }
+        return false
+    }
 }

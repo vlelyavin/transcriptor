@@ -281,15 +281,6 @@ final class MenuBarStatusItemController: NSObject {
     @objc
     private func openSettingsView() {
         appState.openSettings()
-        NSApp.activate(ignoringOtherApps: true)
-
-        for window in NSApp.windows {
-            guard window.canBecomeMain else {
-                continue
-            }
-
-            window.makeKeyAndOrderFront(nil)
-        }
     }
 
     @objc
@@ -305,14 +296,6 @@ final class MenuBarStatusItemController: NSObject {
 
     private func bringAppToFront(screen: NavigationScreen) {
         appState.selectedScreen = screen
-        NSApp.activate(ignoringOtherApps: true)
-
-        for window in NSApp.windows {
-            guard window.canBecomeMain else {
-                continue
-            }
-
-            window.makeKeyAndOrderFront(nil)
-        }
+        appState.showMainWindow()
     }
 }

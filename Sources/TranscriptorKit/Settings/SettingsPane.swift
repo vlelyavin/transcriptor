@@ -121,12 +121,14 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         case .general:
             [
                 "Show Transcriptor in menu bar",
+                "Always show Dock icon",
                 "Launch at login",
                 "Login items status",
             ]
         case .recording:
             [
                 "Voice input mode",
+                "Transcription language",
                 "Save original audio",
                 "Microphone permission",
                 "Insert transcript into active app",
