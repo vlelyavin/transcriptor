@@ -12,6 +12,7 @@ import TranscriptorKit
 /// comes up as accessory/background (e.g. `swift run`) can't make its window
 /// key, so keystrokes leaked to the previously active app, and it ignored the
 /// system light/dark appearance.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let center = NotificationCenter.default
