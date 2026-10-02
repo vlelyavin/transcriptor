@@ -391,8 +391,10 @@ public final class AppState {
             customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
             customCredentialValidated: snapshot.customCredentialValidated
         )
-        customProvider.setBaseURL(self.providerSettings.customBaseURLValue)
-        Self.prefersDockIcon = snapshot.showDockIcon
+        customProvider.setBaseURL(
+            ProviderSettings(customBaseURL: snapshot.customBaseURL).customBaseURLValue
+        )
+        AppState.prefersDockIcon = snapshot.showDockIcon
         self.historyStore = HistoryStore(entries: persistedEntries)
         self.modelCatalog = modelCatalog
         self.providerCatalog = providerCatalog
