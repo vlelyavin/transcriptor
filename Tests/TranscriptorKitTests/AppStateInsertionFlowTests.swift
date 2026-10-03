@@ -187,21 +187,22 @@ final class AppStateInsertionFlowTests: XCTestCase {
     }
 
     func testWelcomeGuideReappearsWhenPermissionLost() throws {
-        let recorder = MockAudioRecorderService()
+        let recorder = PermissionStubRecorder()
         recorder.permissionStatus = .granted
-        let appState = try makeContext(
+        let context = try makeContext(
             secrets: [:],
             voiceInputController: VoiceInputController(recorder: recorder)
         )
+        let appState = context.appState
         appState.hasSeenWelcomeGuide = true
         // Everything granted: guide stays dismissed.
         XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
 
         // Revoke accessibility -> hard requirement -> guide auto-presents again.
-        insertionService.accessibilityPermissionStatus = .denied
+        context.insertionService.accessibilityPermissionStatus = .denied
         appState.refreshAccessibilityPermissionStatus()
         XCTAssertTrue(appState.shouldAutoPresentWelcomeGuide)
-        insertionService.accessibilityPermissionStatus = .granted
+        context.insertionService.accessibilityPermissionStatus = .granted
         appState.refreshAccessibilityPermissionStatus()
 
         // Revoke microphone -> same story.
@@ -482,6 +483,22 @@ final class AppStateInsertionFlowTests: XCTestCase {
             fileSizeBytes: 10
         )
     }
+}
+
+private final class PermissionStubRecorder: AudioRecorderServing, @unchecked Sendable {
+    var onLevelsDidChange: (@MainActor (AudioLevelSnapshot) -> Void)?
+    var onRecordingError: (@MainActor (Error) -> Void)?
+    var isRecording = false
+    var currentInputDeviceName: String? = "Stub Microphone"
+    var permissionStatus: MicrophonePermissionStatus = .granted
+
+    func authorizationStatus() -> MicrophonePermissionStatus { permissionStatus }
+    func requestPermission() async -> Bool { true }
+    func startRecording() throws -> URL { URL(fileURLWithPath: "/tmp/none.wav") }
+    func stopRecording() throws -> RecordedAudioAsset {
+        RecordedAudioAsset(url: URL(fileURLWithPath: "/tmp/none.wav"), createdAt: .now, durationSeconds: 0, fileSizeBytes: 0)
+    }
+    func cancelRecording() throws {}
 }
 
 @MainActor
