@@ -127,8 +127,8 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var groqEnabled: Bool
     var elevenLabsEnabled: Bool?
     var openAIModelID: String?
-    var elevenLabsModelID: String?
     var groqModelID: String?
+    var elevenLabsModelID: String?
     var openAIPrivacyAcknowledged: Bool?
     var groqPrivacyAcknowledged: Bool?
     var elevenLabsPrivacyAcknowledged: Bool?

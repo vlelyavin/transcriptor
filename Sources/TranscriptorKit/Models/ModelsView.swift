@@ -82,7 +82,7 @@ public struct ModelsView: View {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset(alternatesRowBackgrounds: false))
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.name ?? "model")?",
             isPresented: Binding(
