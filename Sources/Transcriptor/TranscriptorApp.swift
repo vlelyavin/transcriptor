@@ -231,11 +231,21 @@ struct TranscriptorApp: App {
     var body: some Scene {
         // A login-item launch must not flash the window. On macOS 15+ the
         // scene is suppressed outright; on earlier systems AppDelegate closes
-        // the window right after launch instead. (SceneBuilder cannot take a
-        // plain `if #available` here, so availability is encoded via the
-        // modifier itself on macOS 14's runtime too — it is a no-op there.)
-        windowScene
-            .defaultLaunchBehavior(appDelegate.launchedAsLoginItem ? .suppressed : .automatic)
+        // the window right after launch instead. The availability switch is
+        // factored into a helper because SceneBuilder can't take `if`.
+        if appDelegate.launchedAsLoginItem {
+            loginSuppressedScene
+        } else {
+            windowScene
+        }
+    }
+
+    private var loginSuppressedScene: some Scene {
+        if #available(macOS 15, *) {
+            windowScene.defaultLaunchBehavior(.suppressed)
+        } else {
+            windowScene
+        }
     }
 
     private var windowScene: some Scene {
