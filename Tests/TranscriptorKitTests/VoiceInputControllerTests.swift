@@ -101,7 +101,9 @@ final class VoiceInputControllerTests: XCTestCase {
         // release passes every waiter).
         await sleepGate.release()
         await stopTask.value
-        XCTAssertEqual(controller.state, .pendingTranscription)
+        // The momentary flash has fully elapsed by the time the release
+        // call returns, so the controller is idle again.
+        XCTAssertEqual(controller.state, .idle)
 
         await controller.handleHotkeyPressed()
         XCTAssertEqual(controller.state, .recording)
