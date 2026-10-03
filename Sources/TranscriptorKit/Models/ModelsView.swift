@@ -78,7 +78,6 @@ public struct ModelsView: View {
             } else {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
-        }
             }
             .formStyle(.grouped)
         }
