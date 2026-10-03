@@ -296,6 +296,11 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
     }
 }
 
+// Reading this CF global var is flagged by strict concurrency even though the
+// constant is immutable after framework init; evaluate it once at load, on a
+// nonisolated(unsafe) static, to keep the MainActor method body clean.
+private nonisolated(unsafe) let axPromptOptionKey: String = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+
 @MainActor
 protocol TranscriptInsertionPlatform {
     var isAccessibilityTrusted: Bool { get }
@@ -394,8 +399,7 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         // in Privacy ▸ Accessibility, so a user sent to System Settings finds
         // an empty list and must add Transcriptor by hand. Asking with the
         // prompt option posts the real system alert once and adds the entry.
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptKey: true] as CFDictionary
+        let options = [axPromptOptionKey: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }
 
