@@ -66,6 +66,8 @@ cat > "${INFO_PLIST}" <<'PLIST'
   <string>6</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
@@ -96,7 +98,7 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
     --sign "${DEVELOPER_ID_APPLICATION}" \
     "${APP_BUNDLE}"
   echo "Signed for distribution with '${DEVELOPER_ID_APPLICATION}'."
-elif [[ "${CODESIGN_ADHOC:-0}" != "1" ]] && security find-identity -p codesigning 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
+elif [[ "${CODESIGN_ADHOC:-0}" != "1" && -f "${LOCAL_KEYCHAIN}" ]] && security find-identity -p codesigning "${LOCAL_KEYCHAIN}" 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
   [[ -f "${LOCAL_KEYCHAIN}" ]] && security unlock-keychain -p "${LOCAL_KEYCHAIN_PWD}" "${LOCAL_KEYCHAIN}" 2>/dev/null || true
   codesign --force --deep --keychain "${LOCAL_KEYCHAIN}" --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
   echo "Signed with local dev identity '${LOCAL_IDENTITY}' (TCC grants persist across rebuilds)."

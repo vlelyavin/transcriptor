@@ -113,7 +113,7 @@ public struct ModelCatalog: Equatable, Sendable {
         sections: [
             ModelSection(
                 id: "whisper",
-                title: "Whisper Models",
+                title: "Local OpenAI Whisper Models",
                 description: "Whisper-family speech models that run entirely on this Mac. Downloaded files are kept in Transcriptor-managed local storage.",
                 models: [
                     ModelDescriptor(
@@ -216,7 +216,7 @@ public struct ModelCatalog: Equatable, Sendable {
             ),
             ModelSection(
                 id: "parakeet",
-                title: "NVIDIA Parakeet Models",
+                title: "Local NVIDIA Parakeet Models",
                 description: "Beta. Parakeet v2 and v3 run locally through the FluidAudio Core ML backend. Requires Apple Silicon; models are downloaded from Hugging Face (over 1 GB each).",
                 models: [
                     ModelDescriptor(

@@ -10,6 +10,8 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
     public var baseURL: URL
     public var directUploadLimitBytes: Int64
     public var keychainAccount: String
+    /// Self-hosted servers often run without authentication.
+    public var requiresAPIKey: Bool
     public var availability: FeatureAvailability
 
     public init(
@@ -22,6 +24,7 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
         baseURL: URL,
         directUploadLimitBytes: Int64,
         keychainAccount: String,
+        requiresAPIKey: Bool = true,
         availability: FeatureAvailability
     ) {
         self.id = id
@@ -33,6 +36,7 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
         self.baseURL = baseURL
         self.directUploadLimitBytes = directUploadLimitBytes
         self.keychainAccount = keychainAccount
+        self.requiresAPIKey = requiresAPIKey
         self.availability = availability
     }
 }
@@ -76,6 +80,23 @@ public struct ProviderCatalog: Equatable, Sendable {
                 keychainAccount: "groq-api-key",
                 availability: .available(
                     note: "Requires a Groq API key in Keychain and explicit cloud privacy consent."
+                )
+            ),
+            ProviderDescriptor(
+                id: "custom",
+                name: "Remote backend",
+                modelLabel: "whisper-1",
+                summary: "Any OpenAI-compatible transcription server: a proxy, another vendor, or a self-hosted Whisper server. The API key is optional.",
+                priceNote: "Depends on the server",
+                privacySummary: "Audio is uploaded to the server you configured.",
+                // Placeholder only — the real base URL comes from Settings
+                // (`ProviderSettings.customBaseURL`) and is applied at runtime.
+                baseURL: URL(string: "https://localhost/v1")!,
+                directUploadLimitBytes: 25 * 1_048_576,
+                keychainAccount: "custom-api-key",
+                requiresAPIKey: false,
+                availability: .available(
+                    note: "Requires a server URL and explicit cloud privacy consent."
                 )
             ),
         ]

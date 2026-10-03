@@ -7,22 +7,6 @@ public struct OverviewView: View {
         self.appState = appState
     }
 
-    /// History storage limit bounds, shared with the Storage settings pane: the
-    /// lower bound tracks current usage (so the cap can't be set below the space
-    /// history already uses), up to 2 GB.
-    private var storageLimitRange: ClosedRange<Int> { appState.minimumHistoryLimitMegabytes...2_048 }
-
-    private var storageLimitBinding: Binding<Int> {
-        Binding(
-            get: {
-                min(max(appState.storageSettings.capMegabytes, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            },
-            set: { newValue in
-                appState.storageSettings.capMegabytes = min(max(newValue, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            }
-        )
-    }
-
     /// Auto-transcribe is only meaningful once a transcription model exists; the
     /// binding mirrors the guard used on the Import and Models screens.
     private var autoTranscribeBinding: Binding<Bool> {
@@ -62,7 +46,7 @@ public struct OverviewView: View {
             }
 
             Section {
-                linkedRow("Voice input shortcut", destination: .settings(.keyboardShortcut)) {
+                linkedRow("Voice input shortcut", destination: .settings(.general)) {
                     Text(appState.recordingState.hotkey.displayString)
                         .font(.system(.body, design: .monospaced))
                 }
@@ -73,7 +57,7 @@ public struct OverviewView: View {
                     }
                 }
 
-                linkedRow("Current state", destination: .settings(.advanced)) {
+                linkedRow("Current state", destination: .settings(.general)) {
                     Text(appState.voiceInputController.state.rawValue.capitalized)
                 }
 
@@ -111,18 +95,8 @@ public struct OverviewView: View {
                     Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
                 }
 
-                LabeledContent("History limit") {
-                    MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
-                }
-
                 linkedRow("History items", destination: .screen(.history)) {
                     Text("\(appState.historyStore.entries.count)")
-                }
-
-                if let storageWarningMessage = appState.storageWarningMessage {
-                    Text(storageWarningMessage)
-                        .foregroundStyle(.orange)
-                        .font(.callout)
                 }
             } header: {
                 Text("Storage")

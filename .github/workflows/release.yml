@@ -15,12 +15,18 @@ on:
 
 jobs:
   package:
-    runs-on: macos-14
+    # swift-tools-version 6.3 needs Xcode 26 (see build.yml).
+    runs-on: macos-26
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Make scripts executable
         run: chmod +x scripts/build_release.sh scripts/package_dmg.sh

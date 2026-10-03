@@ -7,25 +7,23 @@ final class SettingsPaneSearchTests: XCTestCase {
         XCTAssertEqual(SettingsPane.matching(query: "   "), SettingsPane.sidebarVisiblePanes)
     }
 
-    func testHiddenOverlayPaneIsNotSearchable() {
-        // The Overlay pane is hidden for now (see `sidebarVisiblePanes`); it must
-        // not surface in the sidebar list or via search, even on its own keyword.
-        XCTAssertFalse(SettingsPane.sidebarVisiblePanes.contains(.overlay))
-        XCTAssertFalse(SettingsPane.matching(query: "overlay").contains(.overlay))
-        XCTAssertFalse(SettingsPane.searchResults(matching: "overlay").map(\.pane).contains(.overlay))
+    func testOnlyGeneralAndStoragePanesExist() {
+        // Recording, Privacy, Advanced, Keyboard Shortcut, and Overlay panes
+        // were merged into General or removed outright.
+        XCTAssertEqual(SettingsPane.allCases, [.general, .storage])
+        XCTAssertEqual(SettingsPane.sidebarVisiblePanes, [.general, .storage])
     }
 
     func testTitleMatchIsCaseInsensitive() {
-        // The dedicated Cloud Providers pane was removed; cloud setup now lives
-        // on the Models screen, so "cloud" only matches the Privacy pane here.
-        XCTAssertEqual(SettingsPane.matching(query: "cloud"), [.privacy])
-        XCTAssertEqual(SettingsPane.matching(query: "CLOUD"), [.privacy])
+        XCTAssertEqual(SettingsPane.matching(query: "general"), [.general])
+        XCTAssertEqual(SettingsPane.matching(query: "STORAGE"), [.storage])
     }
 
     func testSearchTokensMatch() {
-        XCTAssertTrue(SettingsPane.matching(query: "hotkey").contains(.keyboardShortcut))
+        XCTAssertTrue(SettingsPane.matching(query: "hotkey").contains(.general))
         XCTAssertTrue(SettingsPane.matching(query: "login").contains(.general))
-        XCTAssertTrue(SettingsPane.matching(query: "microphone").contains(.recording))
+        XCTAssertTrue(SettingsPane.matching(query: "microphone").contains(.general))
+        XCTAssertTrue(SettingsPane.matching(query: "history").contains(.storage))
     }
 
     func testCloudProviderSearchResolvesToModelsScreen() {
@@ -47,14 +45,12 @@ final class SettingsPaneSearchTests: XCTestCase {
         XCTAssertEqual(results.first?.matchedSettingTitles, ["Launch at login"])
     }
 
-    func testSearchResultsMatchSettingsAcrossPanes() {
-        let results = SettingsPane.searchResults(matching: "auto")
-        let panes = results.map(\.pane)
-        XCTAssertTrue(panes.contains(.storage))
+    func testSearchResultsMatchShortcutSettings() {
+        // The standalone shortcut pane is gone; the recorder lives in General.
+        let results = SettingsPane.searchResults(matching: "shortcut")
+        XCTAssertEqual(results.map(\.pane), [.general])
         XCTAssertTrue(
-            results.first(where: { $0.pane == .storage })?
-                .matchedSettingTitles
-                .contains("Auto-delete oldest history when over limit") == true
+            results.first?.matchedSettingTitles.contains("Global voice input shortcut") == true
         )
     }
 

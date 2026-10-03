@@ -3,6 +3,8 @@ import SwiftUI
 
 public struct HistoryView: View {
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var filterDebounceTask: Task<Void, Never>?
     @State private var selectedFilter: HistoryFilter = .all
     @State private var selectedEntryID: HistoryEntry.ID?
     @State private var isCompactDetailVisible = false
@@ -38,7 +40,6 @@ public struct HistoryView: View {
                     }
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
             .toolbar {
                 // In the narrow single-column layout, a native toolbar back
                 // button returns to the list — replacing the old in-content
@@ -57,6 +58,18 @@ public struct HistoryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
+        }
+        // Debounce search so typing over a large history doesn't re-filter
+        // on every keystroke; the query below searches all entries.
+        .onChange(of: searchText) { _, newValue in
+            filterDebounceTask?.cancel()
+            filterDebounceTask = Task {
+                if !newValue.isEmpty {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+                guard !Task.isCancelled else { return }
+                debouncedSearchText = newValue
+            }
         }
         .onAppear {
             if let pending = appState.pendingHistoryEntryID {
@@ -203,12 +216,8 @@ public struct HistoryView: View {
                     Text(historyActionMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if let storageWarningMessage = appState.storageWarningMessage {
-                    Text(storageWarningMessage)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes)) / \(appState.storageSettings.capMegabytes) MB")
+                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -591,7 +600,19 @@ public struct HistoryView: View {
             return true
         }
 
-        return entry.searchableText.localizedCaseInsensitiveContains(searchText)
+        // Search the live transcript text plus identifying metadata. Building
+        // the joined searchableText (which concatenates every stored version)
+        // per entry per keystroke made large histories stutter — these fields
+        // are what users actually search for.
+        let fields = [
+            entry.displayName,
+            entry.transcriptText,
+            entry.modelName ?? "",
+            entry.providerName ?? "",
+            entry.originalFileName ?? "",
+        ]
+        let query = debouncedSearchText
+        return fields.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     private func canTriggerTranscription(for entry: HistoryEntry) -> Bool {

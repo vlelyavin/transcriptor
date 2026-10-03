@@ -21,48 +21,65 @@ public struct SettingsPaneDetailView: View {
     private func currentPaneView(for pane: SettingsPane) -> some View {
         switch pane {
         case .general:
-            // Essentials only. Everything else lives under Advanced.
             settingsForm {
+                shortcutSection
                 voiceInputSection
+                permissionsSection
                 transcriptInsertionSection
                 applicationSection
             }
-        case .keyboardShortcut:
-            settingsForm {
-                shortcutSections
-            }
-        case .advanced:
-            // Recording, Overlay, Storage, and Privacy now each have their own
-            // sidebar page, so Advanced holds only the diagnostics that don't fit
-            // a primary category.
-            settingsForm {
-                diagnosticsSection
-            }
-        case .recording:
-            settingsForm {
-                voiceInputSection
-                recordingDetailSection
-                transcriptInsertionSection
-            }
-        case .overlay:
-            settingsForm { overlaySection }
         case .storage:
             settingsForm { storageSections }
-        case .privacy:
-            settingsForm { privacySection }
         }
     }
 
-    // MARK: - Section builders (shared across panes)
+    // MARK: - Section builders
 
     @ViewBuilder
     private var voiceInputSection: some View {
-        Section("Voice Input") {
+        Section {
             Picker("Voice Input Mode", selection: $appState.recordingState.mode) {
                 ForEach(RecordingMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
             }
+
+            Picker("Language", selection: $appState.transcriptionPreferences.transcriptionLanguage) {
+                ForEach(TranscriptionLanguage.choices) { language in
+                    Text(language.title).tag(language.code)
+                }
+            }
+        } header: {
+            Text("Voice Input")
+        } footer: {
+            Text("Applies to every model and provider. Automatic detection is unreliable on short phrases — pick your language if dictation comes back in the wrong one.")
+        }
+    }
+
+    @ViewBuilder
+    private var permissionsSection: some View {
+        Section {
+            LabeledContent("Microphone") {
+                Text(appState.voiceInputController.permissionStatus.title)
+            }
+
+            Button("Open Microphone Privacy Settings") {
+                appState.openMicrophonePrivacySettings()
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+
+            LabeledContent("Accessibility") {
+                Text(appState.accessibilityPermissionStatus.rawValue)
+            }
+
+            Button("Open Accessibility Settings") {
+                appState.openAccessibilityPrivacySettings()
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        } header: {
+            Text("Permissions")
+        } footer: {
+            Text("Transcriptor records from the current system input device. Accessibility access is only required for inserting dictated text into other apps.")
         }
     }
 
@@ -73,20 +90,6 @@ public struct SettingsPaneDetailView: View {
             Toggle("Also copy transcript to clipboard", isOn: $appState.generalSettings.alsoCopyTranscriptToClipboard)
             Toggle("Restore previous clipboard after insertion", isOn: $appState.generalSettings.restoreClipboardAfterInsertion)
                 .disabled(appState.generalSettings.alsoCopyTranscriptToClipboard)
-
-            LabeledContent("Accessibility") {
-                Text(appState.accessibilityPermissionStatus.rawValue)
-            }
-
-            HStack {
-                Button("Request Accessibility Access") {
-                    appState.requestAccessibilityPermissionPrompt()
-                }
-
-                Button("Open Accessibility Settings") {
-                    appState.openAccessibilityPrivacySettings()
-                }
-            }
         } header: {
             Text("Transcript Insertion")
         } footer: {
@@ -103,6 +106,11 @@ public struct SettingsPaneDetailView: View {
             )
 
             Toggle(
+                "Always show Dock icon",
+                isOn: $appState.generalSettings.showDockIcon
+            )
+
+            Toggle(
                 "Launch at login",
                 isOn: Binding(
                     get: { appState.generalSettings.launchAtLoginEnabled },
@@ -111,69 +119,29 @@ public struct SettingsPaneDetailView: View {
             )
             .disabled(!appState.launchAtLoginStatus.canRegisterFromCurrentRuntime)
 
-            LabeledContent("Status") {
-                Text(appState.launchAtLoginStatus.title)
+            Button("Open Login Items Settings") {
+                appState.openLoginItemsSettings()
             }
-
-            HStack {
-                Button("Refresh Status") {
-                    appState.refreshLaunchAtLoginStatus()
-                }
-
-                Button("Open Login Items Settings") {
-                    appState.openLoginItemsSettings()
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Application")
         } footer: {
-            Text(appState.launchAtLoginStatus.detail)
+            Text(appState.launchAtLoginStatus.detail + " Without the Dock icon, Transcriptor lives in the menu bar and shows in the Dock only while its window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
         }
     }
 
     @ViewBuilder
-    private var recordingDetailSection: some View {
+    private var shortcutSection: some View {
         Section {
-            Toggle(isOn: $appState.recordingState.savesAudioLocally) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Save original audio")
-                    if !appState.recordingState.savesAudioLocally {
-                        Text("Currently partial: dictation audio is still kept locally for pending transcription and reliable re-transcription until cleanup rules are fully implemented.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
+            // The explainer leads the section; the control follows it like
+            // the next sentence of the same text.
+            Text("Used to start and stop voice input while Transcriptor is running.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
-            LabeledContent("Permission") {
-                Text(appState.voiceInputController.permissionStatus.rawValue.capitalized)
+            LabeledContent("Global Shortcut") {
+                HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
             }
-
-            LabeledContent("Input Device") {
-                Text("System Default")
-                    .foregroundStyle(.secondary)
-            }
-
-            Button("Open Microphone Privacy Settings") {
-                appState.openMicrophonePrivacySettings()
-            }
-        } header: {
-            Text("Microphone & Audio")
-        } footer: {
-            Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
-        }
-    }
-
-    @ViewBuilder
-    private var shortcutSections: some View {
-        Section("Global Voice Input") {
-            LabeledContent("Current Shortcut") {
-                Text(appState.recordingState.hotkey.displayString)
-                    .font(.system(.body, design: .monospaced))
-            }
-
-            HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
 
             if let conflictWarning = appState.recordingState.hotkey.obviousConflictWarning {
                 Text(conflictWarning)
@@ -194,109 +162,36 @@ public struct SettingsPaneDetailView: View {
             Button("Restore Recommended Shortcut") {
                 appState.resetHotkeyToRecommendedDefault()
             }
-        }
-
-        Section("Menu Shortcuts") {
-            LabeledContent("Import Audio") {
-                Text("⌘⇧I")
-                    .font(.system(.body, design: .monospaced))
-            }
-
-            LabeledContent("Search History") {
-                Text("⌘F")
-                    .font(.system(.body, design: .monospaced))
-            }
-
-            LabeledContent("Settings") {
-                Text("⌘,")
-                    .font(.system(.body, design: .monospaced))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var overlaySection: some View {
-        Section {
-            Toggle("Show recording overlay", isOn: $appState.overlayState.isEnabled)
-            Toggle("Use non-activating overlay", isOn: $appState.overlayState.isNonActivating)
-            Toggle("Show live audio indicator", isOn: $appState.overlayState.showsLiveAudioIndicator)
-
-            Picker("Overlay Position", selection: $appState.overlayState.position) {
-                ForEach(OverlayPosition.allCases) { position in
-                    Text(position.title).tag(position)
-                }
-            }
-
-            Button("Restore Overlay Defaults") {
-                appState.resetOverlayDefaults()
-            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
-            Text("Overlay")
+            Text("Shortcut")
         } footer: {
-            Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into.")
+            Text("Avoid conflicts with apps that register global shortcuts — the recorder warns about the obvious ones.")
         }
-    }
-
-    /// History storage limit bounds: the lower bound tracks current usage (so the
-    /// cap can't be set below the space history already uses), up to 2 GB.
-    private var storageLimitRange: ClosedRange<Int> { appState.minimumHistoryLimitMegabytes...2_048 }
-
-    /// Clamps both typed entry and stepper input to `storageLimitRange` so the
-    /// limit can never be set outside the supported bounds.
-    private var storageLimitBinding: Binding<Int> {
-        Binding(
-            get: {
-                min(max(appState.storageSettings.capMegabytes, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            },
-            set: { newValue in
-                appState.storageSettings.capMegabytes = min(max(newValue, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            }
-        )
     }
 
     @ViewBuilder
     private var storageSections: some View {
-        Section("Retention") {
-            LabeledContent("History storage limit") {
-                MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
-            }
-
-            Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
-            Toggle("Exclude downloaded model files from cap", isOn: $appState.storageSettings.excludesDownloadedModels)
-
-            Button("Restore Storage Defaults") {
-                appState.resetStorageDefaults()
-            }
-        }
-
-        Section("Usage") {
-            LabeledContent("Current usage") {
-                Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
-            }
-
-            LabeledContent("Audio files") {
+        Section {
+            LabeledContent("Audio") {
                 Text(megabyteString(for: appState.storageUsage.audioBytes))
             }
 
-            LabeledContent("Metadata and exports") {
+            LabeledContent("Transcripts and metadata") {
                 Text(megabyteString(for: appState.storageUsage.historyBytes + appState.storageUsage.metadataBytes))
             }
 
-            if appState.storageSettings.excludesDownloadedModels {
-                LabeledContent("Model cache (excluded)") {
+            if appState.storageUsage.modelBytes > 0 {
+                LabeledContent("Model cache") {
                     Text(megabyteString(for: appState.storageUsage.modelBytes))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            if let storageWarningMessage = appState.storageWarningMessage {
-                Text(storageWarningMessage)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+            LabeledContent("Total") {
+                Text(megabyteString(for: appState.storageUsage.totalIncludingModelsBytes))
             }
-        }
 
-        Section {
             Button("Clear History…", role: .destructive) {
                 showClearHistoryConfirmation = true
             }
@@ -311,49 +206,12 @@ public struct SettingsPaneDetailView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone.")
+                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone. Downloaded models are not affected.")
             }
+        } header: {
+            Text("Usage")
         } footer: {
-            Text("Removes all saved transcripts and their audio. Downloaded models are not affected.")
-        }
-    }
-
-    @ViewBuilder
-    private var privacySection: some View {
-        Section("Privacy") {
-            Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
-            Label("Parakeet Local uses FluidAudio Core ML bundles downloaded from Hugging Face and keeps transcription on this Mac.", systemImage: "waveform.badge.mic")
-            Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
-            Label("OpenAI and Groq only send audio after you store an API key in Keychain and confirm on the Models page that audio may be sent.", systemImage: "key")
-            Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
-        }
-    }
-
-    @ViewBuilder
-    private var diagnosticsSection: some View {
-        Section("Last Insertion Attempt") {
-            LabeledContent("Captured App") {
-                Text(appState.transcriptInsertionDebugSnapshot.capturedAppName ?? "None")
-                    .foregroundStyle(appState.transcriptInsertionDebugSnapshot.capturedAppName == nil ? .secondary : .primary)
-            }
-
-            LabeledContent("Target") {
-                Text(appState.transcriptInsertionDebugSnapshot.targetSummary)
-                    .multilineTextAlignment(.trailing)
-            }
-
-            LabeledContent("Result") {
-                Text(appState.transcriptInsertionDebugSnapshot.lastOutcome?.message ?? "No insertion attempt yet.")
-                    .foregroundStyle(appState.transcriptInsertionDebugSnapshot.lastOutcome == nil ? .secondary : .primary)
-                    .multilineTextAlignment(.trailing)
-            }
-
-            if let lastUpdatedAt = appState.transcriptInsertionDebugSnapshot.lastUpdatedAt {
-                LabeledContent("Updated") {
-                    Text(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text("Everything Transcriptor keeps on this Mac. Model cache files can be removed individually from the Models page.")
         }
     }
 

@@ -35,6 +35,7 @@ private struct QueuedTranscriptionRequest: Equatable, Sendable {
     var providerName: String
     var modelID: String
     var modelName: String
+    var language: String?
 }
 
 @MainActor
@@ -99,14 +100,16 @@ public final class TranscriptionQueueController {
         providerID: String,
         providerName: String,
         modelID: String,
-        modelName: String
+        modelName: String,
+        language: String? = nil
     ) {
         let request = QueuedTranscriptionRequest(
             entryID: entryID,
             providerID: providerID,
             providerName: providerName,
             modelID: modelID,
-            modelName: modelName
+            modelName: modelName,
+            language: language
         )
 
         if activeJob?.entryID == entryID {
@@ -124,8 +127,17 @@ public final class TranscriptionQueueController {
     }
 
     public func cancel(entryID: UUID) {
+        let removedQueued = queuedRequests.contains(where: { $0.entryID == entryID })
         queuedRequests.removeAll(where: { $0.entryID == entryID })
         queuedEntryIDs = queuedRequests.map(\.entryID)
+
+        if removedQueued {
+            // A queued request dropped before running still owns a pending
+            // insertion/overlay slot upstream. Its entry is still `.pending`,
+            // so the failure callback takes the quiet cancellation path —
+            // which is exactly what releases that tracking.
+            onFailure(entryID, TranscriptionError.cancelled.localizedDescription)
+        }
 
         guard activeJob?.entryID == entryID else {
             return
@@ -173,6 +185,10 @@ public final class TranscriptionQueueController {
 
     private func process(_ request: QueuedTranscriptionRequest) async {
         guard var entry = entryLookup(request.entryID) else {
+            // The history item vanished while queued (deleted, cleared, or a
+            // persistence miss). Dropping the job silently would leave the
+            // overlay spinning and the pending-insertion slot held forever.
+            onFailure(request.entryID, "The history item disappeared before transcription could run.")
             finishActiveJob()
             return
         }
@@ -210,7 +226,8 @@ public final class TranscriptionQueueController {
             requestedProviderName: request.providerName,
             requestedModelID: request.modelID,
             requestedModelName: request.modelName,
-            sourceType: entry.sourceType
+            sourceType: entry.sourceType,
+            language: request.language
         )
 
         do {
@@ -226,6 +243,10 @@ public final class TranscriptionQueueController {
             try Task.checkCancellation()
 
             guard var latestEntry = entryLookup(request.entryID) else {
+                // Same vanish case after a successful transcription: the
+                // result has nowhere to persist, so fail the slot loudly
+                // enough to release overlay/insertion tracking.
+                onFailure(request.entryID, "The history item disappeared before the transcript could be saved.")
                 finishActiveJob()
                 return
             }
@@ -267,11 +288,16 @@ public final class TranscriptionQueueController {
                 cancelled: error == .cancelled
             )
         } catch {
+            // URLSession reports cancellation as `URLError(.cancelled)`, not
+            // `CancellationError`, so a user-cancelled upload used to land here
+            // and be recorded as a failure. Honour it (and a task-level cancel
+            // that surfaced as another error) as a cancellation.
+            let cancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
             restoreAfterFailure(
                 for: request.entryID,
-                message: error.localizedDescription,
+                message: cancelled ? TranscriptionError.cancelled.localizedDescription : error.localizedDescription,
                 originalEntry: originalEntry,
-                cancelled: false
+                cancelled: cancelled
             )
         }
 

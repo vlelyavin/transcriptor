@@ -9,9 +9,8 @@ struct TranscriptorSmokeChecks {
         let appState = AppState()
         expect(appState.selectedScreen == .overview, "App state starts on the Overview screen.", failures: &failures)
         expect(appState.recordingState.mode == .holdToTalk, "Recording mode defaults to Hold to Talk.", failures: &failures)
-        expect(appState.recordingState.savesAudioLocally, "Recording defaults to local save enabled.", failures: &failures)
-        expect(appState.overlayState.isNonActivating, "Overlay defaults to non-activating.", failures: &failures)
-        expect(appState.storageSettings.autoDeleteOldestHistory, "Storage defaults to auto-deleting oldest history.", failures: &failures)
+        expect(appState.overlayState.isEnabled, "Overlay defaults to enabled.", failures: &failures)
+        expect(appState.overlayState.showsLiveAudioIndicator, "Overlay defaults to showing the live audio indicator.", failures: &failures)
         expect(appState.transcriptionPreferences.preferredLocalProviderID == "whisperkit-local", "Preferred local provider defaults to WhisperKit.", failures: &failures)
         expect(appState.selectedModel?.id == "whisper-large-v3-turbo", "Preferred model defaults to Large V3 Turbo.", failures: &failures)
 
@@ -22,7 +21,7 @@ struct TranscriptorSmokeChecks {
         expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
 
         let providers = ProviderCatalog.defaultCatalog
-        expect(providers.providers.map(\.id) == ["openai", "groq"], "Provider catalog includes the implemented OpenAI and Groq providers.", failures: &failures)
+        expect(providers.providers.map(\.id) == ["openai", "groq", "custom"], "Provider catalog includes OpenAI, Groq, and the custom OpenAI-compatible server.", failures: &failures)
 
         if failures.isEmpty {
             print("Transcriptor smoke checks passed.")

@@ -108,6 +108,155 @@ final class CloudTranscriptionProviderTests: XCTestCase {
         XCTAssertTrue(loader.requests.isEmpty)
     }
 
+    func testLanguageHintIsSentInMultipartBody() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":"привет"}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "groq")),
+            secretStore: InMemorySecretStore(secrets: ["groq-api-key": "gsk_test"]),
+            urlSession: loader
+        )
+        let audioURL = try makeTempAudioFile(named: "ru.wav")
+
+        _ = try await provider.transcribe(
+            job: TranscriptionJob(
+                historyEntryID: UUID(),
+                audioFileURL: audioURL,
+                requestedProviderID: "groq",
+                requestedProviderName: "Groq",
+                requestedModelID: "whisper-large-v3-turbo",
+                requestedModelName: "whisper-large-v3-turbo",
+                sourceType: .dictation,
+                language: "ru"
+            )
+        ) { _ in }
+
+        let body = try XCTUnwrap(loader.requests.first?.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertTrue(body.contains(#"name="language""#))
+        XCTAssertTrue(body.contains("\r\nru\r\n"))
+    }
+
+    func testNoLanguageFieldWhenAutoDetecting() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":"hi"}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "groq")),
+            secretStore: InMemorySecretStore(secrets: ["groq-api-key": "gsk_test"]),
+            urlSession: loader
+        )
+        let audioURL = try makeTempAudioFile(named: "auto.wav")
+
+        _ = try await provider.transcribe(
+            job: TranscriptionJob(
+                historyEntryID: UUID(),
+                audioFileURL: audioURL,
+                requestedProviderID: "groq",
+                requestedProviderName: "Groq",
+                requestedModelID: "whisper-large-v3-turbo",
+                requestedModelName: "whisper-large-v3-turbo",
+                sourceType: .dictation
+            )
+        ) { _ in }
+
+        let body = try XCTUnwrap(loader.requests.first?.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertFalse(body.contains(#"name="language""#))
+    }
+
+    func testCustomServerUsesConfiguredURLAndWorksWithoutKey() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":"from custom"}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "http://10.0.0.5:8000/v1/audio/transcriptions")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "custom")),
+            secretStore: InMemorySecretStore(),
+            urlSession: loader
+        )
+        provider.setBaseURL(URL(string: "http://10.0.0.5:8000/v1"))
+        let audioURL = try makeTempAudioFile(named: "custom.wav")
+
+        let result = try await provider.transcribe(
+            job: TranscriptionJob(
+                historyEntryID: UUID(),
+                audioFileURL: audioURL,
+                requestedProviderID: "custom",
+                requestedProviderName: "Remote backend",
+                requestedModelID: "whisper-1",
+                requestedModelName: "whisper-1",
+                sourceType: .dictation
+            )
+        ) { _ in }
+
+        XCTAssertEqual(result.text, "from custom")
+        let request = try XCTUnwrap(loader.requests.first)
+        XCTAssertEqual(request.url?.absoluteString, "http://10.0.0.5:8000/v1/audio/transcriptions")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testCustomServerValidationFallsBackToTranscriptionWhenModelsEndpointIsMissing() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data("Not Found".utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "http://10.0.0.5:8000/v1/models")!,
+                    statusCode: 404,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            ),
+            .init(
+                data: Data(#"{"text":""}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "http://10.0.0.5:8000/v1/audio/transcriptions")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            ),
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "custom")),
+            secretStore: InMemorySecretStore(secrets: ["custom-api-key": "token"]),
+            urlSession: loader
+        )
+        provider.setBaseURL(URL(string: "http://10.0.0.5:8000/v1"))
+
+        try await provider.validateCredentials(modelID: "whisper-1")
+
+        XCTAssertEqual(loader.requests.count, 2)
+        XCTAssertEqual(loader.requests.last?.url?.path, "/v1/audio/transcriptions")
+        XCTAssertEqual(loader.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer token")
+    }
+
     private func makeTempAudioFile(named fileName: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
