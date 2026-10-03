@@ -270,11 +270,11 @@ public struct HistoryView: View {
                 Form {
                     Section {
                         detailHeader(for: entry)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 4, trailing: 12))
+                            .listRowInsets(EdgeInsets(top: 8, leading: 24, bottom: 4, trailing: 24))
                             .listRowBackground(Color.clear)
 
                         actionBar(for: entry, isCompact: isCompact)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 24, bottom: 8, trailing: 24))
                             .listRowBackground(Color.clear)
                     }
 
