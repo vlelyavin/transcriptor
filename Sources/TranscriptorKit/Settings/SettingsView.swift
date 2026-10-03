@@ -202,10 +202,8 @@ public struct SettingsPaneDetailView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone.")
+                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone. Downloaded models are not affected.")
             }
-        } footer: {
-            Text("Removes all saved transcripts and their audio. Downloaded models are not affected.")
         }
     }
 
