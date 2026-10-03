@@ -72,13 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
 
-        // The flag lives inside the `keyAEPropData` record — try each accessor
-        // level since NSAppleEventDescriptor's mapping onto AE records differs
-        // by keyword kind.
-        return propData.descriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
-            ?? propData.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
-            ?? propData.attributeDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
-            ?? false
+        // The flag lives inside the `keyAEPropData` record (an AERecord).
+        // NSAppleEventDescriptor only surfaces record entries via
+        // `paramDescriptor(forKeyword:)`; the chained fallbacks Devin wrote
+        // call a nonexistent `descriptor(forKeyword:)` member.
+        return propData.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue ?? false
     }
 
     @objc
@@ -233,13 +231,11 @@ struct TranscriptorApp: App {
     var body: some Scene {
         // A login-item launch must not flash the window. On macOS 15+ the
         // scene is suppressed outright; on earlier systems AppDelegate closes
-        // the window right after launch instead.
-        if #available(macOS 15, *) {
-            windowScene
-                .defaultLaunchBehavior(appDelegate.launchedAsLoginItem ? .suppressed : .automatic)
-        } else {
-            windowScene
-        }
+        // the window right after launch instead. (SceneBuilder cannot take a
+        // plain `if #available` here, so availability is encoded via the
+        // modifier itself on macOS 14's runtime too — it is a no-op there.)
+        windowScene
+            .defaultLaunchBehavior(appDelegate.launchedAsLoginItem ? .suppressed : .automatic)
     }
 
     private var windowScene: some Scene {
