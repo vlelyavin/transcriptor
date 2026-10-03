@@ -306,4 +306,48 @@ private struct InMemorySecretStore: SecretStore {
     func containsSecret(for account: String) throws -> Bool {
         secrets[account] != nil
     }
+
+    func testElevenLabsDialectUsesScribeEndpointAndHeaderNames() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":"privet ot elevenlabs","language_code":"rus"}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "elevenlabs")),
+            secretStore: InMemorySecretStore(secrets: ["elevenlabs-api-key": "el_test"]),
+            urlSession: loader
+        )
+        let audioURL = try makeTempAudioFile(named: "elevenlabs-sample.wav")
+
+        let result = try await provider.transcribe(
+            job: TranscriptionJob(
+                historyEntryID: UUID(),
+                audioFileURL: audioURL,
+                requestedProviderID: "elevenlabs",
+                requestedProviderName: "ElevenLabs",
+                requestedModelID: "scribe_v1",
+                requestedModelName: "Scribe v1",
+                sourceType: .dictation
+            )
+        ) { _ in }
+
+        XCTAssertEqual(result.text, "privet ot elevenlabs")
+        let request = try XCTUnwrap(loader.requests.first)
+        XCTAssertEqual(request.url?.absoluteString, "https://api.elevenlabs.io/v1/speech-to-text")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "xi-api-key"), "el_test")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertTrue(body.contains(#"name="model_id""#))
+        XCTAssertTrue(body.contains("scribe_v1"))
+        XCTAssertTrue(body.contains(#"name="language_code""#))
+        XCTAssertFalse(body.contains(#"name="response_format""#))
+    }
 }

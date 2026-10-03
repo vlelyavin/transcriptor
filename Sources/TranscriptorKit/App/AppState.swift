@@ -196,6 +196,11 @@ public final class AppState {
             recordingOverlayManager.refreshPresentation()
         }
     }
+
+    /// Turns the recording overlay on or off from Settings.
+    public func setOverlayEnabled(_ enabled: Bool) {
+        overlayState.isEnabled = enabled
+    }
     public var transcriptionPreferences: TranscriptionPreferences {
         didSet { persistPreferences() }
     }
@@ -220,6 +225,9 @@ public final class AppState {
             if oldValue.customModelID != providerSettings.customModelID && providerSettings.customCredentialValidated {
                 providerSettings.customCredentialValidated = false
             }
+            if oldValue.elevenLabsModelID != providerSettings.elevenLabsModelID && providerSettings.elevenLabsCredentialValidated {
+                providerSettings.elevenLabsCredentialValidated = false
+            }
         }
     }
     public var historyStore: HistoryStore
@@ -236,6 +244,7 @@ public final class AppState {
     public let parakeetTranscriptionProvider: ParakeetLocalTranscriptionProvider
     public let openAITranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let groqTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
+    public let elevenLabsTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let customTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let whisperModelManager: WhisperModelManager
     public let parakeetModelManager: ParakeetModelManager
@@ -315,6 +324,10 @@ public final class AppState {
             descriptor: providerCatalog.provider(id: "groq")!,
             secretStore: secretStore
         )
+        let elevenLabsProvider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: providerCatalog.provider(id: "elevenlabs") ?? ProviderCatalog.defaultCatalog.provider(id: "elevenlabs")!,
+            secretStore: secretStore
+        )
         let customProvider = OpenAICompatibleCloudTranscriptionProvider(
             descriptor: providerCatalog.provider(id: "custom") ?? ProviderCatalog.defaultCatalog.provider(id: "custom")!,
             secretStore: secretStore
@@ -328,7 +341,7 @@ public final class AppState {
             provider: parakeetTranscriptionProvider
         )
         let transcriptionQueueController = TranscriptionQueueController(
-            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider, customProvider]
+            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider, elevenLabsProvider, customProvider]
         )
         let transcriptionTargetResolver = TranscriptionTargetResolver(
             modelCatalog: modelCatalog,
@@ -393,12 +406,16 @@ public final class AppState {
         self.providerSettings = ProviderSettings(
             openAIEnabled: snapshot.openAIEnabled,
             groqEnabled: snapshot.groqEnabled,
+            elevenLabsEnabled: snapshot.elevenLabsEnabled,
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
+            elevenLabsModelID: snapshot.elevenLabsModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            elevenLabsPrivacyAcknowledged: snapshot.elevenLabsPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
             groqCredentialValidated: snapshot.groqCredentialValidated,
+            elevenLabsCredentialValidated: snapshot.elevenLabsCredentialValidated,
             customBaseURL: snapshot.customBaseURL,
             customModelID: snapshot.customModelID,
             customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
@@ -417,6 +434,7 @@ public final class AppState {
         self.parakeetTranscriptionProvider = parakeetTranscriptionProvider
         self.openAITranscriptionProvider = openAIProvider
         self.groqTranscriptionProvider = groqProvider
+        self.elevenLabsTranscriptionProvider = elevenLabsProvider
         self.customTranscriptionProvider = customProvider
         self.whisperModelManager = whisperModelManager
         self.parakeetModelManager = parakeetModelManager
@@ -1201,6 +1219,10 @@ public final class AppState {
             providerSettings.groqModelID = defaults.groqModelID
             providerSettings.groqPrivacyAcknowledged = false
             providerSettings.groqEnabled = false
+        case "elevenlabs":
+            providerSettings.elevenLabsModelID = defaults.elevenLabsModelID
+            providerSettings.elevenLabsPrivacyAcknowledged = false
+            providerSettings.elevenLabsEnabled = false
         case "custom":
             providerSettings.customBaseURL = defaults.customBaseURL
             providerSettings.customModelID = defaults.customModelID
@@ -1237,12 +1259,16 @@ public final class AppState {
                 preferredProviderID: transcriptionPreferences.preferredProviderID,
                 openAIEnabled: providerSettings.openAIEnabled,
                 groqEnabled: providerSettings.groqEnabled,
+                elevenLabsEnabled: providerSettings.elevenLabsEnabled,
                 openAIModelID: providerSettings.openAIModelID,
                 groqModelID: providerSettings.groqModelID,
+                elevenLabsModelID: providerSettings.elevenLabsModelID,
                 openAIPrivacyAcknowledged: providerSettings.openAIPrivacyAcknowledged,
                 groqPrivacyAcknowledged: providerSettings.groqPrivacyAcknowledged,
+                elevenLabsPrivacyAcknowledged: providerSettings.elevenLabsPrivacyAcknowledged,
                 openAICredentialValidated: providerSettings.openAICredentialValidated,
                 groqCredentialValidated: providerSettings.groqCredentialValidated,
+                elevenLabsCredentialValidated: providerSettings.elevenLabsCredentialValidated,
                 transcriptionLanguage: transcriptionPreferences.transcriptionLanguage,
                 showDockIcon: generalSettings.showDockIcon,
                 customBaseURL: providerSettings.customBaseURL,
@@ -1565,6 +1591,8 @@ public final class AppState {
             openAITranscriptionProvider
         case "groq":
             groqTranscriptionProvider
+        case "elevenlabs":
+            elevenLabsTranscriptionProvider
         case "custom":
             customTranscriptionProvider
         default:

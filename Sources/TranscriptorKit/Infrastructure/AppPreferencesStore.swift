@@ -19,12 +19,16 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var preferredProviderID: String
     public var openAIEnabled: Bool
     public var groqEnabled: Bool
+    public var elevenLabsEnabled: Bool
     public var openAIModelID: String
     public var groqModelID: String
+    public var elevenLabsModelID: String
     public var openAIPrivacyAcknowledged: Bool
     public var groqPrivacyAcknowledged: Bool
+    public var elevenLabsPrivacyAcknowledged: Bool
     public var openAICredentialValidated: Bool
     public var groqCredentialValidated: Bool
+    public var elevenLabsCredentialValidated: Bool
     public var transcriptionLanguage: String
     public var showDockIcon: Bool
     public var customBaseURL: String
@@ -50,12 +54,16 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         preferredProviderID: String = "whisperkit-local",
         openAIEnabled: Bool = false,
         groqEnabled: Bool = false,
+        elevenLabsEnabled: Bool = false,
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
+        elevenLabsModelID: String = "scribe_v1",
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
+        elevenLabsPrivacyAcknowledged: Bool = false,
         openAICredentialValidated: Bool = false,
         groqCredentialValidated: Bool = false,
+        elevenLabsCredentialValidated: Bool = false,
         transcriptionLanguage: String = "",
         showDockIcon: Bool = false,
         customBaseURL: String = "",
@@ -80,12 +88,16 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.preferredProviderID = preferredProviderID
         self.openAIEnabled = openAIEnabled
         self.groqEnabled = groqEnabled
+        self.elevenLabsEnabled = elevenLabsEnabled
         self.openAIModelID = openAIModelID
         self.groqModelID = groqModelID
+        self.elevenLabsModelID = elevenLabsModelID
         self.openAIPrivacyAcknowledged = openAIPrivacyAcknowledged
         self.groqPrivacyAcknowledged = groqPrivacyAcknowledged
+        self.elevenLabsPrivacyAcknowledged = elevenLabsPrivacyAcknowledged
         self.openAICredentialValidated = openAICredentialValidated
         self.groqCredentialValidated = groqCredentialValidated
+        self.elevenLabsCredentialValidated = elevenLabsCredentialValidated
         self.transcriptionLanguage = transcriptionLanguage
         self.showDockIcon = showDockIcon
         self.customBaseURL = customBaseURL
@@ -113,12 +125,16 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var preferredProviderID: String?
     var openAIEnabled: Bool
     var groqEnabled: Bool
+    var elevenLabsEnabled: Bool?
     var openAIModelID: String?
+    var elevenLabsModelID: String?
     var groqModelID: String?
     var openAIPrivacyAcknowledged: Bool?
     var groqPrivacyAcknowledged: Bool?
+    var elevenLabsPrivacyAcknowledged: Bool?
     var openAICredentialValidated: Bool?
     var groqCredentialValidated: Bool?
+    var elevenLabsCredentialValidated: Bool?
     var transcriptionLanguage: String?
     var showDockIcon: Bool?
     var customBaseURL: String?
@@ -166,12 +182,16 @@ public final class AppPreferencesStore {
             preferredProviderID: decoded.preferredProviderID ?? "whisperkit-local",
             openAIEnabled: decoded.openAIEnabled,
             groqEnabled: decoded.groqEnabled,
+            elevenLabsEnabled: decoded.elevenLabsEnabled ?? false,
             openAIModelID: decoded.openAIModelID ?? "gpt-4o-mini-transcribe",
             groqModelID: decoded.groqModelID ?? "whisper-large-v3-turbo",
+            elevenLabsModelID: decoded.elevenLabsModelID ?? "scribe_v1",
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
             groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
+            elevenLabsPrivacyAcknowledged: decoded.elevenLabsPrivacyAcknowledged ?? false,
             openAICredentialValidated: decoded.openAICredentialValidated ?? false,
             groqCredentialValidated: decoded.groqCredentialValidated ?? false,
+            elevenLabsCredentialValidated: decoded.elevenLabsCredentialValidated ?? false,
             transcriptionLanguage: decoded.transcriptionLanguage ?? "",
             showDockIcon: decoded.showDockIcon ?? false,
             customBaseURL: decoded.customBaseURL ?? "",
@@ -200,12 +220,16 @@ public final class AppPreferencesStore {
             preferredProviderID: snapshot.preferredProviderID,
             openAIEnabled: snapshot.openAIEnabled,
             groqEnabled: snapshot.groqEnabled,
+            elevenLabsEnabled: snapshot.elevenLabsEnabled,
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
+            elevenLabsModelID: snapshot.elevenLabsModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            elevenLabsPrivacyAcknowledged: snapshot.elevenLabsPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
             groqCredentialValidated: snapshot.groqCredentialValidated,
+            elevenLabsCredentialValidated: snapshot.elevenLabsCredentialValidated,
             transcriptionLanguage: snapshot.transcriptionLanguage,
             showDockIcon: snapshot.showDockIcon,
             customBaseURL: snapshot.customBaseURL,

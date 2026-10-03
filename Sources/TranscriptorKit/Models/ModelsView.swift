@@ -10,6 +10,7 @@ public struct ModelsView: View {
 
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
+    @State private var elevenLabsAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
     @State private var selectedTab: ModelSourceTab
     @State private var modelPendingDeletion: ModelDescriptor?
@@ -27,7 +28,7 @@ public struct ModelsView: View {
         switch appState.transcriptionPreferences.preferredProviderID {
         case "parakeet-local":
             .parakeet
-        case "openai", "groq", "custom":
+        case "openai", "groq", "custom", "elevenlabs":
             .remote
         default:
             .whisper
@@ -35,7 +36,7 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        Form {
+        List {
             Section("Current Selection") {
                 if appState.availableTargets.isEmpty {
                     LabeledContent("Active model") {
@@ -81,7 +82,7 @@ public struct ModelsView: View {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
         }
-        .formStyle(.grouped)
+        .listStyle(.insetGrouped)
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.name ?? "model")?",
             isPresented: Binding(
@@ -153,6 +154,15 @@ public struct ModelsView: View {
                 modelID: $appState.providerSettings.groqModelID,
                 privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
                 apiKeyInput: $groqAPIKeyInput
+            )
+        }
+
+        if let elevenLabs = appState.providerCatalog.providers.first(where: { $0.id == "elevenlabs" }) {
+            cloudProviderSection(
+                provider: elevenLabs,
+                modelID: $appState.providerSettings.elevenLabsModelID,
+                privacyConsent: $appState.providerSettings.elevenLabsPrivacyAcknowledged,
+                apiKeyInput: $elevenLabsAPIKeyInput
             )
         }
 
@@ -584,6 +594,8 @@ public struct ModelsView: View {
             "Find model IDs in the OpenAI dashboard under API → Models (e.g. gpt-4o-mini-transcribe)."
         case "groq":
             "Find model IDs on the Groq Console models page (e.g. whisper-large-v3-turbo)."
+        case "elevenlabs":
+            "scribe_v1 is the current Scribe model; experimental IDs appear in ElevenLabs docs."
         case "custom":
             "The model name your server expects (e.g. whisper-1)."
         default:

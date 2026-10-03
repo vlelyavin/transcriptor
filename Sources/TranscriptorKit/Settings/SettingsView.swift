@@ -49,6 +49,14 @@ public struct SettingsPaneDetailView: View {
                     Text(language.title).tag(language.code)
                 }
             }
+
+            Toggle(
+                "Show recording overlay",
+                isOn: Binding(
+                    get: { appState.overlayState.isEnabled },
+                    set: { appState.setOverlayEnabled($0) }
+                )
+            )
         } header: {
             Text("Voice Input")
         } footer: {

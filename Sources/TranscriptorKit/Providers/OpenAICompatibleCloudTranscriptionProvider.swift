@@ -144,7 +144,8 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         )
 
         let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID, language: job.language)
-        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
+        let transcribePath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: transcribePath))
         request.httpMethod = "POST"
         request.httpBody = requestBody.body
         // Long dictations upload several MB; the 60 s default is too tight on
@@ -205,7 +206,11 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     }
 
     private func authorize(_ request: inout URLRequest, apiKey: String?) {
-        if let apiKey {
+        guard let apiKey else { return }
+        switch descriptor.apiDialect {
+        case .elevenLabs:
+            request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        case .openAICompatible:
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
     }
@@ -235,26 +240,31 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         let audioData = try Data(contentsOf: audioURL, options: .mappedIfSafe)
         var body = Data()
 
+        let modelFieldName = descriptor.apiDialect == .elevenLabs ? "model_id" : "model"
+        let languageFieldName = descriptor.apiDialect == .elevenLabs ? "language_code" : "language"
+
         body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="model""#)
+        body.appendMultipartLine("Content-Disposition: form-data; name=\"\(modelFieldName)\"")
         body.appendMultipartLine("")
         body.appendMultipartLine(modelID)
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("json")
+        if descriptor.apiDialect != .elevenLabs {
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("json")
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("0")
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("0")
+        }
 
         // Without a hint, auto-detection on short clips often picks the wrong
         // language (short Russian phrases came back transliterated to Latin).
         if let language, !language.isEmpty {
             body.appendMultipartLine("--\(boundary)")
-            body.appendMultipartLine(#"Content-Disposition: form-data; name="language""#)
+            body.appendMultipartLine("Content-Disposition: form-data; name=\"\(languageFieldName)\"")
             body.appendMultipartLine("")
             body.appendMultipartLine(language)
         }
