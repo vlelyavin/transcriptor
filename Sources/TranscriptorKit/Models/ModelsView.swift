@@ -34,20 +34,28 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // The filter row lives OUTSIDE the grouped Form so it sits
-            // directly on the window background, like the History page's
-            // "Source" row — a Form row would give it a card background.
-            Picker("Filter", selection: $selectedTab) {
-                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                Text("Remote").tag(ModelSourceTab.remote)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
+        Form {
+            // Filter strip: a plain non-card row directly under the top
+            // section, like the History page's "Source" strip — it scrolls
+            // with the content instead of sticking under the toolbar.
+            Section {
+                HStack(spacing: 12) {
+                    Text("Filter")
+                        .foregroundStyle(.secondary)
 
-            Form {
+                    Picker("Filter", selection: $selectedTab) {
+                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                        Text("Remote").tag(ModelSourceTab.remote)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
+            }
+
             Section("Current Selection") {
                 if appState.availableTargets.isEmpty {
                     LabeledContent("Active model") {
@@ -77,9 +85,8 @@ public struct ModelsView: View {
             } else {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
-            }
-            .formStyle(.grouped)
         }
+        .formStyle(.grouped)
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
     }

@@ -38,7 +38,6 @@ public struct HistoryView: View {
                     }
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
             .toolbar {
                 // In the narrow single-column layout, a native toolbar back
                 // button returns to the list — replacing the old in-content
