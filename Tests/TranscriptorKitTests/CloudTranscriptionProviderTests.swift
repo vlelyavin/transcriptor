@@ -304,7 +304,7 @@ final class CloudTranscriptionProviderTests: XCTestCase {
         let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
         XCTAssertTrue(body.contains(#"name="model_id""#))
         XCTAssertTrue(body.contains("scribe_v1"))
-        XCTAssertTrue(body.contains(#"name="language_code""#))
+        // job.language is nil here → no language field is expected.
         XCTAssertFalse(body.contains(#"name="response_format""#))
     }
 
