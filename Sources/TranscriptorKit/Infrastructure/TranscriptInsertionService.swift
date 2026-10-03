@@ -296,10 +296,11 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
     }
 }
 
-// Reading this CF global var is flagged by strict concurrency even though the
-// constant is immutable after framework init; evaluate it once at load, on a
-// nonisolated(unsafe) static, to keep the MainActor method body clean.
-private nonisolated(unsafe) let axPromptOptionKey: String = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+// kAXTrustedCheckOptionPrompt is a CF global var whose reference strict
+// concurrency rejects ("shared mutable state") even from a constant — and its
+// documented value is the literal string below. CFDictionary looks keys up by
+// content, so we use the literal and skip the global entirely.
+private let axPromptOptionKey = "AXTrustedCheckOptionPrompt"
 
 @MainActor
 protocol TranscriptInsertionPlatform {
