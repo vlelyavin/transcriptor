@@ -9,18 +9,18 @@ final class TranscriptionTargetResolverTests: XCTestCase {
         )
         let plan = try resolver.resolve(
             preferences: TranscriptionPreferences(
-                selectedModelID: "whisper-tiny",
+                selectedModelID: "whisper-base-en",
                 autoTranscribeAfterCapture: false,
                 preferredLocalProviderID: "whisperkit-local",
                 preferredProviderID: "whisperkit-local"
             ),
             providerSettings: ProviderSettings(),
-            readyLocalModelIDs: ["whisper-tiny"],
+            readyLocalModelIDs: ["whisper-base-en"],
             providerStatesByID: [:]
         )
 
         XCTAssertEqual(plan.providerID, "whisperkit-local")
-        XCTAssertEqual(plan.modelID, "whisper-tiny")
+        XCTAssertEqual(plan.modelID, "whisper-base-en")
     }
 
     func testPreferredLocalProviderResolvesReadyParakeetModel() throws {
