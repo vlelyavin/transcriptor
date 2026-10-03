@@ -151,6 +151,7 @@ public struct HistoryView: View {
                             .help("Delete this item")
                         }
                         .tag(entry.id)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                         .swipeActions(edge: .trailing) {
                             Button("Delete", role: .destructive) {
                                 entryPendingDeletion = entry
@@ -270,11 +271,11 @@ public struct HistoryView: View {
                 Form {
                     Section {
                         detailHeader(for: entry)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 24, bottom: 4, trailing: 24))
+                            .listRowInsets(EdgeInsets(top: 8, leading: 2, bottom: 4, trailing: 2))
                             .listRowBackground(Color.clear)
 
                         actionBar(for: entry, isCompact: isCompact)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 24, bottom: 8, trailing: 24))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 2, bottom: 8, trailing: 2))
                             .listRowBackground(Color.clear)
                     }
 
