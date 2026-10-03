@@ -181,13 +181,7 @@ public struct SettingsPaneDetailView: View {
             LabeledContent("Total") {
                 Text(megabyteString(for: appState.storageUsage.totalIncludingModelsBytes))
             }
-        } header: {
-            Text("Usage")
-        } footer: {
-            Text("Everything Transcriptor keeps on this Mac. Model cache files can be removed individually from the Models page.")
-        }
 
-        Section {
             Button("Clear History…", role: .destructive) {
                 showClearHistoryConfirmation = true
             }
@@ -204,6 +198,10 @@ public struct SettingsPaneDetailView: View {
             } message: {
                 Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone. Downloaded models are not affected.")
             }
+        } header: {
+            Text("Usage")
+        } footer: {
+            Text("Everything Transcriptor keeps on this Mac. Model cache files can be removed individually from the Models page.")
         }
     }
 

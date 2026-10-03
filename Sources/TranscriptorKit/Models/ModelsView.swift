@@ -59,19 +59,15 @@ public struct ModelsView: View {
                 .disabled(!appState.canEnableAutoTranscribe)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Filter Models")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Picker("Model source", selection: $selectedTab) {
-                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                    Text("Remote").tag(ModelSourceTab.remote)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+            // Same pattern as the History page's "Source" row: the visible
+            // label sits inline to the left of the segmented control, both
+            // directly on the window background — no section row or padding.
+            Picker("Filter", selection: $selectedTab) {
+                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                Text("Remote").tag(ModelSourceTab.remote)
             }
+            .pickerStyle(.segmented)
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets())
 
