@@ -56,14 +56,18 @@ public final class UserNotificationPoster: NotificationPosting, @unchecked Senda
     }
 
     private func requestAuthorizationIfNeeded() async {
-        lock.lock()
-        let alreadyRequested = didRequestAuthorization
-        didRequestAuthorization = true
-        lock.unlock()
-
-        guard !alreadyRequested else {
-            return
+        // NSLock methods are marked unavailable in async contexts; a plain
+        // MainActor-isolated flag is enough here — posts happen on the main
+        // actor via the app state, and a duplicate authorization request is
+        // harmless anyway.
+        await MainActor.run {
+            if didRequestAuthorization {
+                return
+            }
+            didRequestAuthorization = true
+            Task { @MainActor in
+                _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])
+            }
         }
-        _ = try? await center.requestAuthorization(options: [.alert])
     }
 }

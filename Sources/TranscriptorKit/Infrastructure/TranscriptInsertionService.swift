@@ -394,7 +394,8 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         // in Privacy ▸ Accessibility, so a user sent to System Settings finds
         // an empty list and must add Transcriptor by hand. Asking with the
         // prompt option posts the real system alert once and adds the entry.
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [promptKey: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }
 
