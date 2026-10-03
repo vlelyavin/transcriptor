@@ -34,7 +34,21 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        Form {
+        VStack(alignment: .leading, spacing: 0) {
+            // The filter row lives OUTSIDE the grouped Form so it sits
+            // directly on the window background, like the History page's
+            // "Source" row — a Form row would give it a card background.
+            Picker("Filter", selection: $selectedTab) {
+                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                Text("Remote").tag(ModelSourceTab.remote)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+
+            Form {
             Section("Current Selection") {
                 if appState.availableTargets.isEmpty {
                     LabeledContent("Active model") {
@@ -59,25 +73,15 @@ public struct ModelsView: View {
                 .disabled(!appState.canEnableAutoTranscribe)
             }
 
-            // Same pattern as the History page's "Source" row: the visible
-            // label sits inline to the left of the segmented control, both
-            // directly on the window background — no section row or padding.
-            Picker("Filter", selection: $selectedTab) {
-                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                Text("Remote").tag(ModelSourceTab.remote)
-            }
-            .pickerStyle(.segmented)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-
             if selectedTab == .remote {
                 remoteProviderSections
             } else {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
         }
-        .formStyle(.grouped)
+            }
+            .formStyle(.grouped)
+        }
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
     }
