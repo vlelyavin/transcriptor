@@ -11,7 +11,7 @@ public struct ModelsView: View {
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
-    @State private var selectedTab
+    @State private var selectedTab: ModelSourceTab
     @State private var modelPendingDeletion: ModelDescriptor?
     @Bindable private var appState: AppState
 
