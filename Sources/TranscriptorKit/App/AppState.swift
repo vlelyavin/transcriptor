@@ -55,6 +55,12 @@ public final class AppState {
     /// it, so onboarding asks for it alongside Accessibility.
     public var isMicrophoneGranted: Bool { voiceInputController.permissionStatus == .granted }
 
+    /// Dictation cannot work at all without these two permissions: the
+    /// microphone records nothing and the transcript cannot be typed into the
+    /// active app. Both are hard requirements; the guide re-appears on every
+    /// launch until they are granted.
+    public var requiresPermissionsSetup: Bool { requiresAccessibilitySetup || !isMicrophoneGranted }
+
     /// True while either recommended permission or a transcription model is still
     /// missing. Informational only (used by the Overview status); it no longer
     /// blocks dismissing the welcome guide.
@@ -65,10 +71,15 @@ public final class AppState {
     /// normal launch.
     public var suppressSetupGate = false
 
-    /// The welcome guide is shown once, on the very first launch. After the user
-    /// completes (or skips through) it, `hasSeenWelcomeGuide` is set and it never
-    /// auto-presents again — they can still reopen it from Overview.
-    public var shouldAutoPresentWelcomeGuide: Bool { !hasSeenWelcomeGuide && !suppressSetupGate }
+    /// The welcome guide auto-presents on the very first launch, and again on
+    /// any launch where a hard permission (Microphone or Accessibility) is
+    /// missing — dictation silently degrades to clipboard-only without them,
+    /// which reads as a bug, so the app asks up front instead. Once both are
+    /// granted, the guide behaves like before: first launch only, reopenable
+    /// from Overview.
+    public var shouldAutoPresentWelcomeGuide: Bool {
+        !suppressSetupGate && (!hasSeenWelcomeGuide || requiresPermissionsSetup)
+    }
 
     /// Coarse transcription readiness for status surfaces. `.preparing` covers the
     /// brief window after launch while installed models are still being scanned
@@ -270,7 +281,8 @@ public final class AppState {
         transcriptInsertionService: any TranscriptInsertionServing = TranscriptInsertionService(),
         launchAtLoginService: any LaunchAtLoginServing = LaunchAtLoginService(),
         secretStore: any SecretStore = KeychainSecretStore(),
-        notificationPoster: any NotificationPosting = UserNotificationPoster()
+        notificationPoster: any NotificationPosting = UserNotificationPoster(),
+        voiceInputController: VoiceInputController? = nil
     ) {
         let snapshot = preferencesStore.load()
         let recordingMode = RecordingMode(rawValue: snapshot.recordingModeRawValue) ?? .holdToTalk
@@ -280,7 +292,7 @@ public final class AppState {
         )
         let hotkeyManager = GlobalHotkeyManager(configuration: hotkeyConfiguration)
         let recordingOverlayManager = RecordingOverlayManager()
-        let voiceInputController = VoiceInputController(
+        let voiceInputController = voiceInputController ?? VoiceInputController(
             recorder: AudioRecorderService(storage: RecordingStorage(layout: storageLayout)),
             recordingModeProvider: { recordingMode }
         )

@@ -186,6 +186,30 @@ final class AppStateInsertionFlowTests: XCTestCase {
         XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
     }
 
+    func testWelcomeGuideReappearsWhenPermissionLost() throws {
+        let recorder = MockAudioRecorderService()
+        recorder.permissionStatus = .granted
+        let appState = try makeContext(
+            secrets: [:],
+            voiceInputController: VoiceInputController(recorder: recorder)
+        )
+        appState.hasSeenWelcomeGuide = true
+        // Everything granted: guide stays dismissed.
+        XCTAssertFalse(appState.shouldAutoPresentWelcomeGuide)
+
+        // Revoke accessibility -> hard requirement -> guide auto-presents again.
+        insertionService.accessibilityPermissionStatus = .denied
+        appState.refreshAccessibilityPermissionStatus()
+        XCTAssertTrue(appState.shouldAutoPresentWelcomeGuide)
+        insertionService.accessibilityPermissionStatus = .granted
+        appState.refreshAccessibilityPermissionStatus()
+
+        // Revoke microphone -> same story.
+        recorder.permissionStatus = .denied
+        appState.refreshMicrophonePermissionStatus()
+        XCTAssertTrue(appState.shouldAutoPresentWelcomeGuide)
+    }
+
     func testTranscriptionReadinessNeedsModelWhenNothingConfigured() throws {
         let appState = try makeContext(secrets: [:]).appState
         // Force the launch scan to be considered complete.
@@ -405,7 +429,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         return context
     }
 
-    private func makeContext(secrets: [String: String]) throws -> Context {
+    private func makeContext(
+        secrets: [String: String],
+        voiceInputController: VoiceInputController? = nil
+    ) throws -> Context {
         let rootDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("AppStateInsertionFlowTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
@@ -432,7 +459,8 @@ final class AppStateInsertionFlowTests: XCTestCase {
             transcriptInsertionService: insertionService,
             launchAtLoginService: StubLaunchAtLoginService(),
             secretStore: InMemoryFlowSecretStore(secrets: secrets),
-            notificationPoster: notificationPoster
+            notificationPoster: notificationPoster,
+            voiceInputController: voiceInputController
         )
 
         return Context(
