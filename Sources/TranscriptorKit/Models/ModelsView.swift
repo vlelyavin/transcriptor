@@ -63,21 +63,16 @@ public struct ModelsView: View {
             // Filter strip: label on the left, tabs right after it — no
             // card, no background, no inner box. Sits under "Current
             // Selection" and scrolls away with the page (not sticky).
-            HStack(spacing: 10) {
-                Text("Filter")
-                    .foregroundStyle(.secondary)
-
-                Picker("Filter", selection: $selectedTab) {
-                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                    Text("Remote").tag(ModelSourceTab.remote)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+            Picker("Filter", selection: $selectedTab) {
+                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                Text("Remote").tag(ModelSourceTab.remote)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
+            .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 10, trailing: 20))
             .listRowSeparator(.hidden)
 
             if selectedTab == .remote {

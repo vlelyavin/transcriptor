@@ -133,7 +133,7 @@ public struct HistoryView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 8, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 4, trailing: 20))
                         .listRowSeparator(.hidden)
 
                         HStack {
@@ -157,7 +157,7 @@ public struct HistoryView: View {
                             }
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 20))
                         .listRowSeparator(.hidden)
                     }
 
