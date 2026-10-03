@@ -7,9 +7,7 @@ final class ModelCatalogTests: XCTestCase {
 
         XCTAssertEqual(catalog.sections.map(\.id), ["whisper", "parakeet"])
         XCTAssertEqual(catalog.whisperModels.map(\.id), [
-            "whisper-tiny",
             "whisper-base-en",
-            "whisper-small-en",
             "whisper-large-v3-turbo",
             "whisper-distil-large-v3",
         ])

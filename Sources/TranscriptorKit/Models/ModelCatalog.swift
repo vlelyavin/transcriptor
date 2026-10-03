@@ -117,25 +117,6 @@ public struct ModelCatalog: Equatable, Sendable {
                 description: "Whisper-family speech models that run entirely on this Mac. Downloaded files are kept in Transcriptor-managed local storage.",
                 models: [
                     ModelDescriptor(
-                        id: "whisper-tiny",
-                        name: "Tiny",
-                        family: "Whisper",
-                        localProviderID: "whisperkit-local",
-                        engineLabel: "WhisperKit",
-                        notes: "Fastest local model for quick capture and debugging.",
-                        downloadSizeDescription: "~66 MB",
-                        speedDescription: "Fastest",
-                        accuracyDescription: "Good",
-                        intendedUseLabel: "Draft dictation",
-                        languageScopeLabel: "Multilingual",
-                        remoteVariantName: "openai_whisper-tiny",
-                        approximateDownloadBytes: 66 * 1_048_576,
-                        supportsLocalTranscription: true,
-                        availability: .available(
-                            note: "Downloadable and runnable locally with WhisperKit."
-                        )
-                    ),
-                    ModelDescriptor(
                         id: "whisper-base-en",
                         name: "Base (English)",
                         family: "Whisper",
@@ -149,25 +130,6 @@ public struct ModelCatalog: Equatable, Sendable {
                         languageScopeLabel: "English",
                         remoteVariantName: "openai_whisper-base.en",
                         approximateDownloadBytes: 105 * 1_048_576,
-                        supportsLocalTranscription: true,
-                        availability: .available(
-                            note: "Downloadable and runnable locally with WhisperKit."
-                        )
-                    ),
-                    ModelDescriptor(
-                        id: "whisper-small-en",
-                        name: "Small (English)",
-                        family: "Whisper",
-                        localProviderID: "whisperkit-local",
-                        engineLabel: "WhisperKit",
-                        notes: "Better English accuracy while staying practical for laptops.",
-                        downloadSizeDescription: "~217 MB",
-                        speedDescription: "Balanced",
-                        accuracyDescription: "Great",
-                        intendedUseLabel: "Longer English notes",
-                        languageScopeLabel: "English",
-                        remoteVariantName: "openai_whisper-small.en_217MB",
-                        approximateDownloadBytes: 217 * 1_048_576,
                         supportsLocalTranscription: true,
                         availability: .available(
                             note: "Downloadable and runnable locally with WhisperKit."
