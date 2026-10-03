@@ -91,8 +91,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
 
         XCTAssertNil(appState.overlaySupplementalPhase)
-        XCTAssertEqual(await context.notificationPoster.clipboardFallbackPreviews, ["Preview me"])
-        XCTAssertTrue(await context.notificationPoster.failureMessages.isEmpty)
+        let fallbackPreviews = await context.notificationPoster.clipboardFallbackPreviews
+        XCTAssertEqual(fallbackPreviews, ["Preview me"])
+        let failureMessages = await context.notificationPoster.failureMessages
+        XCTAssertTrue(failureMessages.isEmpty)
     }
 
     func testFailedTranscriptionPostsFailureNotification() async throws {
@@ -110,7 +112,8 @@ final class AppStateInsertionFlowTests: XCTestCase {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        XCTAssertEqual(await context.notificationPoster.failureMessages, ["boom"])
+        let failureMessages = await context.notificationPoster.failureMessages
+        XCTAssertEqual(failureMessages, ["boom"])
     }
 
     func testCancelledTranscriptionStaysSilent() async throws {
@@ -127,7 +130,8 @@ final class AppStateInsertionFlowTests: XCTestCase {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        XCTAssertTrue(await context.notificationPoster.failureMessages.isEmpty)
+        let failureMessages = await context.notificationPoster.failureMessages
+        XCTAssertTrue(failureMessages.isEmpty)
         XCTAssertNil(appState.overlaySupplementalPhase)
     }
 
