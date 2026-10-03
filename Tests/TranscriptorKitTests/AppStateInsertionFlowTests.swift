@@ -91,8 +91,8 @@ final class AppStateInsertionFlowTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
 
         XCTAssertNil(appState.overlaySupplementalPhase)
-        XCTAssertEqual(context.notificationPoster.clipboardFallbackPreviews, ["Preview me"])
-        XCTAssertTrue(context.notificationPoster.failureMessages.isEmpty)
+        XCTAssertEqual(await context.notificationPoster.clipboardFallbackPreviews, ["Preview me"])
+        XCTAssertTrue(await context.notificationPoster.failureMessages.isEmpty)
     }
 
     func testFailedTranscriptionPostsFailureNotification() async throws {
@@ -110,7 +110,7 @@ final class AppStateInsertionFlowTests: XCTestCase {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        XCTAssertEqual(context.notificationPoster.failureMessages, ["boom"])
+        XCTAssertEqual(await context.notificationPoster.failureMessages, ["boom"])
     }
 
     func testCancelledTranscriptionStaysSilent() async throws {
@@ -127,7 +127,7 @@ final class AppStateInsertionFlowTests: XCTestCase {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        XCTAssertTrue(context.notificationPoster.failureMessages.isEmpty)
+        XCTAssertTrue(await context.notificationPoster.failureMessages.isEmpty)
         XCTAssertNil(appState.overlaySupplementalPhase)
     }
 
@@ -491,33 +491,16 @@ private final class StubLaunchAtLoginService: LaunchAtLoginServing {
     func openSystemSettings() {}
 }
 
-private final class MockNotificationPoster: NotificationPosting, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _clipboardFallbackPreviews: [String] = []
-    private var _failureMessages: [String] = []
-
-    var clipboardFallbackPreviews: [String] {
-        lock.lock()
-        defer { lock.unlock() }
-        return _clipboardFallbackPreviews
-    }
-
-    var failureMessages: [String] {
-        lock.lock()
-        defer { lock.unlock() }
-        return _failureMessages
-    }
+private actor MockNotificationPoster: NotificationPosting {
+    private(set) var clipboardFallbackPreviews: [String] = []
+    private(set) var failureMessages: [String] = []
 
     func postClipboardFallbackNotification(transcriptPreview: String) async {
-        lock.lock()
-        _clipboardFallbackPreviews.append(transcriptPreview)
-        lock.unlock()
+        clipboardFallbackPreviews.append(transcriptPreview)
     }
 
     func postTranscriptionFailureNotification(message: String) async {
-        lock.lock()
-        _failureMessages.append(message)
-        lock.unlock()
+        failureMessages.append(message)
     }
 }
 
