@@ -116,126 +116,133 @@ public struct HistoryView: View {
     }
 
     private func historyListPane(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerControls(isCompact: isCompact)
-
-            Group {
-                if filteredEntries.isEmpty {
-                    emptyState
-                } else {
-                    List(filteredEntries, selection: isCompact ? .constant(nil) : $selectedEntryID) { entry in
-                        HStack(spacing: 8) {
-                            Button {
-                                selectedEntryID = entry.id
-                                if isCompact {
-                                    isCompactDetailVisible = true
-                                }
-                            } label: {
-                                historyRow(entry)
-                                    .contentShape(Rectangle())
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            // A trailing delete affordance so an item can be
-                            // removed directly from the list (not only via the
-                            // context menu or the detail "More…" menu). Routes
-                            // through the same confirmation alert.
-                            Button {
-                                entryPendingDeletion = entry
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                            .help("Delete this item")
-                        }
-                        .tag(entry.id)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
-                        .swipeActions(edge: .trailing) {
-                            Button("Delete", role: .destructive) {
-                                entryPendingDeletion = entry
+        Group {
+            if filteredEntries.isEmpty {
+                emptyState
+            } else {
+                List(selection: isCompact ? .constant(nil) : $selectedEntryID) {
+                    // The filter strip lives INSIDE the list so it scrolls
+                    // with the content — static in the layout, never pinned
+                    // under the toolbar. No card, no separators.
+                    Section {
+                        Picker("Source", selection: $selectedFilter) {
+                            ForEach(HistoryFilter.allCases) { filter in
+                                Text(filter.title).tag(filter)
                             }
                         }
-                        .contextMenu {
-                            if canTriggerTranscription(for: entry) {
-                                Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
-                                    appState.transcribe(entry)
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 8, trailing: 20))
+                        .listRowSeparator(.hidden)
+
+                        HStack {
+                            if let historyActionMessage = appState.historyActionMessage {
+                                Text(historyActionMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if !isCompact {
+                                Button("Delete All", role: .destructive) {
+                                    showDeleteAllConfirmation = true
                                 }
-                            } else if !appState.isTranscriptionConfigured {
-                                Button("Set Up Transcription…") {
-                                    appState.selectedScreen = .models
-                                }
+                                .disabled(appState.historyStore.entries.isEmpty)
                             }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
+                        .listRowSeparator(.hidden)
+                    }
 
-                            if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
-                                Button("Cancel Transcription") {
-                                    appState.cancelTranscription(for: entry)
-                                }
-                            }
-
-                            Button("Play / Pause") {
-                                appState.togglePlayback(for: entry)
-                            }
-                            .disabled(!hasPlayableAudioFile(entry))
-
-                            Button("Copy Transcript") {
-                                appState.copyTranscript(for: entry)
-                            }
-                            .disabled(!entry.canCopyTranscript)
-
-                            Button("Export Transcript") {
-                                appState.exportTranscript(for: entry)
-                            }
-                            .disabled(!entry.canExportTranscript)
-
-                            Divider()
-
-                            Button("Delete", role: .destructive) {
-                                entryPendingDeletion = entry
-                            }
+                    Section {
+                        ForEach(filteredEntries) { entry in
+                            historyListRow(entry, isCompact: isCompact)
+                                .tag(entry.id)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
                         }
                     }
-                    .listStyle(.inset(alternatesRowBackgrounds: false))
                 }
+                .listStyle(.inset(alternatesRowBackgrounds: false))
             }
-            .searchable(text: $searchText, prompt: "Search transcripts or filenames")
         }
+        .searchable(text: $searchText, prompt: "Search transcripts or filenames")
     }
 
-    private func headerControls(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Source", selection: $selectedFilter) {
-                ForEach(HistoryFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
+    /// One history list row: opens the entry on tap, with a trailing delete
+    /// affordance (same confirmation dialog as the context menu).
+    private func historyListRow(_ entry: HistoryEntry, isCompact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                selectedEntryID = entry.id
+                if isCompact {
+                    isCompactDetailVisible = true
                 }
+            } label: {
+                historyRow(entry)
+                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .pickerStyle(.segmented)
+            .buttonStyle(.plain)
 
-            HStack {
-                if let historyActionMessage = appState.historyActionMessage {
-                    Text(historyActionMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if !isCompact {
-                    Button("Delete All", role: .destructive) {
-                        showDeleteAllConfirmation = true
-                    }
-                    .disabled(appState.historyStore.entries.isEmpty)
-                }
+            Button {
+                entryPendingDeletion = entry
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Delete this item")
+        }
+        .swipeActions(edge: .trailing) {
+            Button("Delete", role: .destructive) {
+                entryPendingDeletion = entry
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .contextMenu {
+            if canTriggerTranscription(for: entry) {
+                Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
+                    appState.transcribe(entry)
+                }
+            } else if !appState.isTranscriptionConfigured {
+                Button("Set Up Transcription…") {
+                    appState.selectedScreen = .models
+                }
+            }
+
+            if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
+                Button("Cancel Transcription") {
+                    appState.cancelTranscription(for: entry)
+                }
+            }
+
+            Button("Play / Pause") {
+                appState.togglePlayback(for: entry)
+            }
+            .disabled(!hasPlayableAudioFile(entry))
+
+            Button("Copy Transcript") {
+                appState.copyTranscript(for: entry)
+            }
+            .disabled(!entry.canCopyTranscript)
+
+            Button("Export Transcript") {
+                appState.exportTranscript(for: entry)
+            }
+            .disabled(!entry.canExportTranscript)
+
+            Divider()
+
+            Button("Delete", role: .destructive) {
+                entryPendingDeletion = entry
+            }
+        }
     }
 
     @ViewBuilder

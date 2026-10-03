@@ -36,27 +36,6 @@ public struct ModelsView: View {
 
     public var body: some View {
         Form {
-            // Filter strip: a plain non-card row directly under the top
-            // section, like the History page's "Source" strip — it scrolls
-            // with the content instead of sticking under the toolbar.
-            Section {
-                HStack(spacing: 12) {
-                    Text("Filter")
-                        .foregroundStyle(.secondary)
-
-                    Picker("Filter", selection: $selectedTab) {
-                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                        Text("Remote").tag(ModelSourceTab.remote)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
-            }
-
             Section("Current Selection") {
                 if appState.availableTargets.isEmpty {
                     LabeledContent("Active model") {
@@ -80,6 +59,26 @@ public struct ModelsView: View {
                 )
                 .disabled(!appState.canEnableAutoTranscribe)
             }
+
+            // Filter strip: label on the left, tabs right after it — no
+            // card, no background, no inner box. Sits under "Current
+            // Selection" and scrolls away with the page (not sticky).
+            HStack(spacing: 10) {
+                Text("Filter")
+                    .foregroundStyle(.secondary)
+
+                Picker("Filter", selection: $selectedTab) {
+                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                    Text("Remote").tag(ModelSourceTab.remote)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
+            .listRowSeparator(.hidden)
 
             if selectedTab == .remote {
                 remoteProviderSections
