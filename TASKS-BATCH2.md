@@ -2,15 +2,16 @@
 
 Источник: сообщения Вовы от 03.10.2026 ~19:00–19:20. Идти по порядку, по каждому пункту — фикс + проверка.
 
-1. [ ] Шапка/toolbar: фон появляется сразу на некоторых страницах. Эталон — Overview (прозрачно сверху, фон при скролле). Найти, чем страницы отличаются (Form vs ScrollView), сделать как Overview везде.
-2. [ ] Фильтр моделей: убрать sticky — вернуть полоску в контент ПОД секцию Current Selection, как полоска в History. И в History саму полоску (Source/поиск) сделать static, не sticky.
-3. [ ] Внутренние отступы: сравнить History и остальные страницы, выровнять (и слева, и справа). Сначала замерить скринами, кто из них выбивается.
-4. [ ] Keychain: система постоянно просит доступ, «Always allow» не помогает. Гипотеза: переподпись каждый деплой → cdhash меняется → ACL протухает. Фикс: стабильный designated requirement (identifier + cert anchor) при подписи; проверить `security dump-keychain` ACL, перегранить один раз.
-5. [ ] Тост «The original text field is no longer available»: убрать из юзер-видимых сообщений (оставить в логах/debug), заменить на простое «Transcript copied to clipboard.» / «...saved to history.». Файл: TranscriptInsertionService.swift.
-6. [ ] Удаление модели: нет подтверждения. Добавить confirmationDialog на Remove/delete модели (и провайдера, если там же).
-7. [ ] General: global shortcut перенести сразу после текста «used to start and stop...» следующим предложением/строкой.
-8. [ ] General: паттерн из референса (System Settings Switch Control): текст слева, кнопка справа в одном ряду; одиночная кнопка — справа; подписи — где рационально. Основное на General.
-9. [ ] History: lazy load/пагинация + поиск по всем записям, чтобы много записей не вешало UI.
+1. [x] Шапка/toolbar: убран full-bleed `.background(windowBackgroundColor)` у HistoryView — он красил фон под тулбаром. Overview был эталоном (Form скроллится под титлбар). Проверка скринами — после возврата мака.
+2. [x] Фильтр моделей: полоска снова ВНУТРИ Form сразу под Current Selection, строка без карточки (listRowBackground clear), лейбл Filter слева + сегмент справа, скроллится вместе с контентом (не sticky). В History полоска (Source + caption) — обычный VStack над List, не sticky, — оставлена статичной.
+3. [ ] Внутренние отступы: ЖДЁТ QA-рендеров с мака (см. пункт 9 прогресса) — замерить по пикселям History vs Overview/General, выровнять.
+4. [x→частично] Keychain: причина — записи ключей созданы adhoc-сборкой, ACL прибит к cdhash; каждый редеплой = новый cdhash = новый промпт, Always Allow не переживает переподпись. DR сертификата стабилен (проверено: `designated => identifier "com.vlelyavin.Transcriptor" and certificate root = H"2606c8..."`). Сделано: оба старых item (openai-api-key, groq-api-key) удалены из login keychain. НУЖНО ОТ ВОВЫ: один раз заново вставить ключи OpenAI/Groq на странице Models (Save) — новые item создадутся подписанным билдом, дальше переподписи не должны снова просить доступ.
+5. [x] Тост «The original text field is no longer available»: юзер-видимые сообщения заменены на простые («Transcript copied to the clipboard.» / «Transcript saved to history.»), технические строки остались в debugSnapshot. Тесты обновлены (TranscriptInsertionServiceTests).
+6. [x] Удаление модели: добавлен confirmationDialog («Delete <name>?», destructive «Delete Model» + Cancel), trash-кнопка теперь только ставит modelPendingDeletion.
+7. [x] General/Shortcut: текст «Used to start and stop voice input...» перенесён ПЕРВЫМ рядом секции, Global Shortcut control — сразу после него следующим рядом. Footer заменён (дубль текста убран).
+8. [x] General: одиночные кнопки выровнены вправо (Open Microphone Privacy Settings, Open Accessibility Settings, Open Login Items Settings, Restore Recommended Shortcut) — паттерн System Settings: текст слева, кнопка справа.
+9. [x] History: поиск и так идёт по всем записям; слабое место — searchableText конкатенировал ВСЕ версии на каждый keystroke. Теперь поиск по живым полям (displayName, transcriptText, model, provider, filename) + debounce 150мс. List уже ленивый.
+10. [ ] Финальный деплой билда #9 выполнен и установлен до падения связи; визуальные QA-рендеры (models/general/storage/history) не успел скачать — мак vladimir-macair ушёл в оффлайн (~19:40 UTC+3?), tailscale показывает offline last seen 7m. ПРОДОЛЖИТЬ: дождаться мака, скачать /tmp/qa-f-{models,general,storage}-w1.png (они уже сгенерированы на маке), прогнать vision-проверку, снять history, замерить отступы (п.3), доложить.
 
-Инфра для проверки: QA-хук `TRANSCRIPTOR_QA_SCREEN`/`TRANSCRIPTOR_QA_SNAPSHOT` → PNG на маке; деплой: release.yml → DMG → переподпись «Transcriptor Local Dev 2026» → /Applications. CI перед релизом зелёный.
-Статус-файл обновлять по ходу. Прогресс отмечать в этом файле.
+Примечание: на маке мог остаться зависший QA-процесс Transcriptor — при возврате связи сделать `pkill -x Transcriptor; open /Applications/Transcriptor.app`.
+

@@ -232,7 +232,7 @@ public struct HistoryView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 28)
         .padding(.top, 12)
         .padding(.bottom, 8)
     }
@@ -270,11 +270,11 @@ public struct HistoryView: View {
                 Form {
                     Section {
                         detailHeader(for: entry)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 2, bottom: 4, trailing: 2))
+                            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 4, trailing: 12))
                             .listRowBackground(Color.clear)
 
                         actionBar(for: entry, isCompact: isCompact)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 2, bottom: 8, trailing: 2))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
                             .listRowBackground(Color.clear)
                     }
 
