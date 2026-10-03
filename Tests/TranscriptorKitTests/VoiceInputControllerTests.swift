@@ -20,7 +20,10 @@ final class VoiceInputControllerTests: XCTestCase {
         }
         await Task.yield()
 
-        XCTAssertEqual(controller.state, .pendingTranscription)
+        // The debounced release is still inside its grace window here, so
+        // the recording is still live.
+        XCTAssertEqual(controller.state, .recording)
+
         await sleepGate.release()
         await stopTask.value
         XCTAssertEqual(controller.state, .idle)
@@ -91,16 +94,18 @@ final class VoiceInputControllerTests: XCTestCase {
         await controller.handleHotkeyPressed()
         let stopTask = Task { await controller.handleHotkeyReleased() }
         await Task.yield()
+        // Release is debounced: still recording until the grace window ends.
+        XCTAssertEqual(controller.state, .recording)
+
+        // Let the grace window and the pending flash elapse (one gate
+        // release passes every waiter).
+        await sleepGate.release()
+        await stopTask.value
         XCTAssertEqual(controller.state, .pendingTranscription)
 
         await controller.handleHotkeyPressed()
         XCTAssertEqual(controller.state, .recording)
         XCTAssertEqual(recorder.startCallCount, 2)
-
-        await sleepGate.release()
-        await stopTask.value
-        // The finished flash must not knock the new recording back to idle.
-        XCTAssertEqual(controller.state, .recording)
     }
 
     func testPermissionFailureTransitionsToFailedState() async {

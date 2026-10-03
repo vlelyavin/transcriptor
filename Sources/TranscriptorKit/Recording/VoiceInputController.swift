@@ -32,8 +32,9 @@ public final class VoiceInputController {
     /// the prompt resolves — if the key is already up, hold-to-talk must not
     /// begin a recording the user has already let go of.
     private var hotkeyCurrentlyDown = false
-    /// Pending debounced stop for a hotkey release (see handleHotkeyReleased).
-    private var hotkeyReleaseDebounce: Task<Void, Never>?
+    /// Bumped on every press; a release only stops recording if the epoch
+    /// is unchanged after its grace period (see handleHotkeyReleased).
+    private var hotkeyEpoch: UInt64 = 0
     private var failureResetTask: Task<Void, Never>?
 
     /// Captures shorter than this are accidental taps of the shortcut: no
@@ -149,9 +150,9 @@ public final class VoiceInputController {
         hotkeyCurrentlyDown = true
         log.notice("hotkey pressed: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
         // A press inside the release grace window means the combo never
-        // actually left the user's fingers — keep the same recording going.
-        hotkeyReleaseDebounce?.cancel()
-        hotkeyReleaseDebounce = nil
+        // actually left the user's fingers — bump the epoch so the pending
+        // debounced stop is cancelled and recording continues seamlessly.
+        hotkeyEpoch &+= 1
         switch recordingModeProvider() {
         case .holdToTalk:
             await startRecordingIfNeeded()
@@ -173,15 +174,16 @@ public final class VoiceInputController {
 
         // A brief modifier wobble while holding the combo (e.g. ⌥ or D slips
         // for a frame) delivers a phantom release and splits one utterance
-        // into "first part inserts, second part follows". Debounce: schedule
-        // the stop a moment out; a press inside the window cancels it and
-        // recording continues seamlessly.
-        let graceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
-            await self?.stopRecordingIfNeeded()
+        // into "first part inserts, second part follows". Debounce: wait a
+        // short grace period, then stop only if no press arrived meanwhile
+        // (the press bumps the epoch, cancelling the pending stop).
+        let epochAtRelease = hotkeyEpoch
+        await sleep(.milliseconds(350))
+        guard hotkeyEpoch == epochAtRelease else {
+            return
         }
-        hotkeyReleaseDebounce = graceTask
+
+        await stopRecordingIfNeeded()
     }
 
     public func cancelRecording() async {
