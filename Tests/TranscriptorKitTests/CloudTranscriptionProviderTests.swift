@@ -264,49 +264,6 @@ final class CloudTranscriptionProviderTests: XCTestCase {
         try Data([0x00, 0x01, 0x02, 0x03]).write(to: audioURL)
         return audioURL
     }
-}
-
-private final class MockHTTPDataLoader: HTTPDataLoading, @unchecked Sendable {
-    struct StubbedResponse: Sendable {
-        let data: Data
-        let response: HTTPURLResponse
-    }
-
-    private(set) var requests: [URLRequest] = []
-    var responses: [StubbedResponse] = []
-
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        requests.append(request)
-        guard !responses.isEmpty else {
-            throw URLError(.badServerResponse)
-        }
-
-        let next = responses.removeFirst()
-        return (next.data, next.response)
-    }
-}
-
-private struct InMemorySecretStore: SecretStore {
-    var secrets: [String: String] = [:]
-
-    func secret(for account: String) throws -> String? {
-        secrets[account]
-    }
-
-    func saveSecret(_ secret: String, for account: String) throws {
-        _ = (secret, account)
-        throw SecretStoreError.unexpectedStatus(errSecParam)
-    }
-
-    func deleteSecret(for account: String) throws {
-        _ = account
-        throw SecretStoreError.unexpectedStatus(errSecParam)
-    }
-
-    func containsSecret(for account: String) throws -> Bool {
-        secrets[account] != nil
-    }
-
     func testElevenLabsDialectUsesScribeEndpointAndHeaderNames() async throws {
         let loader = MockHTTPDataLoader()
         loader.responses = [
@@ -350,4 +307,48 @@ private struct InMemorySecretStore: SecretStore {
         XCTAssertTrue(body.contains(#"name="language_code""#))
         XCTAssertFalse(body.contains(#"name="response_format""#))
     }
+
+}
+
+private final class MockHTTPDataLoader: HTTPDataLoading, @unchecked Sendable {
+    struct StubbedResponse: Sendable {
+        let data: Data
+        let response: HTTPURLResponse
+    }
+
+    private(set) var requests: [URLRequest] = []
+    var responses: [StubbedResponse] = []
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        requests.append(request)
+        guard !responses.isEmpty else {
+            throw URLError(.badServerResponse)
+        }
+
+        let next = responses.removeFirst()
+        return (next.data, next.response)
+    }
+}
+
+private struct InMemorySecretStore: SecretStore {
+    var secrets: [String: String] = [:]
+
+    func secret(for account: String) throws -> String? {
+        secrets[account]
+    }
+
+    func saveSecret(_ secret: String, for account: String) throws {
+        _ = (secret, account)
+        throw SecretStoreError.unexpectedStatus(errSecParam)
+    }
+
+    func deleteSecret(for account: String) throws {
+        _ = account
+        throw SecretStoreError.unexpectedStatus(errSecParam)
+    }
+
+    func containsSecret(for account: String) throws -> Bool {
+        secrets[account] != nil
+    }
+
 }
