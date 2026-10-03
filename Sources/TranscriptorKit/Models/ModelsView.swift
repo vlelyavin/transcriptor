@@ -59,13 +59,21 @@ public struct ModelsView: View {
                 .disabled(!appState.canEnableAutoTranscribe)
             }
 
-            Picker("Model source", selection: $selectedTab) {
-                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                Text("Remote").tag(ModelSourceTab.remote)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Filter Models")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Picker("Model source", selection: $selectedTab) {
+                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                    Text("Remote").tag(ModelSourceTab.remote)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
 
             if selectedTab == .remote {
                 remoteProviderSections
@@ -114,7 +122,8 @@ public struct ModelsView: View {
                 provider: openAI,
                 modelID: $appState.providerSettings.openAIModelID,
                 privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                apiKeyInput: $openAIAPIKeyInput
+                apiKeyInput: $openAIAPIKeyInput,
+                sectionHeader: "Remote Providers"
             )
         }
 
@@ -254,7 +263,8 @@ public struct ModelsView: View {
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
         apiKeyInput: Binding<String>,
-        baseURL: Binding<String>? = nil
+        baseURL: Binding<String>? = nil,
+        sectionHeader: String? = nil
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
@@ -376,6 +386,10 @@ public struct ModelsView: View {
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            if let sectionHeader {
+                Text(sectionHeader)
             }
         } footer: {
             Text(provider.summary)

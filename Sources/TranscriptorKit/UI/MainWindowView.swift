@@ -134,6 +134,12 @@ public struct MainWindowView: View {
     /// material as the list (a single unified shade).
     private var sidebarSearchField: some View {
         NativeSearchField(text: $sidebarSearchText, placeholder: "Search")
+            // Stretch to the sidebar width with System Settings' 10pt margins
+            // and match its 28pt field height — the bare NSViewRepresentable
+            // kept its intrinsic ~200x24 size, visibly narrower than the real
+            // System Settings search.
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
