@@ -66,6 +66,7 @@ public struct SettingsPaneDetailView: View {
             Button("Open Microphone Privacy Settings") {
                 appState.openMicrophonePrivacySettings()
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             LabeledContent("Accessibility") {
                 Text(appState.accessibilityPermissionStatus.rawValue)
@@ -74,6 +75,7 @@ public struct SettingsPaneDetailView: View {
             Button("Open Accessibility Settings") {
                 appState.openAccessibilityPrivacySettings()
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Permissions")
         } footer: {
@@ -120,6 +122,7 @@ public struct SettingsPaneDetailView: View {
             Button("Open Login Items Settings") {
                 appState.openLoginItemsSettings()
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Application")
         } footer: {
@@ -130,6 +133,12 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var shortcutSection: some View {
         Section {
+            // The explainer leads the section; the control follows it like
+            // the next sentence of the same text.
+            Text("Used to start and stop voice input while Transcriptor is running.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
             LabeledContent("Global Shortcut") {
                 HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
             }
@@ -153,10 +162,11 @@ public struct SettingsPaneDetailView: View {
             Button("Restore Recommended Shortcut") {
                 appState.resetHotkeyToRecommendedDefault()
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Shortcut")
         } footer: {
-            Text("Used to start and stop voice input while Transcriptor is running.")
+            Text("Avoid conflicts with apps that register global shortcuts — the recorder warns about the obvious ones.")
         }
     }
 

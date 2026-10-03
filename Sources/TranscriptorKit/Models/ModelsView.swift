@@ -11,7 +11,8 @@ public struct ModelsView: View {
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
-    @State private var selectedTab: ModelSourceTab
+    @State private var selectedTab
+    @State private var modelPendingDeletion: ModelDescriptor?: ModelSourceTab
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
@@ -87,6 +88,26 @@ public struct ModelsView: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Delete \(modelPendingDeletion?.name ?? "model")?",
+            isPresented: Binding(
+                get: { modelPendingDeletion != nil },
+                set: { if !$0 { modelPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Model", role: .destructive) {
+                if let model = modelPendingDeletion {
+                    delete(model)
+                }
+                modelPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                modelPendingDeletion = nil
+            }
+        } message: {
+            Text("The downloaded files for this model are removed from this Mac. You can download it again later.")
+        }
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
     }
@@ -217,7 +238,7 @@ public struct ModelsView: View {
 
             if canDelete(state) {
                 Button {
-                    delete(model)
+                    modelPendingDeletion = model
                 } label: {
                     Image(systemName: "trash")
                 }

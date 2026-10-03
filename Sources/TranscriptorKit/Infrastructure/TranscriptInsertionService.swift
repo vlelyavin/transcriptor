@@ -142,8 +142,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
             return finish(copyOrSaveOnly(
                 text: text,
                 settings: settings,
-                copiedMessage: "The original text field is no longer available. Transcript copied to the clipboard.",
-                savedMessage: "The original text field is no longer available. Transcript saved to history."
+                copiedMessage: "Transcript copied to the clipboard.",
+                savedMessage: "Transcript saved to history."
             ))
         }
 
@@ -164,8 +164,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
             return finish(copyOrSaveOnly(
                 text: text,
                 settings: settings,
-                copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                savedMessage: "The original app is no longer available. Transcript saved to history."
+                copiedMessage: "Transcript copied to the clipboard.",
+                savedMessage: "Transcript saved to history."
             ))
         }
 
@@ -194,8 +194,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 return finish(copyOrSaveOnly(
                     text: text,
                     settings: settings,
-                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                    copiedMessage: "Transcript copied to the clipboard.",
+                    savedMessage: "Transcript saved to history."
                 ))
             case .secureField:
                 debugSnapshot.targetSummary = "Secure text field detected."
@@ -232,8 +232,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 return finish(copyOrSaveOnly(
                     text: text,
                     settings: settings,
-                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                    copiedMessage: "Transcript copied to the clipboard.",
+                    savedMessage: "Transcript saved to history."
                 ))
             case .secureField:
                 debugSnapshot.targetSummary = "Secure text field detected."
