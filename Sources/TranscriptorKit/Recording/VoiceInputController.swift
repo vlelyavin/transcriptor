@@ -32,6 +32,8 @@ public final class VoiceInputController {
     /// the prompt resolves — if the key is already up, hold-to-talk must not
     /// begin a recording the user has already let go of.
     private var hotkeyCurrentlyDown = false
+    /// Pending debounced stop for a hotkey release (see handleHotkeyReleased).
+    private var hotkeyReleaseDebounce: Task<Void, Never>?
     private var failureResetTask: Task<Void, Never>?
 
     /// Captures shorter than this are accidental taps of the shortcut: no
@@ -146,6 +148,10 @@ public final class VoiceInputController {
     public func handleHotkeyPressed() async {
         hotkeyCurrentlyDown = true
         log.notice("hotkey pressed: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
+        // A press inside the release grace window means the combo never
+        // actually left the user's fingers — keep the same recording going.
+        hotkeyReleaseDebounce?.cancel()
+        hotkeyReleaseDebounce = nil
         switch recordingModeProvider() {
         case .holdToTalk:
             await startRecordingIfNeeded()
@@ -165,7 +171,17 @@ public final class VoiceInputController {
             return
         }
 
-        await stopRecordingIfNeeded()
+        // A brief modifier wobble while holding the combo (e.g. ⌥ or D slips
+        // for a frame) delivers a phantom release and splits one utterance
+        // into "first part inserts, second part follows". Debounce: schedule
+        // the stop a moment out; a press inside the window cancels it and
+        // recording continues seamlessly.
+        let graceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.stopRecordingIfNeeded()
+        }
+        hotkeyReleaseDebounce = graceTask
     }
 
     public func cancelRecording() async {
