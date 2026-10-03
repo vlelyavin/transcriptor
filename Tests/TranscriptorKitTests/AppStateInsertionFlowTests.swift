@@ -88,11 +88,10 @@ final class AppStateInsertionFlowTests: XCTestCase {
         entry.transcriptionStatus = .completed
         appState.handleCompletedTranscription(for: entry)
 
-        try await Task.sleep(for: .milliseconds(100))
-
+        try await waitUntil {
+            await context.notificationPoster.clipboardFallbackPreviews == ["Preview me"]
+        }
         XCTAssertNil(appState.overlaySupplementalPhase)
-        let fallbackPreviews = await context.notificationPoster.clipboardFallbackPreviews
-        XCTAssertEqual(fallbackPreviews, ["Preview me"])
         let failureMessages = await context.notificationPoster.failureMessages
         XCTAssertTrue(failureMessages.isEmpty)
     }
@@ -110,10 +109,9 @@ final class AppStateInsertionFlowTests: XCTestCase {
         appState.historyStore.entries[0].transcriptionStatus = .failed
         appState.handleFailedTranscription(for: entry.id, message: "boom")
 
-        try await Task.sleep(for: .milliseconds(100))
-
-        let failureMessages = await context.notificationPoster.failureMessages
-        XCTAssertEqual(failureMessages, ["boom"])
+        try await waitUntil {
+            await context.notificationPoster.failureMessages == ["boom"]
+        }
     }
 
     func testCancelledTranscriptionStaysSilent() async throws {
@@ -470,6 +468,24 @@ final class AppStateInsertionFlowTests: XCTestCase {
             notificationPoster: notificationPoster,
             rootDirectory: rootDirectory
         )
+    }
+
+
+    /// Polls `condition` until it holds or ~2s elapse. Notification posting
+    /// hops through task boundaries; a fixed 100ms sleep was flaky on loaded
+    /// CI runners (one assertion saw an empty mailbox).
+    private func waitUntil(
+        _ condition: () async throws -> Bool,
+        timeout: TimeInterval = 2,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try await condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("condition not met within \(timeout)s", file: file, line: line)
     }
 
     private func makeRecording(in rootDirectory: URL) throws -> RecordedAudioAsset {
