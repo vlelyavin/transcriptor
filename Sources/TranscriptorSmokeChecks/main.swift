@@ -9,9 +9,8 @@ struct TranscriptorSmokeChecks {
         let appState = AppState()
         expect(appState.selectedScreen == .overview, "App state starts on the Overview screen.", failures: &failures)
         expect(appState.recordingState.mode == .holdToTalk, "Recording mode defaults to Hold to Talk.", failures: &failures)
-        expect(appState.recordingState.savesAudioLocally, "Recording defaults to local save enabled.", failures: &failures)
-        expect(appState.overlayState.isNonActivating, "Overlay defaults to non-activating.", failures: &failures)
-        expect(appState.storageSettings.autoDeleteOldestHistory, "Storage defaults to auto-deleting oldest history.", failures: &failures)
+        expect(appState.overlayState.isEnabled, "Overlay defaults to enabled.", failures: &failures)
+        expect(appState.overlayState.showsLiveAudioIndicator, "Overlay defaults to showing the live audio indicator.", failures: &failures)
         expect(appState.transcriptionPreferences.preferredLocalProviderID == "whisperkit-local", "Preferred local provider defaults to WhisperKit.", failures: &failures)
         expect(appState.selectedModel?.id == "whisper-large-v3-turbo", "Preferred model defaults to Large V3 Turbo.", failures: &failures)
 

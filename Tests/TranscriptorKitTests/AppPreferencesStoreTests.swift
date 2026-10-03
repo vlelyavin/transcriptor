@@ -22,24 +22,25 @@ final class AppPreferencesStoreTests: XCTestCase {
             recordingModeRawValue: RecordingMode.toggleToTalk.rawValue,
             hotkeyKeyCode: 15,
             hotkeyCarbonModifiers: 2,
-            saveOriginalAudio: false,
             overlayEnabled: false,
-            overlayIsNonActivating: true,
             overlayShowsLiveIndicator: false,
             overlayPositionRawValue: OverlayPosition.bottomCenter.rawValue,
             selectedModelID: "whisper-tiny",
             autoTranscribeAfterCapture: true,
             preferredLocalProviderID: "whisperkit-local",
             preferredProviderID: "openai",
-            historyLimitMegabytes: 512,
-            autoDeleteOldestHistory: false,
-            excludesDownloadedModels: true,
             openAIEnabled: true,
             groqEnabled: true,
             openAIModelID: "gpt-4o-transcribe",
             groqModelID: "whisper-large-v3",
             openAIPrivacyAcknowledged: true,
-            groqPrivacyAcknowledged: false
+            groqPrivacyAcknowledged: false,
+            transcriptionLanguage: "ru",
+            showDockIcon: true,
+            customBaseURL: "https://server.example/v1",
+            customModelID: "whisper-1",
+            customPrivacyAcknowledged: true,
+            customCredentialValidated: false
         )
 
         AppPreferencesStore(defaults: defaults).save(snapshot)

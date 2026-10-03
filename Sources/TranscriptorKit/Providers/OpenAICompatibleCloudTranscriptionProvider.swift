@@ -50,7 +50,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         request.timeoutInterval = 20
         authorize(&request, apiKey: apiKey)
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await performData(for: request)
         let httpResponse = try requireHTTPResponse(response)
 
         // Self-hosted / proxy servers frequently implement only the
@@ -92,7 +92,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         request.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
         authorize(&request, apiKey: apiKey)
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await performData(for: request)
         let httpResponse = try requireHTTPResponse(response)
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
@@ -160,7 +160,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await performData(for: request)
         let httpResponse = try requireHTTPResponse(response)
 
         guard (200..<300).contains(httpResponse.statusCode) else {
@@ -207,6 +207,18 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     private func authorize(_ request: inout URLRequest, apiKey: String?) {
         if let apiKey {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
+    /// `URLSession.data(for:)` throws `URLError(.cancelled)` — not
+    /// `CancellationError` — when the surrounding task is cancelled. Map it so
+    /// a user-cancelled upload takes the quiet `.cancelled` path instead of
+    /// being recorded (and notified) as a failure.
+    private func performData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await urlSession.data(for: request)
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw TranscriptionError.cancelled
         }
     }
 
@@ -267,11 +279,15 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             .redactingAPIKeys()
 
         switch statusCode {
-        case 401, 403:
+        case 401:
             // Unified across providers: the upstream wording differs between
             // OpenAI and Groq, so present one consistent, non-leaking message.
-            _ = apiMessage
             return .missingCredentials("The API key was rejected. Check that the key is correct and active, then try again.")
+        case 403:
+            // A 403 can also mean a region or model-permission block — the key
+            // itself may be fine, so "key rejected" would give the wrong advice.
+            // Prefer the provider's own (already API-key-redacted) message.
+            return .missingCredentials(apiMessage ?? "\(descriptor.name) refused the request (HTTP 403). Check the key's permissions and region access, then try again.")
         case 413:
             return .fileTooLarge(apiMessage ?? "\(descriptor.name) rejected the audio upload because it exceeded the provider's current file-size limit.")
         case 429:

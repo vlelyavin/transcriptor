@@ -234,7 +234,7 @@ final class MenuBarStatusItemController: NSObject {
             switch supplementalPhase {
             case .transcribing, .inserting:
                 return .transcribing
-            case .saved, .preview, .unconfigured:
+            case .saved, .unconfigured:
                 return .idle
             case .error, .setupRequired:
                 return .failed

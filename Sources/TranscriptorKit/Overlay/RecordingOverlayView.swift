@@ -124,7 +124,6 @@ public struct RecordingOverlayView: View {
             case .saved: return "Done"
             case .error: return "Couldn’t Transcribe"
             case .setupRequired: return "Setup Needed"
-            case .preview: return "Transcript Ready"
             case .unconfigured: return "Recording Saved"
             }
         }
@@ -148,7 +147,7 @@ public struct RecordingOverlayView: View {
                  let .error(message),
                  let .setupRequired(message):
                 return message
-            case .preview, .unconfigured:
+            case .unconfigured:
                 return ""
             }
         }
@@ -179,7 +178,6 @@ public struct RecordingOverlayView: View {
             case .saved: return "checkmark.circle.fill"
             case .error: return "exclamationmark.triangle.fill"
             case .setupRequired: return "gearshape.fill"
-            case .preview: return "text.quote"
             case .unconfigured: return "mic.badge.plus"
             }
         }
@@ -214,7 +212,7 @@ public struct RecordingOverlayView: View {
         guard let supplementalPhase else { return false }
         switch supplementalPhase {
         case .transcribing, .inserting: return true
-        case .saved, .error, .setupRequired, .preview, .unconfigured: return false
+        case .saved, .error, .setupRequired, .unconfigured: return false
         }
     }
 }

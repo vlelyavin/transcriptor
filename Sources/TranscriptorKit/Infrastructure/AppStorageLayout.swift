@@ -59,6 +59,19 @@ public struct AppStorageLayout: @unchecked Sendable {
 
         let rootURL = applicationSupportURL.appendingPathComponent("Transcriptor", isDirectory: true)
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true, attributes: nil)
+
+        // Keep Spotlight from indexing the app's managed storage — recorded
+        // dictation and transcripts stay out of system search results. The
+        // `.metadata_never_index` marker is the supported file-level
+        // mechanism: mds skips any directory tree containing it. (SwiftData's
+        // `ModelConfiguration` has no `spotlight` flag on the macOS 14
+        // deployment target, and history attributes aren't `.spotlight`
+        // attributed anyway — this covers the store file itself.)
+        let neverIndexMarker = rootURL.appendingPathComponent(".metadata_never_index", isDirectory: false)
+        if !fileManager.fileExists(atPath: neverIndexMarker.path) {
+            fileManager.createFile(atPath: neverIndexMarker.path, contents: Data())
+        }
+
         return rootURL
     }
 

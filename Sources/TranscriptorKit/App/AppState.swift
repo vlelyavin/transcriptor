@@ -188,12 +188,6 @@ public final class AppState {
     public var transcriptionPreferences: TranscriptionPreferences {
         didSet { persistPreferences() }
     }
-    public var storageSettings: StorageSettings {
-        didSet {
-            persistPreferences()
-            refreshStorageState()
-        }
-    }
     public var providerSettings: ProviderSettings {
         didSet {
             persistPreferences()
@@ -204,25 +198,25 @@ public final class AppState {
                     providerSettings.customCredentialValidated = false
                 }
             }
+            // A different model invalidates the previous validation: the stored
+            // "key works" verdict only applies to the model it was tested with.
+            if oldValue.openAIModelID != providerSettings.openAIModelID && providerSettings.openAICredentialValidated {
+                providerSettings.openAICredentialValidated = false
+            }
+            if oldValue.groqModelID != providerSettings.groqModelID && providerSettings.groqCredentialValidated {
+                providerSettings.groqCredentialValidated = false
+            }
+            if oldValue.customModelID != providerSettings.customModelID && providerSettings.customCredentialValidated {
+                providerSettings.customCredentialValidated = false
+            }
         }
     }
     public var historyStore: HistoryStore
     public var storageUsage = ManagedStorageUsage()
-    public var storageWarningMessage: String?
     public var importFeedbackMessage: String?
     public var historyActionMessage: String?
     public var overlaySupplementalPhase: OverlaySupplementalPhase?
 
-    /// The absolute lower bound for the history storage cap, in megabytes — the
-    /// limit can never be set below the space history already occupies, so the
-    /// user can't configure a cap that would immediately prune their existing
-    /// recordings. Mirrors the bytes the cap is actually enforced against
-    /// (`totalManagedBytes`, which excludes downloaded models) and stays within
-    /// the supported 20 MB … 2 GB range.
-    public var minimumHistoryLimitMegabytes: Int {
-        let usedMegabytes = Int((Double(storageUsage.totalManagedBytes) / 1_048_576).rounded(.up))
-        return min(max(20, usedMegabytes), 2_048)
-    }
     public let modelCatalog: ModelCatalog
     public let providerCatalog: ProviderCatalog
     public let voiceInputController: VoiceInputController
@@ -248,14 +242,20 @@ public final class AppState {
     @ObservationIgnored private let historyRepository: HistoryRepository
     @ObservationIgnored private let storageLayout: AppStorageLayout
     @ObservationIgnored private let importService: AudioImportService
-    @ObservationIgnored private let storageQuotaService: StorageQuotaService
     @ObservationIgnored private let transcriptExportService: TranscriptExportService
     @ObservationIgnored private let transcriptInsertionService: any TranscriptInsertionServing
     @ObservationIgnored private let launchAtLoginService: any LaunchAtLoginServing
     @ObservationIgnored private let secretStore: any SecretStore
-    @ObservationIgnored private var isEnforcingStorageCap = false
+    @ObservationIgnored private let notificationPoster: any NotificationPosting
     @ObservationIgnored private var overlaySupplementalClearTask: Task<Void, Never>?
-    @ObservationIgnored private var pendingInsertionEntryID: UUID?
+    /// Entries whose transcription completion should drive the overlay +
+    /// insertion outcome. A set — not a single ID — so overlapping dictations
+    /// each insert as they finish instead of only the most recent take.
+    @ObservationIgnored private var pendingInsertionEntryIDs: Set<UUID> = []
+    /// Per-provider generation counters that let a newer `testAPIKey` supersede
+    /// an older one still in flight — a stale test must never overwrite the
+    /// result of the latest request.
+    @ObservationIgnored private var providerValidationGenerations: [String: Int] = [:]
 
     public init(
         selectedScreen: NavigationScreen = .overview,
@@ -269,7 +269,8 @@ public final class AppState {
         audioPlaybackService: AudioPlaybackService = AudioPlaybackService(),
         transcriptInsertionService: any TranscriptInsertionServing = TranscriptInsertionService(),
         launchAtLoginService: any LaunchAtLoginServing = LaunchAtLoginService(),
-        secretStore: any SecretStore = KeychainSecretStore()
+        secretStore: any SecretStore = KeychainSecretStore(),
+        notificationPoster: any NotificationPosting = UserNotificationPoster()
     ) {
         let snapshot = preferencesStore.load()
         let recordingMode = RecordingMode(rawValue: snapshot.recordingModeRawValue) ?? .holdToTalk
@@ -332,6 +333,13 @@ public final class AppState {
         let launchAtLoginStatus = launchAtLoginService.refreshStatus()
 
         let persistedEntries = (try? resolvedHistoryRepository.fetchAll()) ?? historyStore.entries
+        // A `.transcribing` entry on disk can only be a crash/quit leftover —
+        // nothing is actually running at launch. Normalise it so it doesn't sit
+        // in "Transcribing" forever.
+        let normalizedEntries = persistedEntries.map(Self.normalizeInterruptedEntry)
+        for (original, normalized) in zip(persistedEntries, normalizedEntries) where original != normalized {
+            try? resolvedHistoryRepository.upsert(normalized)
+        }
 
         self.preferencesStore = preferencesStore
         self.hotkeyManager = hotkeyManager
@@ -339,11 +347,11 @@ public final class AppState {
         self.historyRepository = resolvedHistoryRepository
         self.storageLayout = storageLayout
         self.importService = AudioImportService(layout: storageLayout)
-        self.storageQuotaService = StorageQuotaService(layout: storageLayout)
         self.transcriptExportService = TranscriptExportService()
         self.transcriptInsertionService = transcriptInsertionService
         self.launchAtLoginService = launchAtLoginService
         self.secretStore = secretStore
+        self.notificationPoster = notificationPoster
         self.sidebarSelection = .screen(selectedScreen)
         self.generalSettings = GeneralSettings(
             launchAtLoginEnabled: launchAtLoginStatus.toggleValue,
@@ -355,13 +363,11 @@ public final class AppState {
         )
         self.recordingState = RecordingState(
             mode: recordingMode,
-            hotkey: hotkeyConfiguration,
-            savesAudioLocally: snapshot.saveOriginalAudio
+            hotkey: hotkeyConfiguration
         )
         self.audioCaptureState = audioCaptureState
         self.overlayState = OverlayState(
             isEnabled: snapshot.overlayEnabled,
-            isNonActivating: snapshot.overlayIsNonActivating,
             showsLiveAudioIndicator: snapshot.overlayShowsLiveIndicator,
             position: OverlayPosition(rawValue: snapshot.overlayPositionRawValue) ?? .topCenter
         )
@@ -371,11 +377,6 @@ public final class AppState {
             preferredLocalProviderID: snapshot.preferredLocalProviderID,
             preferredProviderID: snapshot.preferredProviderID,
             transcriptionLanguage: snapshot.transcriptionLanguage
-        )
-        self.storageSettings = StorageSettings(
-            capMegabytes: snapshot.historyLimitMegabytes,
-            autoDeleteOldestHistory: snapshot.autoDeleteOldestHistory,
-            excludesDownloadedModels: snapshot.excludesDownloadedModels
         )
         self.providerSettings = ProviderSettings(
             openAIEnabled: snapshot.openAIEnabled,
@@ -395,7 +396,7 @@ public final class AppState {
             ProviderSettings(customBaseURL: snapshot.customBaseURL).customBaseURLValue
         )
         AppState.prefersDockIcon = snapshot.showDockIcon
-        self.historyStore = HistoryStore(entries: persistedEntries)
+        self.historyStore = HistoryStore(entries: normalizedEntries)
         self.modelCatalog = modelCatalog
         self.providerCatalog = providerCatalog
         self.voiceInputController = voiceInputController
@@ -509,12 +510,17 @@ public final class AppState {
     }
 
     /// Loads the active local model automatically so transcription is ready
-    /// without a manual "Load" step.
+    /// without a manual "Load" step. Only a local target needs weights loaded
+    /// at launch — when the user picked a cloud provider, or nothing is
+    /// configured, eagerly reading a multi-GB model into memory just wastes
+    /// launch time and RAM.
     public func autoLoadSelectedModelOnLaunch() async {
         isPreparingModelsOnLaunch = true
         await whisperModelManager.refresh()
         await parakeetModelManager.refresh()
-        loadSelectedModelIfDownloaded()
+        if isLocalProviderID(transcriptionPreferences.preferredProviderID) {
+            loadSelectedModelIfDownloaded()
+        }
         isPreparingModelsOnLaunch = false
         validatePreferredCloudProviderIfNeeded()
     }
@@ -783,12 +789,6 @@ public final class AppState {
     public func importAudio(from sourceURLs: [URL]) {
         for sourceURL in sourceURLs {
             do {
-                let projectedBytes = try fileSizeForIncomingImport(sourceURL)
-                try storageQuotaService.validateImportCanProceed(
-                    additionalBytes: projectedBytes,
-                    settings: storageSettings
-                )
-
                 let prepared = try importService.prepareImport(from: sourceURL)
                 let entry = HistoryEntry(
                     sourceType: .importedAudio,
@@ -884,9 +884,9 @@ public final class AppState {
             historyActionMessage = "Queued \(entry.displayName) for \(plan.providerName) transcription."
         } catch {
             historyActionMessage = error.localizedDescription
-            if entry.id == pendingInsertionEntryID {
+            if pendingInsertionEntryIDs.contains(entry.id) {
+                pendingInsertionEntryIDs.remove(entry.id)
                 markPendingInsertionFailure(entryID: entry.id, message: error.localizedDescription)
-                pendingInsertionEntryID = nil
                 transcriptInsertionService.clearCapturedTarget()
                 refreshTranscriptInsertionDebugSnapshot()
                 setOverlaySupplementalPhase(.setupRequired(error.localizedDescription))
@@ -1075,15 +1075,30 @@ public final class AppState {
         providerCredentialValidationStates[providerID] = .testing
         let modelID = providerSettings.modelID(for: providerID, fallback: provider.modelLabel)
 
+        // Generations let a newer test supersede an older one still in flight
+        // (double-tapped Test, or a retest after the key or model changed) — a
+        // stale response must never overwrite the newest request's verdict.
+        providerValidationGenerations[providerID, default: 0] += 1
+        let generation = providerValidationGenerations[providerID] ?? 0
+
         Task {
             do {
-                try await cloudProvider(for: providerID)?.validateCredentials(modelID: modelID)
+                guard let providerClient = cloudProvider(for: providerID) else {
+                    throw TranscriptionError.providerUnavailable("\(provider.name) is not a configured cloud provider.")
+                }
+                try await providerClient.validateCredentials(modelID: modelID)
                 await MainActor.run {
+                    guard self.providerValidationGenerations[providerID] == generation else {
+                        return
+                    }
                     self.providerSettings.setCredentialValidated(true, for: providerID)
                     self.providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) is ready. The key was accepted for model “\(modelID)”.")
                 }
             } catch {
                 await MainActor.run {
+                    guard self.providerValidationGenerations[providerID] == generation else {
+                        return
+                    }
                     self.providerSettings.setCredentialValidated(false, for: providerID)
                     self.providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
                 }
@@ -1160,14 +1175,6 @@ public final class AppState {
         recordingState.hotkey = HotkeyConfiguration()
     }
 
-    public func resetOverlayDefaults() {
-        overlayState = OverlayState()
-    }
-
-    public func resetStorageDefaults() {
-        storageSettings = StorageSettings()
-    }
-
     /// Resets a single cloud provider to its defaults: restores the default
     /// model ID, withdraws privacy consent, removes any stored API key, and
     /// clears its validation state. Other providers are untouched.
@@ -1209,18 +1216,13 @@ public final class AppState {
                 recordingModeRawValue: recordingState.mode.rawValue,
                 hotkeyKeyCode: recordingState.hotkey.keyCode,
                 hotkeyCarbonModifiers: recordingState.hotkey.carbonModifiers,
-                saveOriginalAudio: recordingState.savesAudioLocally,
                 overlayEnabled: overlayState.isEnabled,
-                overlayIsNonActivating: overlayState.isNonActivating,
                 overlayShowsLiveIndicator: overlayState.showsLiveAudioIndicator,
                 overlayPositionRawValue: overlayState.position.rawValue,
                 selectedModelID: transcriptionPreferences.selectedModelID,
                 autoTranscribeAfterCapture: transcriptionPreferences.autoTranscribeAfterCapture,
                 preferredLocalProviderID: transcriptionPreferences.preferredLocalProviderID,
                 preferredProviderID: transcriptionPreferences.preferredProviderID,
-                historyLimitMegabytes: storageSettings.capMegabytes,
-                autoDeleteOldestHistory: storageSettings.autoDeleteOldestHistory,
-                excludesDownloadedModels: storageSettings.excludesDownloadedModels,
                 openAIEnabled: providerSettings.openAIEnabled,
                 groqEnabled: providerSettings.groqEnabled,
                 openAIModelID: providerSettings.openAIModelID,
@@ -1252,7 +1254,7 @@ public final class AppState {
             // Flow B: no transcription configured — keep the recording and show
             // the recorder result card. Never spin a "Transcribing…" state.
             guard isTranscriptionConfigured else {
-                pendingInsertionEntryID = nil
+                pendingInsertionEntryIDs.remove(entry.id)
                 transcriptInsertionService.clearCapturedTarget()
                 refreshTranscriptInsertionDebugSnapshot()
                 setOverlaySupplementalPhase(.unconfigured(OverlayUnconfiguredPayload(
@@ -1264,8 +1266,8 @@ public final class AppState {
             }
 
             // Flow A: transcribe the dictation. handleCompletedTranscription then
-            // inserts into the focused field, or shows the transcript preview.
-            pendingInsertionEntryID = entry.id
+            // inserts into the focused field or falls back to a notification.
+            pendingInsertionEntryIDs.insert(entry.id)
             setOverlaySupplementalPhase(.transcribing("Transcribing your dictation…"))
             transcribe(entry)
         } catch {
@@ -1280,40 +1282,41 @@ public final class AppState {
         historyStore.replace(with: persistedEntries)
     }
 
-    private func refreshStorageState() {
-        storageUsage = (try? storageQuotaService.currentUsage()) ?? ManagedStorageUsage()
-
-        guard !isEnforcingStorageCap else {
-            return
+    /// Normalizes one persisted entry at launch. An entry still marked
+    /// `.transcribing` on disk is always a crash/quit leftover — no job is
+    /// actually running at init. With no completed transcript it becomes
+    /// `.failed("Interrupted by app restart")`; when an earlier transcript
+    /// exists (an interrupted re-transcription), restore `.completed` so the
+    /// previous result stays usable. `.pending` is a legitimate parked state
+    /// (queued imports never started), so it is left alone.
+    static func normalizeInterruptedEntry(_ entry: HistoryEntry) -> HistoryEntry {
+        guard entry.transcriptionStatus == .transcribing else {
+            return entry
         }
 
-        do {
-            let enforcement = try storageQuotaService.pruneEntriesIfNeeded(
-                entries: historyStore.entries,
-                settings: storageSettings
-            )
-
-            if enforcement.prunedEntryIDs.isEmpty {
-                storageWarningMessage = enforcement.warningMessage
-                storageUsage = enforcement.usage
-                return
+        var normalized = entry
+        if entry.hasCompletedTranscript {
+            normalized.transcriptionStatus = .completed
+        } else {
+            normalized.transcriptionStatus = .failed
+            normalized.errorMessage = "Interrupted by app restart."
+            if normalized.transcriptPreview.isEmpty {
+                normalized.transcriptPreview = "Interrupted by app restart."
             }
+        }
+        return normalized
+    }
 
-            isEnforcingStorageCap = true
-            for prunedID in enforcement.prunedEntryIDs {
-                if let prunedEntry = historyStore.entries.first(where: { $0.id == prunedID }) {
-                    transcriptionQueueController.cancel(entryID: prunedID)
-                    _ = try? historyRepository.delete(id: prunedID)
-                    removeManagedFiles(for: prunedEntry)
-                }
+    private func refreshStorageState() {
+        let layout = storageLayout
+        // The usage walk touches every managed file — run it off the main
+        // actor so a post-save refresh can't hitch the UI, and only publish
+        // the finished numbers back on the main actor.
+        Task.detached { [weak self] in
+            let usage = (try? layout.managedStorageUsage()) ?? ManagedStorageUsage()
+            await MainActor.run {
+                self?.storageUsage = usage
             }
-            isEnforcingStorageCap = false
-
-            reloadHistory()
-            storageUsage = (try? storageQuotaService.currentUsage()) ?? ManagedStorageUsage()
-            storageWarningMessage = "Transcriptor removed \(enforcement.prunedEntryIDs.count) oldest history item(s) to stay within the storage cap."
-        } catch {
-            storageWarningMessage = error.localizedDescription
         }
     }
 
@@ -1341,11 +1344,6 @@ public final class AppState {
         }
     }
 
-    private func fileSizeForIncomingImport(_ sourceURL: URL) throws -> Int64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)
-        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
-    }
-
     private func queueAutomaticTranscriptionIfNeeded(for entry: HistoryEntry) {
         guard transcriptionPreferences.autoTranscribeAfterCapture, isTranscriptionConfigured else {
             return
@@ -1366,7 +1364,6 @@ public final class AppState {
         setOverlaySupplementalPhase(nil)
 
         guard generalSettings.insertTranscriptIntoActiveApp else {
-            pendingInsertionEntryID = nil
             transcriptInsertionService.clearCapturedTarget()
             refreshTranscriptInsertionDebugSnapshot()
             return
@@ -1378,11 +1375,11 @@ public final class AppState {
     }
 
     func handleCompletedTranscription(for entry: HistoryEntry) {
-        guard entry.id == pendingInsertionEntryID else {
+        guard pendingInsertionEntryIDs.contains(entry.id) else {
             return
         }
 
-        pendingInsertionEntryID = nil
+        pendingInsertionEntryIDs.remove(entry.id)
 
         Task { @MainActor in
             if generalSettings.insertTranscriptIntoActiveApp {
@@ -1403,31 +1400,35 @@ public final class AppState {
                 // rather than surfacing a redundant "success" confirmation.
                 dismissOverlayResult()
             case .copiedToClipboard, .savedOnly:
-                // No focused field to paste into — show the interactive preview.
-                presentTranscriptPreview(for: entry)
+                // No focused field to paste into — clear the overlay and post a
+                // notification so the user knows the transcript is waiting.
+                // A saved-only outcome never touched the clipboard, so put the
+                // transcript there now: the notification's "press ⌘V" hint has
+                // to be true.
+                if case .savedOnly = outcome {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(entry.transcriptText, forType: .string)
+                }
+                dismissOverlayResult()
+                Task {
+                    await self.notificationPoster.postClipboardFallbackNotification(
+                        transcriptPreview: String(entry.transcriptText.prefix(200))
+                    )
+                }
             case let .failed(message):
                 setOverlaySupplementalPhase(.error(message))
                 scheduleOverlaySupplementalClear(after: .seconds(2))
+                Task {
+                    await self.notificationPoster.postTranscriptionFailureNotification(message: message)
+                }
             }
         }
     }
 
-    private func presentTranscriptPreview(for entry: HistoryEntry) {
-        setOverlaySupplementalPhase(.preview(OverlayPreviewPayload(
-            entryID: entry.id,
-            transcript: entry.transcriptText,
-            modelName: entry.modelName,
-            durationSeconds: entry.durationSeconds
-        )))
-    }
-
-    /// Action callbacks for the overlay result cards (preview / unconfigured).
+    /// Action callbacks for the overlay result card.
     private func makeOverlayActions() -> RecordingOverlayActions {
         RecordingOverlayActions(
-            copy: { [weak self] id in
-                guard let self, let entry = self.historyEntry(id: id) else { return }
-                self.copyTranscript(for: entry)
-            },
             save: { [weak self] _ in
                 // Already persisted to history — Save just keeps it and dismisses.
                 self?.dismissOverlayResult()
@@ -1436,26 +1437,6 @@ public final class AppState {
                 guard let self, let entry = self.historyEntry(id: id) else { return }
                 self.deleteHistoryEntry(entry)
                 self.dismissOverlayResult()
-            },
-            showAll: { [weak self] id in
-                guard let self else { return }
-                self.dismissOverlayResult()
-                self.openHistoryEntry(id)
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            },
-            retranscribe: { [weak self] id, option in
-                guard let self, let entry = self.historyEntry(id: id) else { return }
-                self.pendingInsertionEntryID = entry.id
-                self.setOverlaySupplementalPhase(.transcribing("Re-transcribing…"))
-                switch option.kind {
-                case let .localModel(modelID):
-                    self.retranscribe(entry, using: modelID)
-                case let .cloudProvider(providerID):
-                    self.retranscribe(entry, usingProvider: providerID)
-                }
-            },
-            retranscribeOptions: { [weak self] in
-                self?.overlayRetranscribeOptions() ?? []
             },
             configureTranscription: { [weak self] in
                 guard let self else { return }
@@ -1469,33 +1450,6 @@ public final class AppState {
         )
     }
 
-    /// Re-transcription choices for the preview menu: every downloaded local
-    /// model plus every set-up cloud provider. Always non-empty in a configured
-    /// state, so "Re-transcribe with Different Model" is always offered.
-    private func overlayRetranscribeOptions() -> [OverlayRetranscribeOption] {
-        var options: [OverlayRetranscribeOption] = []
-
-        for model in modelCatalog.localModels where readyLocalModelIDs.contains(model.id) {
-            options.append(OverlayRetranscribeOption(
-                id: "local:\(model.id)",
-                title: model.name,
-                isCloud: false,
-                kind: .localModel(model.id)
-            ))
-        }
-
-        for provider in providerCatalog.providers where providerRuntimeState(for: provider).isSelectable {
-            options.append(OverlayRetranscribeOption(
-                id: "cloud:\(provider.id)",
-                title: provider.name,
-                isCloud: true,
-                kind: .cloudProvider(provider.id)
-            ))
-        }
-
-        return options
-    }
-
     /// Dismisses any overlay result card.
     public func dismissOverlayResult() {
         overlaySupplementalClearTask?.cancel()
@@ -1503,17 +1457,30 @@ public final class AppState {
         recordingOverlayManager.refreshPresentation()
     }
 
-    private func handleFailedTranscription(for entryID: UUID, message: String) {
-        guard entryID == pendingInsertionEntryID else {
+    /// Internal (not private) so tests can drive the queue's failure callback.
+    func handleFailedTranscription(for entryID: UUID, message: String) {
+        guard pendingInsertionEntryIDs.contains(entryID) else {
             return
         }
 
-        pendingInsertionEntryID = nil
+        pendingInsertionEntryIDs.remove(entryID)
         transcriptInsertionService.clearCapturedTarget()
         refreshTranscriptInsertionDebugSnapshot()
+
+        // A cancelled transcription is restored to `.pending` — the user asked
+        // to stop it, so it must not surface an error card or post a failure
+        // notification. Just clear the overlay quietly.
+        if historyEntry(id: entryID)?.transcriptionStatus == .pending {
+            setOverlaySupplementalPhase(nil)
+            return
+        }
+
         historyActionMessage = message
         setOverlaySupplementalPhase(.error(message))
         scheduleOverlaySupplementalClear(after: .seconds(2))
+        Task {
+            await self.notificationPoster.postTranscriptionFailureNotification(message: message)
+        }
     }
 
     private func refreshTranscriptInsertionDebugSnapshot() {
@@ -1540,7 +1507,13 @@ public final class AppState {
     private func scheduleOverlaySupplementalClear(after duration: Duration) {
         overlaySupplementalClearTask?.cancel()
         overlaySupplementalClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: duration)
+            // `try?` would swallow CancellationError and fire anyway — a
+            // cancelled clear must NOT wipe a newer phase that replaced it.
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
             self?.overlaySupplementalPhase = nil
             self?.recordingOverlayManager.refreshPresentation()
         }

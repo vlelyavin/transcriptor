@@ -203,12 +203,8 @@ public struct HistoryView: View {
                     Text(historyActionMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if let storageWarningMessage = appState.storageWarningMessage {
-                    Text(storageWarningMessage)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes)) / \(appState.storageSettings.capMegabytes) MB")
+                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

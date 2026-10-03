@@ -74,9 +74,9 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
     }
 
-    func testCompletedTranscriptionWithoutFocusedFieldShowsPreview() async throws {
+    func testCompletedTranscriptionWithoutFocusedFieldPostsNotification() async throws {
         // Flow A, no focused field: insertion service reports savedOnly, so the
-        // overlay shows the interactive transcript preview.
+        // transcript goes to the clipboard with a notification — no preview card.
         let context = try makeReadyCloudContext()
         let appState = context.appState
         appState.generalSettings.insertTranscriptIntoActiveApp = false
@@ -90,11 +90,70 @@ final class AppStateInsertionFlowTests: XCTestCase {
 
         try await Task.sleep(for: .milliseconds(100))
 
-        if case let .preview(payload) = appState.overlaySupplementalPhase {
-            XCTAssertEqual(payload.transcript, "Preview me")
-        } else {
-            XCTFail("Expected preview overlay phase, got \(String(describing: appState.overlaySupplementalPhase))")
+        XCTAssertNil(appState.overlaySupplementalPhase)
+        XCTAssertEqual(context.notificationPoster.clipboardFallbackPreviews, ["Preview me"])
+        XCTAssertTrue(context.notificationPoster.failureMessages.isEmpty)
+    }
+
+    func testFailedTranscriptionPostsFailureNotification() async throws {
+        let context = try makeReadyCloudContext()
+        let appState = context.appState
+
+        appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
+        let entry = try XCTUnwrap(appState.historyStore.entries.first)
+
+        // The queue restores `.failed` on the entry before invoking the
+        // failure callback — mirror that so this is a real failure, not a
+        // cancelled-and-restored take (which stays silent by design).
+        appState.historyStore.entries[0].transcriptionStatus = .failed
+        appState.handleFailedTranscription(for: entry.id, message: "boom")
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(context.notificationPoster.failureMessages, ["boom"])
+    }
+
+    func testCancelledTranscriptionStaysSilent() async throws {
+        let context = try makeReadyCloudContext()
+        let appState = context.appState
+        appState.generalSettings.insertTranscriptIntoActiveApp = true
+
+        appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
+        let entry = try XCTUnwrap(appState.historyStore.entries.first)
+
+        // A cancelled take is restored to `.pending` by the queue: the user
+        // asked to stop it, so no failure notification and no error card.
+        appState.handleFailedTranscription(for: entry.id, message: "cancelled")
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertTrue(context.notificationPoster.failureMessages.isEmpty)
+        XCTAssertNil(appState.overlaySupplementalPhase)
+    }
+
+    func testMultiplePendingInsertionsEachComplete() async throws {
+        // Two queued dictations must both reach the insertion service: the
+        // pending set tracks every in-flight entry, not just the latest one.
+        let context = try makeReadyCloudContext()
+        let appState = context.appState
+        appState.generalSettings.insertTranscriptIntoActiveApp = true
+
+        appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
+        appState.appendPendingRecording(try makeRecording(in: context.rootDirectory))
+
+        let entries = appState.historyStore.entries
+        XCTAssertEqual(entries.count, 2)
+
+        for entry in entries {
+            var completed = entry
+            completed.transcriptText = "Text for \(entry.id.uuidString.prefix(4))"
+            completed.transcriptionStatus = .completed
+            appState.handleCompletedTranscription(for: completed)
         }
+
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertEqual(context.insertionService.insertedTexts.count, 2)
     }
 
     // MARK: - Welcome guide (first-launch, non-mandatory)
@@ -212,6 +271,92 @@ final class AppStateInsertionFlowTests: XCTestCase {
         XCTAssertNil(appState.transcriptionPreferences.languageHint)
     }
 
+    func testChangingCloudModelIDResetsValidation() throws {
+        let appState = try makeContext(secrets: [:]).appState
+
+        appState.providerSettings.openAICredentialValidated = true
+        appState.providerSettings.openAIModelID = "gpt-4o-transcribe"
+        XCTAssertFalse(appState.providerSettings.openAICredentialValidated)
+
+        appState.providerSettings.groqCredentialValidated = true
+        appState.providerSettings.groqModelID = "whisper-large-v3"
+        XCTAssertFalse(appState.providerSettings.groqCredentialValidated)
+
+        appState.providerSettings.customCredentialValidated = true
+        appState.providerSettings.customModelID = "whisper-large-v3"
+        XCTAssertFalse(appState.providerSettings.customCredentialValidated)
+    }
+
+    func testInterruptedTranscribingEntriesAreNormalizedAtLaunch() throws {
+        let context = try makeContext(secrets: [:])
+        let repository = try HistoryRepository(inMemory: true)
+
+        // A take that was mid-transcription when the app quit: no transcript
+        // exists, so it must come back as a restart-interrupted failure.
+        var interrupted = HistoryEntry.pendingRecording(
+            recording: RecordedAudioAsset(
+                url: context.rootDirectory.appendingPathComponent("interrupted.wav"),
+                createdAt: .now,
+                durationSeconds: 5,
+                fileSizeBytes: 100
+            ),
+            modelID: nil,
+            modelName: nil
+        )
+        interrupted.transcriptionStatus = .transcribing
+        try repository.upsert(interrupted)
+
+        // A re-transcription interrupted after the first pass completed: the
+        // earlier transcript is still good, so restore `.completed`.
+        var retranscribing = interrupted
+        retranscribing = HistoryEntry(
+            sourceType: .dictation,
+            displayName: "retranscribing.wav",
+            originalFilePath: nil,
+            workingFilePath: nil,
+            transcriptText: "previous transcript",
+            transcriptPreview: "previous transcript",
+            transcriptVersions: [
+                TranscriptVersion(
+                    createdAt: .now,
+                    transcriptText: "previous transcript",
+                    transcriptPreview: "previous transcript",
+                    characterCount: 19,
+                    modelID: "whisper-tiny",
+                    modelName: "Tiny",
+                    providerID: "whisperkit-local",
+                    providerName: "WhisperKit Local",
+                    language: nil
+                ),
+            ],
+            durationSeconds: 5,
+            characterCount: 19,
+            fileSizeBytes: 100,
+            transcriptionStatus: .transcribing
+        )
+        try repository.upsert(retranscribing)
+
+        let appState = AppState(
+            preferencesStore: AppPreferencesStore(defaults: UserDefaults(suiteName: "TranscriptorTests.\(UUID().uuidString)")!),
+            storageLayout: AppStorageLayout(
+                fileManager: .default,
+                applicationSupportURLProvider: { context.rootDirectory }
+            ),
+            historyRepository: repository,
+            transcriptInsertionService: MockInsertionService(),
+            launchAtLoginService: StubLaunchAtLoginService(),
+            secretStore: InMemoryFlowSecretStore(secrets: [:])
+        )
+
+        let restored = try XCTUnwrap(appState.historyStore.entries.first { $0.id == interrupted.id })
+        XCTAssertEqual(restored.transcriptionStatus, .failed)
+        XCTAssertEqual(restored.errorMessage, "Interrupted by app restart.")
+
+        let recovered = try XCTUnwrap(appState.historyStore.entries.first { $0.id == retranscribing.id })
+        XCTAssertEqual(recovered.transcriptionStatus, .completed)
+        XCTAssertEqual(recovered.transcriptText, "previous transcript")
+    }
+
     func testCustomServerNeedsURLButNotKey() throws {
         let appState = try makeContext(secrets: [:]).appState
         let custom = try XCTUnwrap(appState.providerCatalog.provider(id: "custom"))
@@ -238,6 +383,7 @@ final class AppStateInsertionFlowTests: XCTestCase {
     private struct Context {
         let appState: AppState
         let insertionService: MockInsertionService
+        let notificationPoster: MockNotificationPoster
         let rootDirectory: URL
     }
 
@@ -274,16 +420,23 @@ final class AppStateInsertionFlowTests: XCTestCase {
         }
 
         let insertionService = MockInsertionService()
+        let notificationPoster = MockNotificationPoster()
         let appState = AppState(
             preferencesStore: AppPreferencesStore(defaults: defaults),
             storageLayout: layout,
             historyRepository: try HistoryRepository(inMemory: true),
             transcriptInsertionService: insertionService,
             launchAtLoginService: StubLaunchAtLoginService(),
-            secretStore: InMemoryFlowSecretStore(secrets: secrets)
+            secretStore: InMemoryFlowSecretStore(secrets: secrets),
+            notificationPoster: notificationPoster
         )
 
-        return Context(appState: appState, insertionService: insertionService, rootDirectory: rootDirectory)
+        return Context(
+            appState: appState,
+            insertionService: insertionService,
+            notificationPoster: notificationPoster,
+            rootDirectory: rootDirectory
+        )
     }
 
     private func makeRecording(in rootDirectory: URL) throws -> RecordedAudioAsset {
@@ -336,6 +489,36 @@ private final class StubLaunchAtLoginService: LaunchAtLoginServing {
     func refreshStatus() -> LaunchAtLoginStatus { status }
     func setEnabled(_ enabled: Bool) -> LaunchAtLoginStatus { status }
     func openSystemSettings() {}
+}
+
+private final class MockNotificationPoster: NotificationPosting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _clipboardFallbackPreviews: [String] = []
+    private var _failureMessages: [String] = []
+
+    var clipboardFallbackPreviews: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _clipboardFallbackPreviews
+    }
+
+    var failureMessages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _failureMessages
+    }
+
+    func postClipboardFallbackNotification(transcriptPreview: String) async {
+        lock.lock()
+        _clipboardFallbackPreviews.append(transcriptPreview)
+        lock.unlock()
+    }
+
+    func postTranscriptionFailureNotification(message: String) async {
+        lock.lock()
+        _failureMessages.append(message)
+        lock.unlock()
+    }
 }
 
 private struct InMemoryFlowSecretStore: SecretStore {

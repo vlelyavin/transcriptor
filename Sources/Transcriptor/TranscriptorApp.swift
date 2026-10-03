@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 import TranscriptorKit
 
@@ -14,6 +15,15 @@ import TranscriptorKit
 /// system light/dark appearance.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Set in `applicationWillFinishLaunching` — while the 'oapp' AppleEvent
+    /// that launched us is still current — so scene construction (which reads
+    /// this to suppress the window on macOS 15+) sees the right value.
+    private(set) var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAsLoginItem = Self.detectLoginItemLaunch()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let center = NotificationCenter.default
         for name in [
@@ -28,7 +38,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             center.addObserver(self, selector: #selector(windowSetChanged(_:)), name: name, object: nil)
         }
         updateActivationPolicy()
+
+        guard !launchedAsLoginItem else {
+            // A login-item launch must stay invisible in the background: no
+            // activation (which would steal focus from the user's session) and
+            // no window. macOS 15+ suppresses the Window scene outright via
+            // `defaultLaunchBehavior`; on earlier systems the window is already
+            // being created by now, so close it on the next runloop turn.
+            DispatchQueue.main.async {
+                for window in NSApp.windows where !(window is NSPanel) && window.canBecomeMain {
+                    window.close()
+                }
+            }
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Whether macOS launched this process as a login item. `SMAppService`
+    /// passes no argv marker, but LaunchServices flags the 'oapp' AppleEvent
+    /// that delivers the launch with `keyAELaunchedAsLogInItem` — the same
+    /// signal login-item helpers have relied on for years. Must be read while
+    /// that event is still current (i.e. during finish-launching).
+    private static func detectLoginItemLaunch() -> Bool {
+        guard
+            let event = NSAppleEventManager.shared().currentAppleEvent,
+            event.eventClass == AEEventClass(kCoreEventClass),
+            event.eventID == AEEventID(kAEOpenApplication),
+            let propData = event.paramDescriptor(forKeyword: keyAEPropData)
+                ?? event.attributeDescriptor(forKeyword: keyAEPropData)
+        else {
+            return false
+        }
+
+        // The flag lives inside the `keyAEPropData` record — try each accessor
+        // level since NSAppleEventDescriptor's mapping onto AE records differs
+        // by keyword kind.
+        return propData.descriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
+            ?? propData.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
+            ?? propData.attributeDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue
+            ?? false
     }
 
     @objc
@@ -51,6 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(desired)
         if desired == .regular {
             applyDockIcon()
+            // Re-activate right after the promotion: activating while still
+            // `.accessory` doesn't attach the main menu, and nothing else
+            // re-activates afterwards, so the app's menus could stay dead
+            // until the user switched apps and back.
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -176,6 +231,18 @@ struct TranscriptorApp: App {
     }
 
     var body: some Scene {
+        // A login-item launch must not flash the window. On macOS 15+ the
+        // scene is suppressed outright; on earlier systems AppDelegate closes
+        // the window right after launch instead.
+        if #available(macOS 15, *) {
+            windowScene
+                .defaultLaunchBehavior(appDelegate.launchedAsLoginItem ? .suppressed : .automatic)
+        } else {
+            windowScene
+        }
+    }
+
+    private var windowScene: some Scene {
         // A single window: re-opening it from the menu bar must not stack
         // duplicates.
         Window("Transcriptor", id: AppState.mainWindowID) {

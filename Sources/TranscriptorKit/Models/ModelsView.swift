@@ -1,13 +1,36 @@
 import SwiftUI
 
 public struct ModelsView: View {
+    /// Which group of transcription sources the page is showing.
+    private enum ModelSourceTab: Hashable {
+        case whisper
+        case parakeet
+        case remote
+    }
+
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
+    @State private var selectedTab: ModelSourceTab
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
         self.appState = appState
+        // Open on the tab that holds the user's chosen target: the matching
+        // local engine tab for a local model, Remote for a cloud provider.
+        // Anything unrecognised falls back to the first tab.
+        _selectedTab = State(initialValue: Self.defaultTab(for: appState))
+    }
+
+    private static func defaultTab(for appState: AppState) -> ModelSourceTab {
+        switch appState.transcriptionPreferences.preferredProviderID {
+        case "parakeet-local":
+            .parakeet
+        case "openai", "groq", "custom":
+            .remote
+        default:
+            .whisper
+        }
     }
 
     public var body: some View {
@@ -26,10 +49,6 @@ public struct ModelsView: View {
                     }
                 }
 
-                LabeledContent("Ready local models") {
-                    Text("\(appState.readyLocalModelIDs.count)")
-                }
-
                 Toggle(
                     "Auto-transcribe after recording or import",
                     isOn: Binding(
@@ -40,58 +59,83 @@ public struct ModelsView: View {
                 .disabled(!appState.canEnableAutoTranscribe)
             }
 
-            ForEach(appState.modelCatalog.sections) { section in
-                // Each model is its own grouped card so models are clearly
-                // separated with native spacing. The catalog group title sits
-                // above the first card and its description below the last.
-                ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
-                    Section {
-                        localModelRows(model)
-                    } header: {
-                        if index == 0 {
-                            Text(section.title)
-                        }
-                    } footer: {
-                        if index == section.models.count - 1 {
-                            Text(section.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+            Picker("Model source", selection: $selectedTab) {
+                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                Text("Remote").tag(ModelSourceTab.remote)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-            if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-                cloudProviderSection(
-                    provider: openAI,
-                    modelID: $appState.providerSettings.openAIModelID,
-                    privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                    apiKeyInput: $openAIAPIKeyInput
-                )
-            }
-
-            if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-                cloudProviderSection(
-                    provider: groq,
-                    modelID: $appState.providerSettings.groqModelID,
-                    privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
-                    apiKeyInput: $groqAPIKeyInput
-                )
-            }
-
-            if let custom = appState.providerCatalog.providers.first(where: { $0.id == "custom" }) {
-                cloudProviderSection(
-                    provider: custom,
-                    modelID: $appState.providerSettings.customModelID,
-                    privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
-                    apiKeyInput: $customAPIKeyInput,
-                    baseURL: $appState.providerSettings.customBaseURL
-                )
+            if selectedTab == .remote {
+                remoteProviderSections
+            } else {
+                localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
+    }
+
+    /// The catalog's local model cards for one engine section — each model is
+    /// its own grouped card so models are clearly separated with native
+    /// spacing. The catalog group title sits above the first card and its
+    /// description below the last.
+    @ViewBuilder
+    private func localModelSections(for sectionID: String) -> some View {
+        if let section = appState.modelCatalog.sections.first(where: { $0.id == sectionID }) {
+            ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
+                Section {
+                    localModelRows(model)
+                } header: {
+                    if index == 0 {
+                        Text(section.title)
+                    }
+                } footer: {
+                    if index == section.models.count - 1 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(section.description)
+                            Text("Local models transcribe on this Mac. Remote providers send audio to their server only when enabled.")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// All cloud provider configuration sections, shown under the Remote tab.
+    @ViewBuilder
+    private var remoteProviderSections: some View {
+        if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
+            cloudProviderSection(
+                provider: openAI,
+                modelID: $appState.providerSettings.openAIModelID,
+                privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
+                apiKeyInput: $openAIAPIKeyInput
+            )
+        }
+
+        if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
+            cloudProviderSection(
+                provider: groq,
+                modelID: $appState.providerSettings.groqModelID,
+                privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
+                apiKeyInput: $groqAPIKeyInput
+            )
+        }
+
+        if let custom = appState.providerCatalog.providers.first(where: { $0.id == "custom" }) {
+            cloudProviderSection(
+                provider: custom,
+                modelID: $appState.providerSettings.customModelID,
+                privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
+                apiKeyInput: $customAPIKeyInput,
+                baseURL: $appState.providerSettings.customBaseURL
+            )
+        }
     }
 
     /// Binds the unified "Active model" picker to the app's active target,
@@ -484,10 +528,19 @@ public struct ModelsView: View {
         "cloud"
     }
 
-    /// The status text shown beneath a cloud provider's name: the current
-    /// requirement to finish setup, or "Ready" once the provider is usable.
+    /// The status text shown beneath a cloud provider's name. A provider that
+    /// is merely switched off — consent, key, or URL missing — reads plainly
+    /// "Disabled"; detailed messages are kept only for states that carry real
+    /// information (awaiting key test, blocked/unavailable, ready).
     private func cloudStatusText(_ state: ProviderRuntimeState) -> String {
-        state.isReady ? "Ready" : state.message
+        switch state {
+        case .ready:
+            "Ready"
+        case .needsValidation, .unavailable:
+            state.message
+        case .disabled, .missingAPIKey, .privacyConsentRequired:
+            "Disabled"
+        }
     }
 
     /// A short, provider-specific hint on where to find a valid model ID.

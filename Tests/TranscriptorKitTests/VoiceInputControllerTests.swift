@@ -131,6 +131,103 @@ final class VoiceInputControllerTests: XCTestCase {
         XCTAssertEqual(controller.permissionStatus, .granted)
         XCTAssertEqual(controller.state, .recording)
     }
+
+    func testKeyReleaseDuringPermissionPromptPreventsHoldToTalkStart() async {
+        // While the system permission prompt is up, the key release is
+        // dropped by the OS (no recording existed to stop). After the prompt
+        // resolves, hold-to-talk must not begin a take the user already ended.
+        let recorder = MockAudioRecorderService(permissionStatus: .undetermined, permissionResponse: true)
+        let gate = SleepGate()
+        recorder.permissionGate = gate
+        let controller = VoiceInputController(
+            recorder: recorder,
+            recordingModeProvider: { .holdToTalk },
+            sleep: { _ in }
+        )
+
+        let pressTask = Task { await controller.handleHotkeyPressed() }
+        // Deterministic: wait until the press is actually parked inside
+        // requestPermission before simulating the release.
+        while recorder.requestPermissionCallCount == 0 {
+            await Task.yield()
+        }
+
+        await controller.handleHotkeyReleased()
+        await gate.release()
+        await pressTask.value
+
+        XCTAssertEqual(recorder.startCallCount, 0)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testZeroFrameCaptureIsSilentlyDiscarded() async {
+        // A stop before the first buffer arrives yields a 0 s asset: it must
+        // take the quiet discard path, not become a failed history entry.
+        let recorder = MockAudioRecorderService()
+        recorder.nextDuration = 0
+        var finishedCount = 0
+        var discardedCount = 0
+        let controller = VoiceInputController(
+            recorder: recorder,
+            recordingModeProvider: { .holdToTalk },
+            onRecordingFinished: { _ in finishedCount += 1 },
+            sleep: { _ in }
+        )
+        controller.replaceOnRecordingDiscarded { discardedCount += 1 }
+
+        await controller.handleHotkeyPressed()
+        await controller.handleHotkeyReleased()
+
+        XCTAssertEqual(finishedCount, 0)
+        XCTAssertEqual(discardedCount, 1)
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertNil(controller.failureMessage)
+    }
+
+    func testCancelRecordingClearsCapturedState() async {
+        let recorder = MockAudioRecorderService()
+        var discardedCount = 0
+        let controller = VoiceInputController(
+            recorder: recorder,
+            recordingModeProvider: { .toggleToTalk },
+            sleep: { _ in }
+        )
+        controller.replaceOnRecordingDiscarded { discardedCount += 1 }
+
+        await controller.handleHotkeyPressed()
+        XCTAssertEqual(controller.state, .recording)
+
+        await controller.cancelRecording()
+
+        XCTAssertEqual(recorder.cancelCallCount, 1)
+        XCTAssertEqual(discardedCount, 1)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testFailedStateAutoResetsToIdle() async {
+        // `.failed` is a transient display state: after the reset delay the
+        // controller must return to `.idle` so the menu icon and shortcuts
+        // recover, while `failureMessage` stays for the overlay.
+        let recorder = MockAudioRecorderService(permissionStatus: .denied)
+        let sleepGate = SleepGate()
+        let controller = VoiceInputController(
+            recorder: recorder,
+            recordingModeProvider: { .holdToTalk },
+            sleep: { _ in await sleepGate.wait() }
+        )
+
+        await controller.handleHotkeyPressed()
+        XCTAssertEqual(controller.state, .failed)
+        XCTAssertNotNil(controller.failureMessage)
+
+        await sleepGate.release()
+        while controller.state == .failed {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertNotNil(controller.failureMessage)
+    }
 }
 
 private actor SleepGate {
@@ -156,9 +253,10 @@ private actor SleepGate {
 }
 
 private final class MockAudioRecorderService: AudioRecorderServing, @unchecked Sendable {
-    var onLevelsDidChange: (@MainActor @Sendable (AudioLevelSnapshot) -> Void)?
-    var onRecordingError: (@MainActor @Sendable (Error) -> Void)?
+    var onLevelsDidChange: (@MainActor (AudioLevelSnapshot) -> Void)?
+    var onRecordingError: (@MainActor (Error) -> Void)?
     var isRecording = false
+    var currentInputDeviceName: String? = "Mock Microphone"
 
     var permissionStatus: MicrophonePermissionStatus
     var permissionResponse: Bool
@@ -167,6 +265,8 @@ private final class MockAudioRecorderService: AudioRecorderServing, @unchecked S
     var cancelCallCount = 0
     var requestPermissionCallCount = 0
     var nextDuration: TimeInterval = 3
+    var stopError: Error?
+    var permissionGate: SleepGate?
 
     init(
         permissionStatus: MicrophonePermissionStatus = .granted,
@@ -182,6 +282,7 @@ private final class MockAudioRecorderService: AudioRecorderServing, @unchecked S
 
     func requestPermission() async -> Bool {
         requestPermissionCallCount += 1
+        await permissionGate?.wait()
         permissionStatus = permissionResponse ? .granted : .denied
         return permissionResponse
     }
@@ -199,6 +300,9 @@ private final class MockAudioRecorderService: AudioRecorderServing, @unchecked S
     func stopRecording() throws -> RecordedAudioAsset {
         stopCallCount += 1
         isRecording = false
+        if let stopError {
+            throw stopError
+        }
         return RecordedAudioAsset(
             url: URL(fileURLWithPath: "/tmp/mock.wav"),
             createdAt: .now,

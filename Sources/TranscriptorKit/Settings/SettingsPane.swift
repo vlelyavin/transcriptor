@@ -16,48 +16,24 @@ public struct SettingsSearchResult: Hashable, Identifiable, Sendable {
 
 public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable {
     case general
-    case recording
-    case keyboardShortcut
-    case overlay
     case storage
-    case privacy
-    case advanced
 
     public var id: String { rawValue }
 
     /// Every settings category is shown as its own always-visible row in the
     /// sidebar, like System Settings, so each page can be reached directly
     /// instead of being buried under Advanced or only reachable via search.
-    ///
-    /// `.overlay` is intentionally omitted: the overlay settings are hidden for
-    /// now (the recording overlay still works on its defaults). The case is kept
-    /// so the rendering/search code stays exhaustive and the page is trivial to
-    /// re-surface later — just add `.overlay` back here.
     public static let sidebarVisiblePanes: [SettingsPane] = [
         .general,
-        .recording,
-        .keyboardShortcut,
         .storage,
-        .privacy,
-        .advanced,
     ]
 
     public var title: String {
         switch self {
         case .general:
             "General"
-        case .recording:
-            "Recording"
-        case .keyboardShortcut:
-            "Keyboard Shortcut"
-        case .overlay:
-            "Overlay"
         case .storage:
             "Storage"
-        case .privacy:
-            "Privacy"
-        case .advanced:
-            "Advanced"
         }
     }
 
@@ -65,37 +41,17 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         switch self {
         case .general:
             "gearshape"
-        case .recording:
-            "mic"
-        case .keyboardShortcut:
-            "keyboard"
-        case .overlay:
-            "rectangle.inset.filled.and.person.filled"
         case .storage:
             "internaldrive"
-        case .privacy:
-            "hand.raised"
-        case .advanced:
-            "slider.horizontal.3"
         }
     }
 
     public var subtitle: String {
         switch self {
         case .general:
-            "App-wide behavior and launch defaults."
-        case .recording:
-            "Voice capture behavior, microphone access, and local recording defaults."
-        case .keyboardShortcut:
-            "Configure the global shortcut Transcriptor listens for while it is running."
-        case .overlay:
-            "Control the voice input overlay that appears during dictation."
+            "App-wide behavior, permissions, and the voice input shortcut."
         case .storage:
-            "Manage retained local history, audio files, and storage limits."
-        case .privacy:
-            "Review what stays local, what requires permission, and what remains blocked."
-        case .advanced:
-            "Diagnostics and less-common options."
+            "Manage retained local history and audio files."
         }
     }
 
@@ -120,51 +76,23 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
         switch self {
         case .general:
             [
-                "Show Transcriptor in menu bar",
-                "Always show Dock icon",
-                "Launch at login",
-                "Login items status",
-            ]
-        case .recording:
-            [
                 "Voice input mode",
                 "Transcription language",
-                "Save original audio",
-                "Microphone permission",
+                "Microphone",
+                "Accessibility",
                 "Insert transcript into active app",
                 "Also copy transcript to clipboard",
                 "Restore previous clipboard after insertion",
-            ]
-        case .keyboardShortcut:
-            [
+                "Show Transcriptor in menu bar",
+                "Always show Dock icon",
+                "Launch at login",
                 "Global voice input shortcut",
                 "Restore recommended shortcut",
-                "Menu shortcuts",
-            ]
-        case .overlay:
-            [
-                "Show recording overlay",
-                "Use non-activating overlay",
-                "Show live audio indicator",
-                "Overlay position",
             ]
         case .storage:
             [
-                "History storage limit",
-                "Auto-delete oldest history when over limit",
-                "Exclude downloaded model files from cap",
                 "Storage usage",
-            ]
-        case .privacy:
-            [
-                "Local transcription privacy",
-                "Cloud transcription privacy",
-                "Model download sources",
-            ]
-        case .advanced:
-            [
-                "Last insertion attempt",
-                "Insertion diagnostics",
+                "Clear History…",
             ]
         }
     }
@@ -195,19 +123,13 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     public var searchTokens: [String] {
         switch self {
         case .general:
-            ["launch", "login", "defaults", "startup"]
-        case .recording:
-            ["microphone", "audio", "recording", "save", "input"]
-        case .keyboardShortcut:
-            ["shortcut", "hotkey", "keyboard", "global"]
-        case .overlay:
-            ["overlay", "indicator", "position", "done"]
+            [
+                "launch", "login", "defaults", "startup",
+                "microphone", "audio", "recording", "input", "permissions", "accessibility",
+                "shortcut", "hotkey", "keyboard", "global",
+            ]
         case .storage:
-            ["history", "storage", "cap", "prune", "delete"]
-        case .privacy:
-            ["accessibility", "microphone", "permissions", "local", "cloud"]
-        case .advanced:
-            ["advanced", "more", "extra", "diagnostics", "options", "insertion"]
+            ["history", "storage", "usage", "delete", "clear"]
         }
     }
 }

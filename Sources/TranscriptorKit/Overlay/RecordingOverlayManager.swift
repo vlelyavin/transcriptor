@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Observation
 import os
 import SwiftUI
@@ -6,7 +7,6 @@ import SwiftUI
 @MainActor
 public final class RecordingOverlayManager {
     private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "overlay")
-    private var dimmingPanel: NSPanel?
     private var panel: NSPanel?
     private var voiceInputController: VoiceInputController?
     private var overlayStateProvider: (() -> OverlayState)?
@@ -14,6 +14,12 @@ public final class RecordingOverlayManager {
     private var supplementalPhaseProvider: (() -> OverlaySupplementalPhase?)?
     private var actionsProvider: (() -> RecordingOverlayActions)?
     private var hideTask: Task<Void, Never>?
+    /// Bumped on every show and every hide. The animated hide completion only
+    /// orders the panel out when the generation still matches — otherwise a
+    /// stale completion would hide a panel that was re-shown mid-animation.
+    private var presentationGeneration = 0
+    /// Key monitors (local + global) that catch Escape while a panel is visible.
+    private var keyMonitors: [Any] = []
 
     public init() {}
 
@@ -45,34 +51,37 @@ public final class RecordingOverlayManager {
 
         let overlayState = overlayStateProvider()
         let supplementalPhase = supplementalPhaseProvider()
-        let shouldShow = overlayState.isEnabled && [
+        // `isEnabled` gates EVERYTHING — a result card must not appear when the
+        // user turned the overlay off.
+        let shouldShow = overlayState.isEnabled && ([
             VoiceInputControllerState.requestingPermission,
             VoiceInputControllerState.recording,
             .stopping,
             .pendingTranscription,
             .failed,
-        ].contains(voiceInputController.state) || supplementalPhase != nil
+        ].contains(voiceInputController.state) || supplementalPhase != nil)
 
-        log.notice("refresh: state=\(voiceInputController.state.rawValue, privacy: .public) supplemental=\(String(describing: supplementalPhase), privacy: .public) shouldShow=\(shouldShow, privacy: .public)")
+        // The supplemental phase can carry transcripts and error text — log
+        // only its case name so user content never reaches the unified log.
+        log.notice("refresh: state=\(voiceInputController.state.rawValue, privacy: .public) supplemental=\(supplementalPhase?.caseName ?? "none", privacy: .public) shouldShow=\(shouldShow, privacy: .public)")
 
         guard shouldShow else {
             hidePanels(animated: true)
             return
         }
 
-        let screen = presentationScreen()
-        let dimmingPanel = makeDimmingPanelIfNeeded()
+        guard let screen = presentationScreen() else {
+            // No display attached — nothing to present on. This isn't an error
+            // state; recording continues and the overlay simply has nowhere to go.
+            return
+        }
         let panel = makePanelIfNeeded()
         hideTask?.cancel()
-        dimmingPanel.contentViewController = NSHostingController(
-            rootView: Color.black.opacity(0.16)
-                .ignoresSafeArea()
-        )
 
         let panelSize: NSSize
         let rootView: AnyView
         if let resultContent = resultContent(for: supplementalPhase) {
-            // Interactive transcript-preview / unconfigured result card.
+            // Interactive unconfigured result card.
             let actions = actionsProvider?() ?? RecordingOverlayActions()
             rootView = AnyView(ResultOverlayView(content: resultContent, actions: actions))
             panelSize = NSSize(width: 460, height: preferredHeight(for: resultContent))
@@ -107,10 +116,8 @@ public final class RecordingOverlayManager {
         panel.contentViewController = nil
         panel.contentView = hostingView
 
-        dimmingPanel.setFrame(screen.frame, display: false)
         panel.setContentSize(panelSize)
         position(panel: panel, screen: screen, using: overlayState.position)
-        showPanel(dimmingPanel)
         showPanel(panel)
 
         let isResultCard = resultContent(for: supplementalPhase) != nil
@@ -152,9 +159,9 @@ public final class RecordingOverlayManager {
 
         // Auto-hide is driven by the supplemental phase first, because a
         // supplemental card always supersedes the raw recorder state. Ongoing
-        // work (`transcribing`/`inserting`) and interactive cards
-        // (`preview`/`unconfigured`) must NEVER auto-hide — otherwise the
-        // overlay can vanish mid-transcription, which reads as "stuck".
+        // work (`transcribing`/`inserting`) and the interactive card
+        // (`unconfigured`) must NEVER auto-hide — otherwise the overlay can
+        // vanish mid-transcription, which reads as "stuck".
         if let supplementalPhase {
             switch supplementalPhase {
             case .error:
@@ -163,7 +170,7 @@ public final class RecordingOverlayManager {
                 scheduleHide(after: .seconds(3.5))
             case .saved:
                 scheduleHide(after: .seconds(1.2))
-            case .transcribing, .inserting, .preview, .unconfigured:
+            case .transcribing, .inserting, .unconfigured:
                 hideTask?.cancel()
             }
         } else if voiceInputController.state == .failed {
@@ -203,8 +210,8 @@ public final class RecordingOverlayManager {
         panel.isFloatingPanel = true
         // Whether the panel may take key-window status is decided per state in
         // `refreshPresentation` via `FloatingOverlayPanel.mayBecomeKey`: false
-        // while recording (so the overlay can never steal keyboard focus from the
-        // app being dictated into), true only for the post-recording result card.
+        // while recording (so the overlay can never steal keyboard focus from
+        // the app being dictated into), true only for the post-recording result card.
         panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -218,34 +225,6 @@ public final class RecordingOverlayManager {
         return panel
     }
 
-    private func makeDimmingPanelIfNeeded() -> NSPanel {
-        if let dimmingPanel {
-            return dimmingPanel
-        }
-
-        let dimmingPanel = NSPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        dimmingPanel.isFloatingPanel = true
-        // It has no controls and must never own the key window (see the main
-        // panel for why a non-activating panel becoming key breaks keyboard
-        // routing in the user's app).
-        dimmingPanel.becomesKeyOnlyIfNeeded = true
-        dimmingPanel.hidesOnDeactivate = false
-        dimmingPanel.level = .floating
-        dimmingPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        dimmingPanel.backgroundColor = .clear
-        dimmingPanel.isOpaque = false
-        dimmingPanel.hasShadow = false
-        dimmingPanel.ignoresMouseEvents = true
-        dimmingPanel.alphaValue = 0
-        self.dimmingPanel = dimmingPanel
-        return dimmingPanel
-    }
-
     private func position(panel: NSPanel, screen: NSScreen, using position: OverlayPosition) {
         let visibleFrame = screen.visibleFrame
         let size = panel.frame.size
@@ -254,18 +233,23 @@ public final class RecordingOverlayManager {
 
         switch position {
         case .topCenter:
+            originY = visibleFrame.maxY - size.height - 80
+        case .center:
             originY = visibleFrame.midY - size.height / 2
         case .bottomCenter:
-            originY = visibleFrame.midY - size.height / 2 - 80
+            originY = visibleFrame.minY + 80
         }
 
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
     }
 
     private func showPanel(_ panel: NSPanel) {
+        presentationGeneration += 1
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
+
+        installKeyMonitors()
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.16
@@ -276,26 +260,30 @@ public final class RecordingOverlayManager {
     private func hidePanels(animated: Bool) {
         log.notice("hide panels (animated=\(animated, privacy: .public))")
         hideTask?.cancel()
-        guard let panel, let dimmingPanel else {
+        presentationGeneration += 1
+        let generation = presentationGeneration
+        removeKeyMonitors()
+        guard let panel else {
             return
         }
 
-        guard animated, panel.isVisible || dimmingPanel.isVisible else {
+        guard animated, panel.isVisible else {
             panel.orderOut(nil)
-            dimmingPanel.orderOut(nil)
             panel.alphaValue = 0
-            dimmingPanel.alphaValue = 0
             return
         }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
             panel.animator().alphaValue = 0
-            dimmingPanel.animator().alphaValue = 0
         } completionHandler: {
             Task { @MainActor in
+                // A newer show bumped the generation — the panel was re-shown
+                // mid-fade, so ordering it out now would hide fresh content.
+                guard self.presentationGeneration == generation else {
+                    return
+                }
                 panel.orderOut(nil)
-                dimmingPanel.orderOut(nil)
             }
         }
     }
@@ -304,8 +292,82 @@ public final class RecordingOverlayManager {
         log.notice("schedule auto-hide in \(String(describing: duration), privacy: .public)")
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: duration)
+            // Same rule as AppState's supplemental clear: a cancelled hide must
+            // not fire, or it would hide a phase that superseded it.
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
             self?.hidePanels(animated: true)
+        }
+    }
+
+    // MARK: - Escape handling
+
+    /// Watches for Escape while a panel is visible. The local monitor covers
+    /// keypresses delivered to this app (e.g. when the result card is key, or
+    /// our main window is focused); the global monitor covers Escape pressed
+    /// while another app is frontmost — the usual case while dictating into
+    /// another app in toggle mode. Global monitors can only observe, so the
+    /// event still reaches the user's app, which is acceptable: Escape is a
+    /// cancel affordance there anyway.
+    private func installKeyMonitors() {
+        guard keyMonitors.isEmpty else {
+            return
+        }
+
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == UInt16(kVK_Escape), self.handleEscape() else {
+                return event
+            }
+            return nil
+        } {
+            keyMonitors.append(monitor)
+        }
+
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == UInt16(kVK_Escape) else {
+                return
+            }
+            Task { @MainActor in
+                self?.handleEscape()
+            }
+        } {
+            keyMonitors.append(monitor)
+        }
+    }
+
+    private func removeKeyMonitors() {
+        for monitor in keyMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        keyMonitors = []
+    }
+
+    /// Runs the Escape decision function and executes the outcome. Returns
+    /// whether the keypress was consumed.
+    @discardableResult
+    private func handleEscape() -> Bool {
+        guard let voiceInputController, let recordingModeProvider, let supplementalPhaseProvider else {
+            return false
+        }
+
+        switch OverlayEscapeAction.decide(
+            state: voiceInputController.state,
+            mode: recordingModeProvider(),
+            supplemental: supplementalPhaseProvider()
+        ) {
+        case .dismiss:
+            (actionsProvider?() ?? RecordingOverlayActions()).dismiss()
+            return true
+        case .cancelRecording:
+            Task {
+                await voiceInputController.cancelRecording()
+            }
+            return true
+        case .none:
+            return false
         }
     }
 
@@ -315,8 +377,6 @@ public final class RecordingOverlayManager {
 
     private func resultContent(for phase: OverlaySupplementalPhase?) -> ResultOverlayView.Content? {
         switch phase {
-        case let .preview(payload):
-            return .preview(payload)
         case let .unconfigured(payload):
             return .unconfigured(payload)
         default:
@@ -326,15 +386,15 @@ public final class RecordingOverlayManager {
 
     private func preferredHeight(for content: ResultOverlayView.Content) -> CGFloat {
         switch content {
-        case .preview:
-            return 270
         case .unconfigured:
             return 220
         }
     }
 
-    private func presentationScreen() -> NSScreen {
-        NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens[0]
+    /// The screen under the pointer, or `nil` when no display is attached —
+    /// indexing `NSScreen.screens[0]` would trap on headless logins.
+    private func presentationScreen() -> NSScreen? {
+        NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens.first
     }
 }
 

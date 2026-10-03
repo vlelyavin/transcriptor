@@ -77,9 +77,60 @@ final class TranscriptInsertionServiceTests: XCTestCase {
             settings: GeneralSettings(insertTranscriptIntoActiveApp: true)
         )
 
-        XCTAssertEqual(outcome, .inserted("Transcript inserted into the active app."))
+        XCTAssertEqual(outcome, .inserted("Transcript pasted into the active app."))
         XCTAssertEqual(platform.insertCallCount, 1)
         XCTAssertEqual(platform.pasteCallCount, 1)
+    }
+
+    func testSecureFieldDetectionUsesSubroleNotRole() {
+        // The old bug: the secure marker lives on the SUBROLE — a password
+        // field's role is plain AXTextField — so a role-level comparison could
+        // never match.
+        XCTAssertTrue(
+            LiveTranscriptInsertionPlatform.isSecureFieldElement(
+                role: kAXTextFieldRole as String,
+                subrole: kAXSecureTextFieldSubrole as String
+            )
+        )
+        XCTAssertFalse(
+            LiveTranscriptInsertionPlatform.isSecureFieldElement(
+                role: kAXTextFieldRole as String,
+                subrole: nil
+            )
+        )
+        XCTAssertFalse(
+            LiveTranscriptInsertionPlatform.isSecureFieldElement(
+                role: kAXTextAreaRole as String,
+                subrole: "AXSearchField"
+            )
+        )
+    }
+
+    func testEditableElementDetectionRejectsNonTextRoles() {
+        XCTAssertTrue(
+            LiveTranscriptInsertionPlatform.isEditableTextElement(
+                role: kAXTextAreaRole as String,
+                hasStringValue: true,
+                hasSelectionRange: true
+            )
+        )
+        // A focused button must never become an insertion target.
+        XCTAssertFalse(
+            LiveTranscriptInsertionPlatform.isEditableTextElement(
+                role: "AXButton",
+                hasStringValue: false,
+                hasSelectionRange: false
+            )
+        )
+        // Custom editors with nonstandard roles still qualify when they expose
+        // a string value plus a selection range.
+        XCTAssertTrue(
+            LiveTranscriptInsertionPlatform.isEditableTextElement(
+                role: "AXGroup",
+                hasStringValue: true,
+                hasSelectionRange: true
+            )
+        )
     }
 
     func testMissingTargetSavesOnlyWhenClipboardFallbackIsDisabled() async {

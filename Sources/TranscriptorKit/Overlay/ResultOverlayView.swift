@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Interactive result card shown in the floating overlay after a capture:
-/// either a transcript preview (Flow A, no focused field) or a recorder result
-/// when transcription isn't configured (Flow B).
+/// Interactive result card shown in the floating overlay after a capture when
+/// transcription isn't configured (Flow B): the recording was saved to history,
+/// with Save/Delete and a path into model setup.
 struct ResultOverlayView: View {
     enum Content: Equatable {
-        case preview(OverlayPreviewPayload)
         case unconfigured(OverlayUnconfiguredPayload)
     }
 
@@ -17,8 +16,6 @@ struct ResultOverlayView: View {
             header
 
             switch content {
-            case let .preview(payload):
-                previewBody(payload)
             case let .unconfigured(payload):
                 unconfiguredBody(payload)
             }
@@ -34,12 +31,12 @@ struct ResultOverlayView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            SidebarIconView(systemImage: headerSymbol, size: 32)
+            SidebarIconView(systemImage: "mic.badge.plus", size: 32)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(headerTitle)
+                Text("Recording Saved")
                     .font(.headline)
-                Text(headerSubtitle)
+                Text("No transcription model set up")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -56,76 +53,6 @@ struct ResultOverlayView: View {
             .buttonStyle(.plain)
             .help("Dismiss")
         }
-    }
-
-    // MARK: - Preview (Flow A)
-
-    private func previewBody(_ payload: OverlayPreviewPayload) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(payload.transcript.isEmpty ? "No transcript text." : payload.transcript)
-                .font(.callout)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .textSelection(.enabled)
-
-            HStack(spacing: 8) {
-                Button("Show All") { actions.showAll(payload.entryID) }
-                    .fixedSize()
-
-                Button("Copy") { actions.copy(payload.entryID) }
-                    .disabled(payload.transcript.isEmpty)
-                    .fixedSize()
-
-                retranscribeMenu(payload.entryID)
-
-                Spacer()
-
-                Button(role: .destructive) {
-                    actions.delete(payload.entryID)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .help("Delete this recording")
-
-                Button("Save") { actions.save(payload.entryID) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .controlSize(.regular)
-        }
-    }
-
-    /// Always offered, even with a single model — then it just re-runs.
-    private func retranscribeMenu(_ entryID: UUID) -> some View {
-        let options = actions.retranscribeOptions()
-        return Menu("Re-transcribe") {
-            if options.isEmpty {
-                Text("No models available")
-            } else {
-                let local = options.filter { !$0.isCloud }
-                let cloud = options.filter(\.isCloud)
-
-                if !local.isEmpty {
-                    Section("Local Models") {
-                        ForEach(local) { option in
-                            Button(option.title) { actions.retranscribe(entryID, option) }
-                        }
-                    }
-                }
-                if !cloud.isEmpty {
-                    Section("Cloud Providers") {
-                        ForEach(cloud) { option in
-                            Button(option.title) { actions.retranscribe(entryID, option) }
-                        }
-                    }
-                }
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Re-transcribe with a different model")
     }
 
     // MARK: - Unconfigured (Flow B)
@@ -167,31 +94,6 @@ struct ResultOverlayView: View {
                 Button("Save") { actions.save(payload.entryID) }
             }
             .controlSize(.regular)
-        }
-    }
-
-    // MARK: - Header styling
-
-    private var headerSymbol: String {
-        switch content {
-        case .preview: "text.quote"
-        case .unconfigured: "mic.badge.plus"
-        }
-    }
-
-    private var headerTitle: String {
-        switch content {
-        case .preview: "Transcript Ready"
-        case .unconfigured: "Recording Saved"
-        }
-    }
-
-    private var headerSubtitle: String {
-        switch content {
-        case let .preview(payload):
-            payload.modelName.map { "\($0) • \(durationLabel(payload.durationSeconds))" } ?? durationLabel(payload.durationSeconds)
-        case .unconfigured:
-            "No transcription model set up"
         }
     }
 

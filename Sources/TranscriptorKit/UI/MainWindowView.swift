@@ -270,10 +270,9 @@ struct SidebarIconView: View {
     private var cornerRadius: CGFloat { size * 0.26 }
 
     var body: some View {
-        Image(systemName: systemImage)
+        glyph
             .font(.system(size: size * 0.55, weight: .medium))
             .foregroundStyle(.white)
-            .symbolEffect(.variableColor.iterative, isActive: animated)
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -297,6 +296,19 @@ struct SidebarIconView: View {
                     )
             }
             .shadow(color: .black.opacity(0.18), radius: 0.5, y: 0.5)
+    }
+
+    /// Variable-color symbol effects need SF Symbols 6 (macOS 15); on macOS 14
+    /// the same glyph renders statically — the listening state is still
+    /// conveyed by the title, meter, and timer.
+    @ViewBuilder
+    private var glyph: some View {
+        if #available(macOS 15.0, *) {
+            Image(systemName: systemImage)
+                .symbolEffect(.variableColor.iterative, isActive: animated)
+        } else {
+            Image(systemName: systemImage)
+        }
     }
 }
 
@@ -323,18 +335,8 @@ extension SettingsPane {
         switch self {
         case .general:
             "gearshape.fill"
-        case .recording:
-            "mic.fill"
-        case .keyboardShortcut:
-            "keyboard.fill"
-        case .overlay:
-            "rectangle.inset.filled"
         case .storage:
             "internaldrive.fill"
-        case .privacy:
-            "hand.raised.fill"
-        case .advanced:
-            "slider.horizontal.3"
         }
     }
 }

@@ -84,7 +84,7 @@ public struct ProviderCatalog: Equatable, Sendable {
             ),
             ProviderDescriptor(
                 id: "custom",
-                name: "Custom Server",
+                name: "Remote backend",
                 modelLabel: "whisper-1",
                 summary: "Any OpenAI-compatible transcription server: a proxy, another vendor, or a self-hosted Whisper server. The API key is optional.",
                 priceNote: "Depends on the server",

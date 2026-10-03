@@ -208,7 +208,7 @@ final class CloudTranscriptionProviderTests: XCTestCase {
                 historyEntryID: UUID(),
                 audioFileURL: audioURL,
                 requestedProviderID: "custom",
-                requestedProviderName: "Custom Server",
+                requestedProviderName: "Remote backend",
                 requestedModelID: "whisper-1",
                 requestedModelName: "whisper-1",
                 sourceType: .dictation
