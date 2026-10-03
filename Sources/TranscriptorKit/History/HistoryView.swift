@@ -125,6 +125,7 @@ public struct HistoryView: View {
                     // with the content — static in the layout, never pinned
                     // under the toolbar. No card, no separators.
                     Section {
+                        VStack(alignment: .leading, spacing: 4) {
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
                                 Text(filter.title).tag(filter)
@@ -132,9 +133,6 @@ public struct HistoryView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 4, trailing: 20))
-                        .listRowSeparator(.hidden)
 
                         HStack {
                             if let historyActionMessage = appState.historyActionMessage {
@@ -156,8 +154,9 @@ public struct HistoryView: View {
                                 .disabled(appState.historyStore.entries.isEmpty)
                             }
                         }
+                        }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 6, trailing: 20))
                         .listRowSeparator(.hidden)
                     }
 
