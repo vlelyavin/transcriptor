@@ -22,11 +22,11 @@ public struct SettingsPaneDetailView: View {
         switch pane {
         case .general:
             settingsForm {
+                shortcutSection
                 voiceInputSection
                 permissionsSection
                 transcriptInsertionSection
                 applicationSection
-                shortcutSection
             }
         case .storage:
             settingsForm { storageSections }
@@ -60,12 +60,7 @@ public struct SettingsPaneDetailView: View {
     private var permissionsSection: some View {
         Section {
             LabeledContent("Microphone") {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(appState.voiceInputController.permissionStatus.title)
-                    Text(appState.voiceInputController.inputDeviceName ?? "No input device")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(appState.voiceInputController.permissionStatus.title)
             }
 
             Button("Open Microphone Privacy Settings") {
@@ -82,7 +77,7 @@ public struct SettingsPaneDetailView: View {
         } header: {
             Text("Permissions")
         } footer: {
-            Text("Transcriptor records from the input device shown above. Accessibility access is only required for inserting dictated text into other apps.")
+            Text("Transcriptor records from the current system input device. Accessibility access is only required for inserting dictated text into other apps.")
         }
     }
 
@@ -121,10 +116,6 @@ public struct SettingsPaneDetailView: View {
                 )
             )
             .disabled(!appState.launchAtLoginStatus.canRegisterFromCurrentRuntime)
-
-            LabeledContent("Status") {
-                Text(appState.launchAtLoginStatus.title)
-            }
 
             Button("Open Login Items Settings") {
                 appState.openLoginItemsSettings()
