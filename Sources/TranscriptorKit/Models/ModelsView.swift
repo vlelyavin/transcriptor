@@ -44,7 +44,6 @@ public struct ModelsView: View {
                 Text("Remote").tag(ModelSourceTab.remote)
             }
             .pickerStyle(.segmented)
-            .labelsHidden()
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
 
