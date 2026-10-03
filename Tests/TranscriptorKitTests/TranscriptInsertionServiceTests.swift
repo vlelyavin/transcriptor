@@ -144,7 +144,7 @@ final class TranscriptInsertionServiceTests: XCTestCase {
 
         XCTAssertEqual(
             outcome,
-            .savedOnly("The original text field is no longer available. Transcript saved to history.")
+            .savedOnly("Transcript saved to history.")
         )
     }
 
