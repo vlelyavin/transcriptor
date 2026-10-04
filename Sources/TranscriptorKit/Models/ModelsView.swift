@@ -95,6 +95,7 @@ public struct ModelsView: View {
                 .formStyle(.grouped)
             }
         }
+        .contentMargins(.horizontal, 0, for: .scrollContent)
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.name ?? "model")?",
             isPresented: Binding(
