@@ -135,7 +135,7 @@ public struct HistoryView: View {
                         .labelsHidden()
                         .fixedSize()
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 2, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 2, trailing: 4))
                         .listRowSeparator(.hidden)
 
                         HStack {
@@ -159,7 +159,7 @@ public struct HistoryView: View {
                             }
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 4, trailing: 4))
                         .listRowSeparator(.hidden)
 
                         ForEach(filteredEntries) { entry in
@@ -179,12 +179,13 @@ public struct HistoryView: View {
                                                 : NSColor.white
                                         }))
                                 )
-                                .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
+                                .listRowInsets(EdgeInsets(top: 5, leading: 4, bottom: 5, trailing: 4))
                                 .listRowSeparator(.hidden)
                         }
                     }
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: false))
+                    .padding(.horizontal, -16)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
