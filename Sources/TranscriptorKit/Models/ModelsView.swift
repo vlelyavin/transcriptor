@@ -42,7 +42,6 @@ public struct ModelsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
                     Text("Filter")
-                        .foregroundStyle(.secondary)
 
                     Picker("Filter", selection: $selectedTab) {
                         Text("OpenAI Whisper").tag(ModelSourceTab.whisper)

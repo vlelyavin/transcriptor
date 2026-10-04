@@ -128,7 +128,6 @@ public struct HistoryView: View {
                     Section {
                         HStack(spacing: 10) {
                         Text("Source")
-                            .foregroundStyle(.secondary)
 
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
@@ -169,10 +168,12 @@ public struct HistoryView: View {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
-                                // macOS List ignores listRowBackground — the
-                                // card is drawn on the row content itself; the
-                                // row insets leave the window background
-                                // visible as the gap between cards.
+                                // Card like the Import page's grouped rows:
+                                // content sits inside the card with real
+                                // padding; row insets leave the window
+                                // background visible as the gap between cards.
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                                         .fill(Color(nsColor: NSColor(name: nil) { appearance in
@@ -181,7 +182,7 @@ public struct HistoryView: View {
                                                 : NSColor.white
                                         }))
                                 )
-                                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                                .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
                                 .listRowSeparator(.hidden)
                         }
                     }
