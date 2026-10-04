@@ -184,8 +184,7 @@ public struct HistoryView: View {
                         }
                     }
                 }
-                .listStyle(.inset(alternatesRowBackgrounds: false))
-                    .padding(.horizontal, -4)
+                .listStyle(.plain)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
