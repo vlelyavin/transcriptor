@@ -182,7 +182,7 @@ public struct HistoryView: View {
                                                 : NSColor.white
                                         }))
                                 )
-                                .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
+                                .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                                 .listRowSeparator(.hidden)
                         }
                     }
