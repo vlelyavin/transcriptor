@@ -1166,7 +1166,7 @@ public final class AppState {
         }
     }
 
-    public func openMicrophonePrivacySettings()public func openMicrophonePrivacySettings() {
+    public func openMicrophonePrivacySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") else {
             return
         }
