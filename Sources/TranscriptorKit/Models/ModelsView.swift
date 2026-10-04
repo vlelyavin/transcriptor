@@ -12,6 +12,11 @@ public struct ModelsView: View {
     @State private var groqAPIKeyInput = ""
     @State private var elevenLabsAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
+    /// Draft edits for model IDs and custom server URLs. While a draft
+    /// differs from the stored value the provider is untouched — nothing
+    /// applies until "Save" (which also stores a typed API key).
+    @State private var modelIDDrafts: [String: String] = [:]
+    @State private var baseURLDrafts: [String: String] = [:]
     @State private var selectedTab: ModelSourceTab
     @State private var modelPendingDeletion: ModelDescriptor?
     @Bindable private var appState: AppState
@@ -347,10 +352,16 @@ public struct ModelsView: View {
 
             if let baseURL {
                 LabeledContent {
-                    TextField("https://host/v1", text: baseURL)
-                        .textFieldStyle(.roundedBorder)
-                        .labelsHidden()
-                        .frame(width: 230)
+                    TextField(
+                        "https://host/v1",
+                        text: Binding(
+                            get: { baseURLDrafts[provider.id] ?? baseURL.wrappedValue },
+                            set: { baseURLDrafts[provider.id] = $0 }
+                        )
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 230)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Server URL")
@@ -364,10 +375,16 @@ public struct ModelsView: View {
             }
 
             LabeledContent {
-                TextField("Model ID", text: modelID)
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                    .frame(width: 230)
+                TextField(
+                    "Model ID",
+                    text: Binding(
+                        get: { modelIDDrafts[provider.id] ?? modelID.wrappedValue },
+                        set: { modelIDDrafts[provider.id] = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Model ID")
@@ -395,12 +412,29 @@ public struct ModelsView: View {
             }
             .disabled(!hasConsent)
 
+            let modelIDDirty = modelIDDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != modelID.wrappedValue } ?? false
+            let baseURLDirty = baseURL.map { base in
+                baseURLDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != base.wrappedValue } ?? false
+            } ?? false
+            let hasChanges = !keyInputEmpty || modelIDDirty || baseURLDirty
+
             HStack(spacing: 8) {
                 Button("Save") {
-                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
-                    apiKeyInput.wrappedValue = ""
+                    if modelIDDirty, let draft = modelIDDrafts[provider.id] {
+                        modelID.wrappedValue = draft.trimmingCharacters(in: .whitespaces)
+                        modelIDDrafts[provider.id] = nil
+                    }
+                    if baseURLDirty, let draft = baseURLDrafts[provider.id], let base = baseURL {
+                        base.wrappedValue = draft.trimmingCharacters(in: .whitespaces)
+                        baseURLDrafts[provider.id] = nil
+                    }
+                    if !keyInputEmpty {
+                        appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                        apiKeyInput.wrappedValue = ""
+                    }
                 }
-                .disabled(!hasConsent || keyInputEmpty)
+                .buttonStyle(.borderedProminent)
+                .disabled(!hasConsent || !hasChanges)
 
                 Button("Test") {
                     appState.testAPIKey(for: provider.id, enteredKey: apiKeyInput.wrappedValue)
@@ -417,6 +451,8 @@ public struct ModelsView: View {
 
                 Button("Reset") {
                     apiKeyInput.wrappedValue = ""
+                    modelIDDrafts[provider.id] = nil
+                    baseURLDrafts[provider.id] = nil
                     appState.resetCloudProvider(provider.id)
                 }
                 .help("Reset \(provider.name): clears the key, consent, and model.")
