@@ -162,4 +162,6 @@ public protocol LocalTranscriptionProvider: TranscriptionProvider {
 
 public protocol CloudTranscriptionProvider: TranscriptionProvider {
     func validateCredentials(modelID: String) async throws
+    /// Live model IDs advertised by the provider; errors mean "no list".
+    func listAvailableModelIDs() async throws -> [String]
 }

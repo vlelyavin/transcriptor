@@ -77,6 +77,38 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         }
     }
 
+    /// Live model catalog from the provider. Returns IDs as advertised by
+    /// `GET /models` (OpenAI-compatible) or ElevenLabs' `/models` shape.
+    /// Throws when the endpoint/key is unavailable — callers treat an error
+    /// as "no list" and keep manual entry.
+    public func listAvailableModelIDs() async throws -> [String] {
+        let apiKey = try resolveAPIKey()
+        var request = URLRequest(url: baseURL.appending(path: "models"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        authorize(&request, apiKey: apiKey)
+
+        let (data, response) = try await performData(for: request)
+        let httpResponse = try requireHTTPResponse(response)
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+
+        if descriptor.apiDialect == .elevenLabs {
+            struct ElevenModelsResponse: Decodable, Sendable {
+                struct Item: Decodable, Sendable { let modelID: String
+                    enum CodingKeys: String, CodingKey { case modelID = "model_id" }
+                }
+                let models: [Item]
+            }
+            let decoded = try JSONDecoder().decode(ElevenModelsResponse.self, from: data)
+            return decoded.models.map(\.modelID)
+        }
+
+        let decoded = try JSONDecoder().decode(CloudModelsListResponse.self, from: data)
+        return decoded.data.map(\.id)
+    }
+
     private func validateByTranscribingSilence(modelID: String, apiKey: String?) async throws {
         let directory = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

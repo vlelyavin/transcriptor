@@ -68,8 +68,11 @@ public struct SettingsPaneDetailView: View {
     private var permissionsSection: some View {
         Section {
             LabeledContent {
-                if appState.voiceInputController.permissionStatus != .granted {
-                    Button("Open Microphone Privacy Settings") {
+                if appState.voiceInputController.permissionStatus == .granted {
+                    Text("Granted")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("Grant") {
                         appState.openMicrophonePrivacySettings()
                     }
                 }
@@ -78,8 +81,11 @@ public struct SettingsPaneDetailView: View {
             }
 
             LabeledContent {
-                if appState.accessibilityPermissionStatus != .granted {
-                    Button("Open Accessibility Settings") {
+                if appState.accessibilityPermissionStatus == .granted {
+                    Text("Granted")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("Grant") {
                         appState.openAccessibilityPrivacySettings()
                     }
                 }
@@ -129,10 +135,6 @@ public struct SettingsPaneDetailView: View {
             )
             .disabled(!appState.launchAtLoginStatus.canRegisterFromCurrentRuntime)
 
-            Button("Open Login Items Settings") {
-                appState.openLoginItemsSettings()
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Application")
         } footer: {
@@ -143,6 +145,10 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var shortcutSection: some View {
         Section {
+            LabeledContent("Global Shortcut") {
+                HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
+            }
+
             HStack {
                 Text("Used to start and stop voice input while Transcriptor is running.")
                     .font(.callout)
@@ -151,10 +157,6 @@ public struct SettingsPaneDetailView: View {
                 Button("Restore Recommended Shortcut") {
                     appState.resetHotkeyToRecommendedDefault()
                 }
-            }
-
-            LabeledContent("Global Shortcut") {
-                HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
             }
 
             if let conflictWarning = appState.recordingState.hotkey.obviousConflictWarning {
@@ -193,17 +195,18 @@ public struct SettingsPaneDetailView: View {
                 }
             }
 
+            LabeledContent("Total") {
+                Text(megabyteString(for: appState.storageUsage.audioBytes + appState.storageUsage.historyBytes + appState.storageUsage.metadataBytes + appState.storageUsage.modelBytes))
+            }
+
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Total")
-                    Text("Clears every saved transcript and its audio.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Clears every saved transcript and its audio.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Spacer()
 
-                Button("Clear History…", role: .destructive) {
+                Button("Clear History", role: .destructive) {
                     showClearHistoryConfirmation = true
                 }
                 .disabled(appState.historyStore.entries.isEmpty)

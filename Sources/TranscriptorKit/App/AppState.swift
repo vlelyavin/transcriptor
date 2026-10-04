@@ -276,6 +276,11 @@ public final class AppState {
     /// an older one still in flight — a stale test must never overwrite the
     /// result of the latest request.
     @ObservationIgnored private var providerValidationGenerations: [String: Int] = [:]
+    /// Live model IDs per cloud provider, fetched from each provider's
+    /// `/models` endpoint once its key validates. Empty = no list (manual
+    /// entry stays available).
+    public var cloudModelChoices: [String: [String]] = [:]
+    @ObservationIgnored private var cloudModelChoiceGenerations: [String: Int] = [:]
 
     public init(
         selectedScreen: NavigationScreen = .overview,
@@ -1123,6 +1128,7 @@ public final class AppState {
                     }
                     self.providerSettings.setCredentialValidated(true, for: providerID)
                     self.providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) is ready. The key was accepted for model “\(modelID)”.")
+                    self.refreshCloudModelChoices(for: providerID)
                 }
             } catch {
                 await MainActor.run {
@@ -1136,7 +1142,31 @@ public final class AppState {
         }
     }
 
-    public func openMicrophonePrivacySettings() {
+        /// Fetches the provider's live model list into `cloudModelChoices`.
+    /// Failures are silent — the UI keeps manual entry when a provider
+    /// doesn't expose a list (e.g. some self-hosted servers).
+    public func refreshCloudModelChoices(for providerID: String) {
+        guard let provider = providerCatalog.provider(id: providerID) else { return }
+        guard provider.requiresAPIKey || providerID == "custom" else { return }
+        guard hasStoredAPIKey(for: providerID) else { return }
+
+        cloudModelChoiceGenerations[providerID, default: 0] += 1
+        let generation = cloudModelChoiceGenerations[providerID] ?? 0
+        Task {
+            do {
+                guard let providerClient = cloudProvider(for: providerID) else { return }
+                let ids = try await providerClient.listAvailableModelIDs()
+                await MainActor.run {
+                    guard self.cloudModelChoiceGenerations[providerID] == generation else { return }
+                    self.cloudModelChoices[providerID] = ids.sorted()
+                }
+            } catch {
+                // No list available — leave whatever was cached (or nothing).
+            }
+        }
+    }
+
+    public func openMicrophonePrivacySettings()public func openMicrophonePrivacySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") else {
             return
         }
