@@ -175,7 +175,11 @@ public struct HistoryView: View {
                                 .padding(.horizontal, 6)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(Color.secondarySystemGroupedBackground)
+                                        .fill(Color(nsColor: NSColor(name: nil) { appearance in
+                                            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                                                ? NSColor(srgbRed: 0.145, green: 0.145, blue: 0.145, alpha: 1)
+                                                : NSColor.white
+                                        }))
                                 )
                                 .listRowInsets(EdgeInsets())
                                 .listRowSeparator(.hidden)
