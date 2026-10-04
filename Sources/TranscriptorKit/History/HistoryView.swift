@@ -116,15 +116,15 @@ public struct HistoryView: View {
     }
 
     private func historyListPane(isCompact: Bool) -> some View {
+        // Same container as every other page: a grouped Form. The Form's
+        // opaque grouped background covers the full pane (including the
+        // toolbar band), and its cards/separators are identical to
+        // General/Storage/Models — one template, zero custom geometry.
         Group {
             if filteredEntries.isEmpty {
                 emptyState
             } else {
-                List(selection: isCompact ? .constant(nil) : $selectedEntryID) {
-                    // The filter strip lives INSIDE the list so it scrolls
-                    // with the content — static in the layout, never pinned
-                    // under the toolbar. The strip itself stays boxless; the
-                    // items below render as a native grouped card.
+                Form {
                     Section {
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
@@ -134,9 +134,6 @@ public struct HistoryView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .fixedSize()
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 2, trailing: 20))
-                        .listRowSeparator(.hidden)
 
                         HStack {
                             if let historyActionMessage = appState.historyActionMessage {
@@ -158,40 +155,25 @@ public struct HistoryView: View {
                                 .disabled(appState.historyStore.entries.isEmpty)
                             }
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
                         .listRowSeparator(.hidden)
+                    }
 
+                    Section {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
-                                // Card like the Import page's grouped rows:
-                                // content sits inside the card with real
-                                // padding; row insets leave the window
-                                // background visible as the gap between cards.
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(Color(nsColor: NSColor(name: nil) { appearance in
-                                            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                                                ? NSColor(srgbRed: 0.145, green: 0.145, blue: 0.145, alpha: 1)
-                                                : NSColor.white
-                                        }))
+                                .contentShape(Rectangle())
+                                .listRowBackground(
+                                    selectedEntryID == entry.id && !isCompact
+                                        ? Color.accentColor.opacity(0.14)
+                                        : Color.clear
                                 )
-                                .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
-                                .listRowSeparator(.hidden)
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color(nsColor: .windowBackgroundColor), ignoresSafeAreaEdges: .all)
-                .padding(.horizontal, -8)
-                .padding(.top, 46)
+                .formStyle(.grouped)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor), ignoresSafeAreaEdges: .all)
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
     }
 
@@ -220,12 +202,7 @@ public struct HistoryView: View {
             .foregroundStyle(.secondary)
             .help("Delete this item")
         }
-        .swipeActions(edge: .trailing) {
-            Button("Delete", role: .destructive) {
-                entryPendingDeletion = entry
-            }
-        }
-        .contextMenu {
+                .contextMenu {
             if canTriggerTranscription(for: entry) {
                 Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
                     appState.transcribe(entry)
