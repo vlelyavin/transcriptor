@@ -36,58 +36,60 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        List {
-            Section {
-                if appState.availableTargets.isEmpty {
-                    LabeledContent("Active model") {
-                        Text("None ready")
-                            .foregroundStyle(.secondary)
+        // The filter strip sits OUTSIDE the grouped form so it has no card
+        // behind it; everything below keeps the native grouped cards.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Text("Filter")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Filter", selection: $selectedTab) {
+                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                        Text("Remote").tag(ModelSourceTab.remote)
                     }
-                } else {
-                    Picker("Active model", selection: activeTargetBinding) {
-                        ForEach(appState.availableTargets, id: \.self) { target in
-                            Text(appState.targetDisplayName(target)).tag(target)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+
+                Form {
+                    Section {
+                        if appState.availableTargets.isEmpty {
+                            LabeledContent("Active model") {
+                                Text("None ready")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Picker("Active model", selection: activeTargetBinding) {
+                                ForEach(appState.availableTargets, id: \.self) { target in
+                                    Text(appState.targetDisplayName(target)).tag(target)
+                                }
+                            }
                         }
+
+                        Toggle(
+                            "Auto-transcribe after recording or import",
+                            isOn: Binding(
+                                get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+                                set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+                            )
+                        )
+                        .disabled(!appState.canEnableAutoTranscribe)
+                    }
+
+                    if selectedTab == .remote {
+                        remoteProviderSections
+                    } else {
+                        localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
                     }
                 }
-
-                Toggle(
-                    "Auto-transcribe after recording or import",
-                    isOn: Binding(
-                        get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
-                        set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
-                    )
-                )
-                .disabled(!appState.canEnableAutoTranscribe)
-            }
-
-            // Filter strip: "Filter" label on the left, tabs right after
-            // it — boxless, on the window background. Sits under "Current
-            // Selection" and scrolls away with the page (not sticky).
-            HStack(spacing: 10) {
-                Text("Filter")
-                    .foregroundStyle(.secondary)
-
-                Picker("Filter", selection: $selectedTab) {
-                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                    Text("Remote").tag(ModelSourceTab.remote)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
-            .listRowSeparator(.hidden)
-
-            if selectedTab == .remote {
-                remoteProviderSections
-            } else {
-                localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
+                .formStyle(.grouped)
             }
         }
-        .listStyle(.grouped)
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.name ?? "model")?",
             isPresented: Binding(

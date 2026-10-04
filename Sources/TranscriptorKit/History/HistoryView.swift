@@ -169,10 +169,16 @@ public struct HistoryView: View {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
+                                .listRowBackground(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color(nsColor: .controlBackgroundColor))
+                                )
+                                .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+                                .listRowSeparator(.hidden)
                         }
                     }
                 }
-                .listStyle(.grouped)
+                .listStyle(.inset(alternatesRowBackgrounds: false))
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
