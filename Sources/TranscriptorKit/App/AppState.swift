@@ -755,7 +755,10 @@ public final class AppState {
         }
         for provider in providerCatalog.providers {
             let state = providerRuntimeState(for: provider)
-            if state.isReady || state.isAwaitingValidation {
+            // Only fully validated providers (key stored AND test passed)
+            // belong in the Active model list. An untested key is not a
+            // usable target — the user can still pick it after Test.
+            if state.isReady {
                 targets.append(.cloud(provider.id))
             }
         }
