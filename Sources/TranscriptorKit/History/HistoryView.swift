@@ -172,7 +172,7 @@ public struct HistoryView: View {
                     }
                 }
                 .formStyle(.grouped)
-                .padding(.top, 26)
+                .padding(.top, 20)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
