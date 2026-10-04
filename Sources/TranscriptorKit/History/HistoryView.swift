@@ -175,7 +175,7 @@ public struct HistoryView: View {
                                 .padding(.horizontal, 6)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(Color(nsColor: .controlBackgroundColor))
+                                        .fill(Color.secondarySystemGroupedBackground)
                                 )
                                 .listRowInsets(EdgeInsets())
                                 .listRowSeparator(.hidden)
