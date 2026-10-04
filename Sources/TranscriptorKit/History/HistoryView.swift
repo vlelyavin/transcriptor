@@ -185,6 +185,7 @@ public struct HistoryView: View {
                     }
                 }
                 .listStyle(.plain)
+                .contentMargins(.horizontal, 0, for: .scrollContent)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
