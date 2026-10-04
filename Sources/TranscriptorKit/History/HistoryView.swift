@@ -126,9 +126,6 @@ public struct HistoryView: View {
                     // under the toolbar. The strip itself stays boxless; the
                     // items below render as a native grouped card.
                     Section {
-                        HStack(spacing: 10) {
-                        Text("Source")
-
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
                                 Text(filter.title).tag(filter)
@@ -137,7 +134,6 @@ public struct HistoryView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .fixedSize()
-                        }
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 2, trailing: 20))
                         .listRowSeparator(.hidden)

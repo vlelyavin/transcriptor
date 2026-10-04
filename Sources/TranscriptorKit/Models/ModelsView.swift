@@ -73,18 +73,14 @@ public struct ModelsView: View {
                 }
                 .formStyle(.grouped)
 
-                HStack(spacing: 10) {
-                    Text("Filter")
-
-                    Picker("Filter", selection: $selectedTab) {
-                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                        Text("Remote").tag(ModelSourceTab.remote)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
+                Picker("Filter", selection: $selectedTab) {
+                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                    Text("Remote").tag(ModelSourceTab.remote)
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
                 .padding(.horizontal, 20)
                 .padding(.top, 4)
                 .padding(.bottom, 2)
