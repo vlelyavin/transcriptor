@@ -123,9 +123,13 @@ public struct HistoryView: View {
                 List(selection: isCompact ? .constant(nil) : $selectedEntryID) {
                     // The filter strip lives INSIDE the list so it scrolls
                     // with the content — static in the layout, never pinned
-                    // under the toolbar. No card, no separators.
+                    // under the toolbar. The strip itself stays boxless; the
+                    // items below render as a native grouped card.
                     Section {
-                        VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 10) {
+                        Text("Source")
+                            .foregroundStyle(.secondary)
+
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
                                 Text(filter.title).tag(filter)
@@ -133,6 +137,8 @@ public struct HistoryView: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        .fixedSize()
+                        }
 
                         HStack {
                             if let historyActionMessage = appState.historyActionMessage {
@@ -154,9 +160,8 @@ public struct HistoryView: View {
                                 .disabled(appState.historyStore.entries.isEmpty)
                             }
                         }
-                        }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 6, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 6, trailing: 20))
                         .listRowSeparator(.hidden)
                     }
 
@@ -164,11 +169,10 @@ public struct HistoryView: View {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
                         }
                     }
                 }
-                .listStyle(.inset(alternatesRowBackgrounds: false))
+                .listStyle(.grouped)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")

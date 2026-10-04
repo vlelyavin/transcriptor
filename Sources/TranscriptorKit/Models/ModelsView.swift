@@ -37,7 +37,7 @@ public struct ModelsView: View {
 
     public var body: some View {
         List {
-            Section("Current Selection") {
+            Section {
                 if appState.availableTargets.isEmpty {
                     LabeledContent("Active model") {
                         Text("None ready")
@@ -61,19 +61,24 @@ public struct ModelsView: View {
                 .disabled(!appState.canEnableAutoTranscribe)
             }
 
-            // Filter strip: label on the left, tabs right after it — no
-            // card, no background, no inner box. Sits under "Current
+            // Filter strip: "Filter" label on the left, tabs right after
+            // it — boxless, on the window background. Sits under "Current
             // Selection" and scrolls away with the page (not sticky).
-            Picker("Filter", selection: $selectedTab) {
-                Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                Text("Remote").tag(ModelSourceTab.remote)
+            HStack(spacing: 10) {
+                Text("Filter")
+                    .foregroundStyle(.secondary)
+
+                Picker("Filter", selection: $selectedTab) {
+                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                    Text("Remote").tag(ModelSourceTab.remote)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 10, leading: 4, bottom: 10, trailing: 20))
+            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
             .listRowSeparator(.hidden)
 
             if selectedTab == .remote {
@@ -82,7 +87,7 @@ public struct ModelsView: View {
                 localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
             }
         }
-        .listStyle(.inset(alternatesRowBackgrounds: false))
+        .listStyle(.grouped)
         .confirmationDialog(
             "Delete \(modelPendingDeletion?.name ?? "model")?",
             isPresented: Binding(
@@ -144,7 +149,6 @@ public struct ModelsView: View {
                 modelID: $appState.providerSettings.openAIModelID,
                 privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
                 apiKeyInput: $openAIAPIKeyInput,
-                sectionHeader: "Remote Providers"
             )
         }
 
@@ -293,8 +297,7 @@ public struct ModelsView: View {
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
         apiKeyInput: Binding<String>,
-        baseURL: Binding<String>? = nil,
-        sectionHeader: String? = nil
+        baseURL: Binding<String>? = nil
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
@@ -416,10 +419,6 @@ public struct ModelsView: View {
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
                     .fixedSize(horizontal: false, vertical: true)
-            }
-        } header: {
-            if let sectionHeader {
-                Text(sectionHeader)
             }
         } footer: {
             Text(provider.summary)

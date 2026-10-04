@@ -67,23 +67,25 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var permissionsSection: some View {
         Section {
-            LabeledContent("Microphone") {
-                Text(appState.voiceInputController.permissionStatus.title)
+            LabeledContent {
+                if appState.voiceInputController.permissionStatus != .granted {
+                    Button("Open Microphone Privacy Settings") {
+                        appState.openMicrophonePrivacySettings()
+                    }
+                }
+            } label: {
+                Text("Microphone")
             }
 
-            Button("Open Microphone Privacy Settings") {
-                appState.openMicrophonePrivacySettings()
+            LabeledContent {
+                if appState.accessibilityPermissionStatus != .granted {
+                    Button("Open Accessibility Settings") {
+                        appState.openAccessibilityPrivacySettings()
+                    }
+                }
+            } label: {
+                Text("Accessibility")
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-
-            LabeledContent("Accessibility") {
-                Text(appState.accessibilityPermissionStatus.rawValue)
-            }
-
-            Button("Open Accessibility Settings") {
-                appState.openAccessibilityPrivacySettings()
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Permissions")
         } footer: {
@@ -141,11 +143,15 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var shortcutSection: some View {
         Section {
-            // The explainer leads the section; the control follows it like
-            // the next sentence of the same text.
-            Text("Used to start and stop voice input while Transcriptor is running.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Used to start and stop voice input while Transcriptor is running.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Restore Recommended Shortcut") {
+                    appState.resetHotkeyToRecommendedDefault()
+                }
+            }
 
             LabeledContent("Global Shortcut") {
                 HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
@@ -155,10 +161,6 @@ public struct SettingsPaneDetailView: View {
                 Text(conflictWarning)
                     .font(.caption)
                     .foregroundStyle(.orange)
-            } else {
-                Text("Avoid common system shortcuts like Spotlight or input source switching.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             if let registrationError = appState.hotkeyRegistrationErrorMessage {
@@ -166,11 +168,6 @@ public struct SettingsPaneDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-
-            Button("Restore Recommended Shortcut") {
-                appState.resetHotkeyToRecommendedDefault()
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         } header: {
             Text("Shortcut")
         } footer: {
@@ -196,14 +193,21 @@ public struct SettingsPaneDetailView: View {
                 }
             }
 
-            LabeledContent("Total") {
-                Text(megabyteString(for: appState.storageUsage.totalIncludingModelsBytes))
-            }
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Total")
+                    Text("Clears every saved transcript and its audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-            Button("Clear History…", role: .destructive) {
-                showClearHistoryConfirmation = true
+                Spacer()
+
+                Button("Clear History…", role: .destructive) {
+                    showClearHistoryConfirmation = true
+                }
+                .disabled(appState.historyStore.entries.isEmpty)
             }
-            .disabled(appState.historyStore.entries.isEmpty)
             .confirmationDialog(
                 "Delete all history?",
                 isPresented: $showClearHistoryConfirmation,
