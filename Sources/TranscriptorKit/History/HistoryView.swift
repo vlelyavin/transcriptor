@@ -185,7 +185,8 @@ public struct HistoryView: View {
                     }
                 }
                 .listStyle(.plain)
-                .scrollContentBackground(.windowBackground)
+                .scrollContentBackground(.hidden)
+                .background(Color(nsColor: .windowBackgroundColor), ignoresSafeAreaEdges: .all)
                 .padding(.horizontal, -8)
                 .padding(.top, 46)
             }
