@@ -36,25 +36,11 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        // The filter strip sits OUTSIDE the grouped form so it has no card
-        // behind it; everything below keeps the native grouped cards.
+        // The filter strip sits between the selection card and the content
+        // cards, boxless — two grouped forms stacked with the strip in
+        // between keeps native cards everywhere except the tabs row.
         ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    Text("Filter")
-
-                    Picker("Filter", selection: $selectedTab) {
-                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
-                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
-                        Text("Remote").tag(ModelSourceTab.remote)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-
+            VStack(alignment: .leading, spacing: 0) {
                 Form {
                     Section {
                         if appState.availableTargets.isEmpty {
@@ -79,7 +65,26 @@ public struct ModelsView: View {
                         )
                         .disabled(!appState.canEnableAutoTranscribe)
                     }
+                }
+                .formStyle(.grouped)
 
+                HStack(spacing: 10) {
+                    Text("Filter")
+
+                    Picker("Filter", selection: $selectedTab) {
+                        Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                        Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                        Text("Remote").tag(ModelSourceTab.remote)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+
+                Form {
                     if selectedTab == .remote {
                         remoteProviderSections
                     } else {
@@ -150,6 +155,7 @@ public struct ModelsView: View {
                 modelID: $appState.providerSettings.openAIModelID,
                 privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
                 apiKeyInput: $openAIAPIKeyInput,
+                sectionHeader: "Remote Providers"
             )
         }
 
@@ -298,7 +304,8 @@ public struct ModelsView: View {
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
         apiKeyInput: Binding<String>,
-        baseURL: Binding<String>? = nil
+        baseURL: Binding<String>? = nil,
+        sectionHeader: String? = nil
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
@@ -420,6 +427,10 @@ public struct ModelsView: View {
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            if let sectionHeader {
+                Text(sectionHeader)
             }
         } footer: {
             Text(provider.summary)
