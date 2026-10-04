@@ -191,6 +191,8 @@ public struct HistoryView: View {
                 .padding(.top, 46)
             }
         }
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
     }
 
