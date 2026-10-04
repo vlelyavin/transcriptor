@@ -170,9 +170,9 @@ public struct HistoryView: View {
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
                                 // macOS List ignores listRowBackground — the
-                                // card is drawn on the row content itself.
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 6)
+                                // card is drawn on the row content itself; the
+                                // row insets leave the window background
+                                // visible as the gap between cards.
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                                         .fill(Color(nsColor: NSColor(name: nil) { appearance in
@@ -181,7 +181,7 @@ public struct HistoryView: View {
                                                 : NSColor.white
                                         }))
                                 )
-                                .listRowInsets(EdgeInsets())
+                                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                                 .listRowSeparator(.hidden)
                         }
                     }
