@@ -159,11 +159,9 @@ public struct HistoryView: View {
                             }
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
                         .listRowSeparator(.hidden)
-                    }
 
-                    Section {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
