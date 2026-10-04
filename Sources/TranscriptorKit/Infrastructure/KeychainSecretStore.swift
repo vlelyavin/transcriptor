@@ -36,12 +36,20 @@ public protocol SecretStore: Sendable {
 /// legacy item is left in place as a backup. If the DP keychain is
 /// unavailable (errSecMissingEntitlement), every call transparently falls
 /// back to the legacy login-keychain behavior.
+/// Mutable holder so the lazy DP-disable flag survives inside a struct
+/// passed as an existential (the store lives long in AppState).
+private final class DPStateBox: @unchecked Sendable {
+    var useDataProtectionIsEnabled = true
+}
+
 public struct KeychainSecretStore: SecretStore, @unchecked Sendable {
     public let service: String
     private let legacyKeychain: SecKeychain?
-    /// Whether DP-keychain queries are attempted at all (decided lazily on
-    /// the first failure).
-    private var useDataProtectionIsEnabled = true
+    private let dpState = DPStateBox()
+    private var useDataProtectionIsEnabled: Bool {
+        get { dpState.useDataProtectionIsEnabled }
+        nonmutating set { dpState.useDataProtectionIsEnabled = newValue }
+    }
 
     public init(service: String = "com.transcriptor.credentials") {
         self.service = service
