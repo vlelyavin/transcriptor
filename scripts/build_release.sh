@@ -96,13 +96,12 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
     --force \
     --timestamp \
     --options runtime \
-    --entitlements "${ENTITLEMENTS}" \
     --sign "${DEVELOPER_ID_APPLICATION}" \
     "${APP_BUNDLE}"
   echo "Signed for distribution with '${DEVELOPER_ID_APPLICATION}'."
 elif [[ "${CODESIGN_ADHOC:-0}" != "1" && -f "${LOCAL_KEYCHAIN}" ]] && security find-identity -p codesigning "${LOCAL_KEYCHAIN}" 2>/dev/null | grep -q "${LOCAL_IDENTITY}"; then
   [[ -f "${LOCAL_KEYCHAIN}" ]] && security unlock-keychain -p "${LOCAL_KEYCHAIN_PWD}" "${LOCAL_KEYCHAIN}" 2>/dev/null || true
-  codesign --force --deep --entitlements "${ENTITLEMENTS}" --keychain "${LOCAL_KEYCHAIN}" --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
+  codesign --force --deep --keychain "${LOCAL_KEYCHAIN}" --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
   echo "Signed with local dev identity '${LOCAL_IDENTITY}' (TCC grants persist across rebuilds)."
 else
   # Ad-hoc sign so Gatekeeper reports the normal "unidentified developer"
@@ -110,7 +109,7 @@ else
   # the ad-hoc cdhash changes every build, so the app's Microphone /
   # Accessibility grants reset each rebuild — run
   # scripts/setup_local_signing_cert.sh once to stop that.
-  codesign --force --deep --entitlements "${ENTITLEMENTS}" --sign - "${APP_BUNDLE}"
+  codesign --force --deep --sign - "${APP_BUNDLE}"
   echo "Ad-hoc signed (permissions reset on rebuild; see scripts/setup_local_signing_cert.sh)."
 fi
 
