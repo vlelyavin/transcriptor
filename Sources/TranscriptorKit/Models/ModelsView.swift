@@ -380,34 +380,16 @@ public struct ModelsView: View {
             }
 
             LabeledContent {
-                VStack(alignment: .trailing, spacing: 4) {
-                    if let choices = appState.cloudModelChoices[provider.id], !choices.isEmpty {
-                        Picker("Model ID", selection: Binding(
-                            get: { modelIDDrafts[provider.id] ?? modelID.wrappedValue },
-                            set: { modelIDDrafts[provider.id] = $0 }
-                        )) {
-                            ForEach(choices, id: \.self) { mid in
-                                Text(mid).tag(mid)
-                            }
-                            if let cur = modelIDDrafts[provider.id] ?? Optional(modelID.wrappedValue), !choices.contains(cur) {
-                                Text(cur).tag(cur)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 230)
-                    } else {
-                        TextField(
-                            "Model ID",
-                            text: Binding(
-                                get: { modelIDDrafts[provider.id] ?? modelID.wrappedValue },
-                                set: { modelIDDrafts[provider.id] = $0 }
-                            )
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 230)
-                    }
-                }
+                TextField(
+                    "Model ID",
+                    text: Binding(
+                        get: { modelIDDrafts[provider.id] ?? modelID.wrappedValue },
+                        set: { modelIDDrafts[provider.id] = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
                 .labelsHidden()
+                .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Model ID")

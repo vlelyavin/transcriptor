@@ -815,9 +815,10 @@ public final class AppState {
             guard let provider = providerCatalog.provider(id: providerID) else {
                 return providerID
             }
+            let modelID = providerSettings.modelID(for: providerID, fallback: provider.modelLabel)
             return providerRuntimeState(for: provider).isAwaitingValidation
                 ? "\(provider.name) (key not tested)"
-                : provider.name
+                : "\(provider.name) (\(modelID))"
         }
     }
 
