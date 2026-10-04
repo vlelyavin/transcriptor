@@ -169,11 +169,15 @@ public struct HistoryView: View {
                         ForEach(filteredEntries) { entry in
                             historyListRow(entry, isCompact: isCompact)
                                 .tag(entry.id)
-                                .listRowBackground(
+                                // macOS List ignores listRowBackground — the
+                                // card is drawn on the row content itself.
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                                         .fill(Color(nsColor: .controlBackgroundColor))
                                 )
-                                .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+                                .listRowInsets(EdgeInsets())
                                 .listRowSeparator(.hidden)
                         }
                     }
