@@ -138,6 +138,9 @@ public struct HistoryView: View {
                         .labelsHidden()
                         .fixedSize()
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 2, trailing: 20))
+                        .listRowSeparator(.hidden)
 
                         HStack {
                             if let historyActionMessage = appState.historyActionMessage {
@@ -160,7 +163,7 @@ public struct HistoryView: View {
                             }
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 6, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
                         .listRowSeparator(.hidden)
                     }
 
