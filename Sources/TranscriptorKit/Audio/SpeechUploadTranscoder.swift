@@ -54,11 +54,17 @@ public enum SpeechUploadTranscoder {
 
         var wroteFinalChunk = false
         while !wroteFinalChunk {
-            var converted: AVAudioPCMBuffer?
+            let outBuffer = makeBuffer(for: outFormat, capacity: chunkFrames * 2)
             var conversionError: NSError?
-            let status = converter.convert(toBuffer: makeBuffer(for: outFormat, capacity: chunkFrames * 2), error: &conversionError) { _, outStatus in
-                let read = try? sourceFile.read(into: srcBuffer)
-                if read != nil, srcBuffer.frameLength > 0 {
+            let status = converter.convert(to: outBuffer, error: &conversionError) { _, outStatus in
+                do {
+                    try sourceFile.read(into: srcBuffer)
+                } catch {
+                    outStatus.pointee = .endOfStream
+                    wroteFinalChunk = true
+                    return nil
+                }
+                if srcBuffer.frameLength > 0 {
                     outStatus.pointee = .haveData
                     return srcBuffer
                 }
@@ -69,11 +75,9 @@ public enum SpeechUploadTranscoder {
             if let conversionError {
                 throw conversionError
             }
-            guard status == .haveData, let out = converted ?? nil else {
-                // .inputRanDry or .endOfStream handled by wroteFinalChunk
-                continue
+            if status == .haveData, outBuffer.frameLength > 0 {
+                try outFile.write(from: outBuffer)
             }
-            try outFile.write(from: out)
         }
 
         return outURL
