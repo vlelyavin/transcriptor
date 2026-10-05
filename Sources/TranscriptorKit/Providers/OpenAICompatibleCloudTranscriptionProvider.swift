@@ -71,6 +71,14 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         guard descriptor.requiresAPIKey else {
             return
         }
+        if descriptor.apiDialect == .elevenLabs {
+            // STT models (Scribe family) are not reliably present in the
+            // /models listing, so validation is done by actually
+            // transcribing a tiny silent sample — the same request the
+            // dictation path uses.
+            try await validateByTranscribingSilence(modelID: modelID, apiKey: apiKey)
+            return
+        }
         let modelIDs: [String]
         do {
             modelIDs = try Self.decodeModelList(data: data, dialect: descriptor.apiDialect)
@@ -138,7 +146,8 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         try Self.silentWAV(seconds: 0.6).write(to: audioURL)
 
         let body = try multipartBody(for: audioURL, modelID: modelID, language: nil)
-        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
+        let validationPath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: validationPath))
         request.httpMethod = "POST"
         request.httpBody = body.body
         request.timeoutInterval = 30
