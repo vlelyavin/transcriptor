@@ -3,6 +3,7 @@ import Foundation
 /// Retry policy for model downloads: transient network failures are
 /// retried with short backoff instead of hard-failing the user's
 /// download. Model state updates flow through on every attempt.
+@MainActor
 public enum ModelDownloadRetry {
 
     /// Runs `body` up to `maxAttempts` times with 1.5 s / 4 s backoff
