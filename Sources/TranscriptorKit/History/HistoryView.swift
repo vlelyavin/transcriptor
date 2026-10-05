@@ -116,16 +116,15 @@ public struct HistoryView: View {
     }
 
     private func historyListPane(isCompact: Bool) -> some View {
-        // Same container as every other page: a grouped Form. The Form's
-        // opaque grouped background covers the full pane (including the
-        // toolbar band), and its cards/separators are identical to
-        // General/Storage/Models — one template, zero custom geometry.
+        // Same template as the Models page: a bare segmented filter strip
+        // above (no card), then a grouped Form holding the items. The
+        // strip sits where every other page's content starts.
         Group {
             if filteredEntries.isEmpty {
                 emptyState
             } else {
-                Form {
-                    Section {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
                         Picker("Source", selection: $selectedFilter) {
                             ForEach(HistoryFilter.allCases) { filter in
                                 Text(filter.title).tag(filter)
@@ -134,6 +133,8 @@ public struct HistoryView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .fixedSize()
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
 
                         HStack {
                             if let historyActionMessage = appState.historyActionMessage {
@@ -155,24 +156,27 @@ public struct HistoryView: View {
                                 .disabled(appState.historyStore.entries.isEmpty)
                             }
                         }
-                        .listRowSeparator(.hidden)
-                    }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 6)
+                        .padding(.bottom, 2)
 
-                    Section {
-                        ForEach(filteredEntries) { entry in
-                            historyListRow(entry, isCompact: isCompact)
-                                .tag(entry.id)
-                                .contentShape(Rectangle())
-                                .listRowBackground(
-                                    selectedEntryID == entry.id && !isCompact
-                                        ? Color.accentColor.opacity(0.14)
-                                        : Color.clear
-                                )
+                        Form {
+                            Section {
+                                ForEach(filteredEntries) { entry in
+                                    historyListRow(entry, isCompact: isCompact)
+                                        .tag(entry.id)
+                                        .listRowBackground(
+                                            selectedEntryID == entry.id && !isCompact
+                                                ? Color.accentColor.opacity(0.14)
+                                                : Color.clear
+                                        )
+                                }
+                            }
                         }
+                        .formStyle(.grouped)
                     }
                 }
-                .formStyle(.grouped)
-                .padding(.top, 20)
+                .contentMargins(.horizontal, 0, for: .scrollContent)
             }
         }
         .searchable(text: $searchText, prompt: "Search transcripts or filenames")
