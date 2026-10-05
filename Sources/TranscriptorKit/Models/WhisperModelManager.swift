@@ -47,7 +47,7 @@ public final class WhisperModelManager {
             do {
                 var folder: URL?
                 try await ModelDownloadRetry.run {
-                    folder = try await provider.downloadModel(model) { [weak self] progress in
+                    folder = try await self.provider.downloadModel(model) { [weak self] progress in
                         Task { @MainActor in
                             self?.inventory[model.id] = LocalModelInventoryItem(
                                 modelID: model.id,
