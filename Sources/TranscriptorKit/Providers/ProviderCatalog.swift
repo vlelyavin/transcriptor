@@ -96,7 +96,7 @@ public struct ProviderCatalog: Equatable, Sendable {
             ProviderDescriptor(
                 id: "elevenlabs",
                 name: "ElevenLabs",
-                modelLabel: "scribe_v1",
+                modelLabel: "scribe_v2",
                 summary: "ElevenLabs Scribe — state-of-the-art accuracy across 99 languages, robust to accents and noise.",
                 priceNote: "~$0.40/hour (tier discounts)",
                 privacySummary: "Audio is uploaded to ElevenLabs for transcription.",

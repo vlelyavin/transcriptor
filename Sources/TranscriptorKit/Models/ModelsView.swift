@@ -647,7 +647,7 @@ public struct ModelsView: View {
         case "groq":
             "Find model IDs on the Groq Console models page (e.g. whisper-large-v3-turbo)."
         case "elevenlabs":
-            "scribe_v1 is the current Scribe model; experimental IDs appear in ElevenLabs docs."
+            "scribe_v2 is the current Scribe model; experimental IDs appear in ElevenLabs docs."
         case "custom":
             "The model name your server expects (e.g. whisper-1)."
         default:

@@ -57,7 +57,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         elevenLabsEnabled: Bool = false,
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
-        elevenLabsModelID: String = "scribe_v1",
+        elevenLabsModelID: String = "scribe_v2",
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
         elevenLabsPrivacyAcknowledged: Bool = false,
@@ -185,7 +185,11 @@ public final class AppPreferencesStore {
             elevenLabsEnabled: decoded.elevenLabsEnabled ?? false,
             openAIModelID: decoded.openAIModelID ?? "gpt-4o-mini-transcribe",
             groqModelID: decoded.groqModelID ?? "whisper-large-v3-turbo",
-            elevenLabsModelID: decoded.elevenLabsModelID ?? "scribe_v1",
+            // One-time migration: scribe_v1 is deprecated by ElevenLabs and
+            // outclassed by scribe_v2; stored v1 IDs are bumped on load.
+            elevenLabsModelID: (decoded.elevenLabsModelID.map { id in
+                id == "scribe_v1" ? "scribe_v2" : id
+            }) ?? "scribe_v2",
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
             groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
             elevenLabsPrivacyAcknowledged: decoded.elevenLabsPrivacyAcknowledged ?? false,

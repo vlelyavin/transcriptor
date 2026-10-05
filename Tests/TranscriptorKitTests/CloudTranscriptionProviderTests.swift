@@ -290,7 +290,7 @@ final class CloudTranscriptionProviderTests: XCTestCase {
                 audioFileURL: audioURL,
                 requestedProviderID: "elevenlabs",
                 requestedProviderName: "ElevenLabs",
-                requestedModelID: "scribe_v1",
+                requestedModelID: "scribe_v2",
                 requestedModelName: "Scribe v1",
                 sourceType: .dictation
             )
@@ -303,7 +303,7 @@ final class CloudTranscriptionProviderTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
         let body = try XCTUnwrap(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
         XCTAssertTrue(body.contains(#"name="model_id""#))
-        XCTAssertTrue(body.contains("scribe_v1"))
+        XCTAssertTrue(body.contains("scribe_v2"))
         // job.language is nil here → no language field is expected.
         XCTAssertFalse(body.contains(#"name="response_format""#))
     }

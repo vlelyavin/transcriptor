@@ -30,7 +30,7 @@ public struct ProviderSettings: Equatable, Sendable {
         elevenLabsEnabled: Bool = false,
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
-        elevenLabsModelID: String = "scribe_v1",
+        elevenLabsModelID: String = "scribe_v2",
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
         elevenLabsPrivacyAcknowledged: Bool = false,
