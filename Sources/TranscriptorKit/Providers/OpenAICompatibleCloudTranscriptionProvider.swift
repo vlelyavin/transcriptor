@@ -71,8 +71,17 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         guard descriptor.requiresAPIKey else {
             return
         }
-        let decoded = try JSONDecoder().decode(CloudModelsListResponse.self, from: data)
-        guard decoded.data.contains(where: { $0.id == modelID }) else {
+        let modelIDs: [String]
+        do {
+            modelIDs = try Self.decodeModelList(data: data, dialect: descriptor.apiDialect)
+        } catch {
+            // Diagnostic: surface the actual response shape so a vendor
+            // format change is visible in the UI. Snippet is response data,
+            // not a secret.
+            let snippet = String(data: data.prefix(160), encoding: .utf8) ?? "<binary>"
+            throw TranscriptionError.unsupportedModel("\(descriptor.name) /models response could not be parsed (snippet: \(snippet))")
+        }
+        guard modelIDs.contains(modelID) else {
             throw TranscriptionError.unsupportedModel("\(descriptor.name) does not currently expose the configured model '\(modelID)'.")
         }
     }
