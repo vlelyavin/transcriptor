@@ -12,6 +12,16 @@ public enum SpeechUploadTranscoder {
     /// created next to the input; the original recording is untouched.
     /// If the source is already ≤ 16 kHz mono, returns the input URL.
     public static func speechBandMonoWav(from sourceURL: URL) throws -> URL {
+        do {
+            return try convertToSpeechBandMono(from: sourceURL)
+        } catch {
+            // Any decode/conversion hiccup must never block transcription —
+            // fall back to uploading the original recording.
+            return sourceURL
+        }
+    }
+
+    private static func convertToSpeechBandMono(from sourceURL: URL) throws -> URL {
         let sourceFile = try AVAudioFile(forReading: sourceURL)
         let srcFormat = sourceFile.processingFormat
 
