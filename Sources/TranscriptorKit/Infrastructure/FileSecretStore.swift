@@ -69,10 +69,10 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     // MARK: - Payload I/O (AES-GCM at rest, 0600 file)
 
     private func payload() throws -> [String: String] {
-        if let cachedPayload { return cachedPayload }
+        if let cached = cachedPayload { return cached }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             cachedPayload = [:]
-            return cachedPayload
+            return cachedPayload!
         }
         let raw = try Data(contentsOf: fileURL)
         do {

@@ -418,15 +418,11 @@ public struct ModelsView: View {
             .disabled(!hasConsent)
 
             let storedMask = appState.maskedStoredAPIKey(for: provider.id, provider: provider)
-            let apiKeyPlaceholder: String
-            let statusText: String
-            if let storedMask {
-                apiKeyPlaceholder = storedMask
-                statusText = "Stored: \(storedMask) — type to replace, empty keeps it"
-            } else {
-                apiKeyPlaceholder = provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth"
-                statusText = provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"
-            }
+            let apiKeyPlaceholder: String = storedMask
+                ?? (provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth")
+            let statusText: String = storedMask
+                ? "Stored: \(storedMask) — type to replace, empty keeps it"
+                : (provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth")
 
             let modelIDDirty = modelIDDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != modelID.wrappedValue } ?? false
             let baseURLDirty = baseURL.map { base in
