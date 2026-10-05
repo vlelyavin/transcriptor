@@ -2,27 +2,6 @@ import Foundation
 import Security
 import CryptoKit
 
-public enum SecretStoreError: Error, LocalizedError, Equatable, Sendable {
-    case invalidSecret
-    case unexpectedStatus(OSStatus)
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidSecret:
-            "The provided secret could not be encoded for secure storage."
-        case let .unexpectedStatus(status):
-            SecCopyErrorMessageString(status, nil) as String? ?? "The Keychain returned OSStatus \(status)."
-        }
-    }
-}
-
-public protocol SecretStore: Sendable {
-    func secret(for account: String) throws -> String?
-    func saveSecret(_ secret: String, for account: String) throws
-    func deleteSecret(for account: String) throws
-    func containsSecret(for account: String) throws -> Bool
-}
-
 /// Primary storage: an encrypted file in Application Support.
 ///
 /// Rationale (distribution-first): a file store is not keyed to the app's
