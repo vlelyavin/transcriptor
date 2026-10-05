@@ -322,6 +322,16 @@ public struct ModelsView: View {
         let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
         let hasConsent = privacyConsent.wrappedValue
         let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let storedMask = appState.maskedStoredAPIKey(for: provider.id, provider: provider)
+            let apiKeyPlaceholder: String = storedMask
+                ?? (provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth")
+            let statusText: String
+            if let storedMask {
+                statusText = "Stored: \(storedMask) — type to replace, empty keeps it"
+            } else {
+                statusText = provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"
+            }
+
         let isTesting: Bool = {
             if case .testing = validationState { return true }
             return false
@@ -416,16 +426,6 @@ public struct ModelsView: View {
                 }
             }
             .disabled(!hasConsent)
-
-            let storedMask = appState.maskedStoredAPIKey(for: provider.id, provider: provider)
-            let apiKeyPlaceholder: String = storedMask
-                ?? (provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth")
-            let statusText: String
-            if let storedMask {
-                statusText = "Stored: \(storedMask) — type to replace, empty keeps it"
-            } else {
-                statusText = provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"
-            }
 
             let modelIDDirty = modelIDDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != modelID.wrappedValue } ?? false
             let baseURLDirty = baseURL.map { base in
