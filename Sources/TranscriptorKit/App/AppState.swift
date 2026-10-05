@@ -251,6 +251,7 @@ public final class AppState {
     public let transcriptionQueueController: TranscriptionQueueController
     public let transcriptionTargetResolver: TranscriptionTargetResolver
     public private(set) var storedAPIKeyProviderIDs: Set<String>
+    @ObservationIgnored private var maskedAPIKeyCache: [String: String] = [:]
     public private(set) var providerCredentialValidationStates: [String: ProviderCredentialValidationState]
     public private(set) var hotkeyRegistrationErrorMessage: String?
     public private(set) var accessibilityPermissionStatus: AccessibilityPermissionStatus
@@ -294,7 +295,9 @@ public final class AppState {
         audioPlaybackService: AudioPlaybackService = AudioPlaybackService(),
         transcriptInsertionService: any TranscriptInsertionServing = TranscriptInsertionService(),
         launchAtLoginService: any LaunchAtLoginServing = LaunchAtLoginService(),
-        secretStore: any SecretStore = KeychainSecretStore(),
+        // Encrypted-file store (no keychain prompts across updates); migrates
+        // legacy keychain items on first read.
+        secretStore: any SecretStore = MigratingSecretStore(),
         notificationPoster: any NotificationPosting = UserNotificationPoster(),
         voiceInputController: VoiceInputController? = nil
     ) {
@@ -999,6 +1002,35 @@ public final class AppState {
         storedAPIKeyProviderIDs.contains(providerID)
     }
 
+    /// Masked display form of the stored API key, e.g. "sk-ab…9f".
+    /// Read once per provider and cached; the raw secret never leaves
+    /// this function.
+    public func maskedStoredAPIKey(for providerID: String, provider: ProviderDescriptor) -> String? {
+        if let cached = maskedAPIKeyCache[providerID] {
+            return cached
+        }
+        guard hasStoredAPIKey(for: providerID) else { return nil }
+        let raw = (try? secretStore.secret(for: provider.keychainAccount)) ?? nil
+        guard let raw, !raw.isEmpty else { return nil }
+        let masked = Self.maskKey(raw)
+        maskedAPIKeyCache[providerID] = masked
+        return masked
+    }
+
+    public func invalidateMaskedAPIKeyCache(for providerID: String) {
+        maskedAPIKeyCache.removeValue(forKey: providerID)
+    }
+
+    public static func maskKey(_ key: String) -> String {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 10 else {
+            return String(repeating: "•", count: max(4, trimmed.count))
+        }
+        let head = String(trimmed.prefix(6))
+        let tail = String(trimmed.suffix(4))
+        return "\(head)…\(tail)"
+    }
+
     public func providerRuntimeState(for provider: ProviderDescriptor) -> ProviderRuntimeState {
         switch provider.availability {
         case let .unavailable(blocker), let .planned(blocker):
@@ -1059,6 +1091,7 @@ public final class AppState {
         do {
             try secretStore.saveSecret(trimmedKey, for: provider.keychainAccount)
             storedAPIKeyProviderIDs.insert(providerID)
+            maskedAPIKeyCache.removeValue(forKey: providerID)
             // A newly stored key has not been validated yet — readiness must wait
             // until the user tests this exact key successfully.
             providerSettings.setCredentialValidated(false, for: providerID)
@@ -1076,6 +1109,7 @@ public final class AppState {
         do {
             try secretStore.deleteSecret(for: provider.keychainAccount)
             storedAPIKeyProviderIDs.remove(providerID)
+            maskedAPIKeyCache.removeValue(forKey: providerID)
             providerSettings.setCredentialValidated(false, for: providerID)
             providerCredentialValidationStates[providerID] = .succeeded("\(provider.name) API key removed from Keychain.")
         } catch {
@@ -1098,6 +1132,7 @@ public final class AppState {
             do {
                 try secretStore.saveSecret(trimmedEnteredKey, for: provider.keychainAccount)
                 storedAPIKeyProviderIDs.insert(providerID)
+                maskedAPIKeyCache.removeValue(forKey: providerID)
             } catch {
                 providerCredentialValidationStates[providerID] = .failed(error.localizedDescription)
                 return

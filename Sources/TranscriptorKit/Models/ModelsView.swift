@@ -402,20 +402,31 @@ public struct ModelsView: View {
             .disabled(!hasConsent)
 
             LabeledContent {
-                SecureField(hasStoredKey ? "Stored — enter to replace" : "Enter API key", text: apiKeyInput)
+                SecureField(apiKeyPlaceholder, text: apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("API Key")
-                    // Plain gray status text — no icons.
-                    Text(hasStoredKey ? "Stored in Keychain" : (provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"))
+                    // Masked stored key (start…end) or plain status — no icons.
+                    Text(statusText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .disabled(!hasConsent)
+
+            let storedMask = appState.maskedStoredAPIKey(for: provider.id, provider: provider)
+            let apiKeyPlaceholder: String
+            let statusText: String
+            if let storedMask {
+                apiKeyPlaceholder = storedMask
+                statusText = "Stored: \(storedMask) — type to replace, empty keeps it"
+            } else {
+                apiKeyPlaceholder = provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth"
+                statusText = provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"
+            }
 
             let modelIDDirty = modelIDDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != modelID.wrappedValue } ?? false
             let baseURLDirty = baseURL.map { base in
@@ -433,8 +444,11 @@ public struct ModelsView: View {
                         base.wrappedValue = draft.trimmingCharacters(in: .whitespaces)
                         baseURLDrafts[provider.id] = nil
                     }
-                    if !keyInputEmpty {
+                    let typed = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // A pasted mask is not a key — ignore it.
+                    if !keyInputEmpty, typed != storedMask {
                         appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                        appState.invalidateMaskedAPIKeyCache(for: provider.id)
                         apiKeyInput.wrappedValue = ""
                     }
                 }
