@@ -21,7 +21,8 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     private let fileURL: URL
     private let storeQueue = DispatchQueue(label: "com.transcriptor.filesecretstore")
 
-    private var cachedPayload: [String: String]?
+    private var cachedPayload: [String: String] = [:]
+    private var cacheLoaded = false
 
     public init(service: String = "com.transcriptor.credentials") {
         self.service = service
@@ -69,10 +70,11 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     // MARK: - Payload I/O (AES-GCM at rest, 0600 file)
 
     private func payload() throws -> [String: String] {
-        if let cached = cachedPayload { return cached }
+        if cacheLoaded { return cachedPayload }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            cacheLoaded = true
             cachedPayload = [:]
-            return cachedPayload!
+            return cachedPayload
         }
         let raw = try Data(contentsOf: fileURL)
         do {
@@ -81,6 +83,7 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
             let plaintext = try AES.GCM.open(sealed, using: key)
             let decoded = try JSONDecoder().decode([String: String].self, from: plaintext)
             cachedPayload = decoded
+            cacheLoaded = true
             return decoded
         } catch {
             // Unreadable/corrupt file — start a fresh store rather than
