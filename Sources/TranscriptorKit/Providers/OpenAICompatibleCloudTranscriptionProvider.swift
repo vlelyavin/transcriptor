@@ -82,7 +82,10 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             throw TranscriptionError.unsupportedModel("\(descriptor.name) /models response could not be parsed (snippet: \(snippet))")
         }
         guard modelIDs.contains(modelID) else {
-            throw TranscriptionError.unsupportedModel("\(descriptor.name) does not currently expose the configured model '\(modelID)'.")
+            // Show what the vendor actually exposes so the right ID is one
+            // glance away. Keep the list short.
+            let preview = modelIDs.prefix(8).joined(separator: ", ")
+            throw TranscriptionError.unsupportedModel("\(descriptor.name) does not expose '\(modelID)'. Available models: \(preview)\(modelIDs.count > 8 ? ", …" : "")")
         }
     }
 
@@ -193,7 +196,13 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID, language: job.language)
+        // Downmix to 16 kHz mono for upload: Whisper-class engines run on
+        // 16 kHz input, so this is quality-neutral while shrinking typical
+        // 48 kHz captures ~6× (keeps us far below the 25 MB direct limit).
+        let uploadURL = try SpeechUploadTranscoder.speechBandMonoWav(from: job.audioFileURL)
+        defer { if uploadURL != job.audioFileURL { try? FileManager.default.removeItem(at: uploadURL) } }
+
+        let requestBody = try multipartBody(for: uploadURL, modelID: job.requestedModelID, language: job.language)
         let transcribePath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
         var request = URLRequest(url: baseURL.appending(path: transcribePath))
         request.httpMethod = "POST"
