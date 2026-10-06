@@ -16,7 +16,6 @@ struct TranscriptorSmokeChecks {
 
         let catalog = ModelCatalog.defaultCatalog
         expect(catalog.sections.map(\.id) == ["whisper", "parakeet"], "Model catalog exposes Whisper and Parakeet sections.", failures: &failures)
-        expect(catalog.whisperModels.contains { $0.id == "whisper-base-en" && $0.supportsLocalTranscription }, "Model catalog includes Base (English) as a real local model.", failures: &failures)
         expect(catalog.whisperModels.contains { $0.remoteVariantName == "openai_whisper-large-v3-v20240930_turbo_632MB" }, "Model catalog pins a verified Large V3 Turbo runtime variant.", failures: &failures)
         expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
 

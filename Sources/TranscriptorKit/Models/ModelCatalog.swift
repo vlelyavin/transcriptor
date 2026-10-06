@@ -117,25 +117,6 @@ public struct ModelCatalog: Equatable, Sendable {
                 description: "Whisper-family speech models that run entirely on this Mac. Downloaded files are kept in Transcriptor-managed local storage.",
                 models: [
                     ModelDescriptor(
-                        id: "whisper-base-en",
-                        name: "Base (English)",
-                        family: "Whisper",
-                        localProviderID: "whisperkit-local",
-                        engineLabel: "WhisperKit",
-                        notes: "Smaller English-first local model for everyday notes.",
-                        downloadSizeDescription: "~105 MB",
-                        speedDescription: "Fast",
-                        accuracyDescription: "Better",
-                        intendedUseLabel: "Everyday English dictation",
-                        languageScopeLabel: "English",
-                        remoteVariantName: "openai_whisper-base.en",
-                        approximateDownloadBytes: 105 * 1_048_576,
-                        supportsLocalTranscription: true,
-                        availability: .available(
-                            note: "Downloadable and runnable locally with WhisperKit."
-                        )
-                    ),
-                    ModelDescriptor(
                         id: "whisper-large-v3-turbo",
                         name: "Large V3 Turbo",
                         family: "Whisper",
@@ -155,50 +136,13 @@ public struct ModelCatalog: Equatable, Sendable {
                             note: "Downloadable and runnable locally with WhisperKit."
                         )
                     ),
-                    ModelDescriptor(
-                        id: "whisper-distil-large-v3",
-                        name: "Distil Large V3",
-                        family: "Whisper",
-                        localProviderID: "whisperkit-local",
-                        engineLabel: "WhisperKit",
-                        notes: "Faster distilled large model with strong English performance.",
-                        downloadSizeDescription: "~594 MB",
-                        speedDescription: "Fast",
-                        accuracyDescription: "Excellent",
-                        intendedUseLabel: "Fast re-transcription",
-                        languageScopeLabel: "English",
-                        remoteVariantName: "distil-whisper_distil-large-v3_594MB",
-                        approximateDownloadBytes: 594 * 1_048_576,
-                        supportsLocalTranscription: true,
-                        availability: .available(
-                            note: "Downloadable and runnable locally with WhisperKit."
-                        )
-                    ),
                 ]
             ),
             ModelSection(
                 id: "parakeet",
                 title: "Local NVIDIA Parakeet Models",
-                description: "Beta. Parakeet v2 and v3 run locally through the FluidAudio Core ML backend. Requires Apple Silicon; models are downloaded from Hugging Face (over 1 GB each).",
+                description: "Beta. Parakeet v3 runs locally through the FluidAudio Core ML backend. Requires Apple Silicon; the model is downloaded from Hugging Face (over 1 GB).",
                 models: [
-                    ModelDescriptor(
-                        id: "parakeet-v2-en",
-                        name: "Parakeet v2 (English)",
-                        family: "Parakeet",
-                        localProviderID: "parakeet-local",
-                        engineLabel: "Parakeet Local",
-                        notes: "English-only local Parakeet model with strong recall for dictation and transcription.",
-                        downloadSizeDescription: "Over 1 GB",
-                        speedDescription: "Fast on Apple Silicon",
-                        accuracyDescription: "High (English)",
-                        intendedUseLabel: "High-accuracy English dictation",
-                        languageScopeLabel: "English",
-                        supportsLocalTranscription: true,
-                        accentBadgeLabel: "Beta",
-                        availability: .available(
-                            note: "Beta: downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
-                        )
-                    ),
                     ModelDescriptor(
                         id: "parakeet-v3-multilingual",
                         name: "Parakeet v3 (Multilingual)",
