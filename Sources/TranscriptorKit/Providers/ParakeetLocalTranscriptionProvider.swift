@@ -200,6 +200,8 @@ public actor ParakeetLocalTranscriptionProvider: LocalTranscriptionProvider {
         switch model.id {
         case "parakeet-v3-multilingual":
             .v3
+        case "parakeet-ultra-multilingual":
+            .ultra
         default:
             throw TranscriptionError.unsupportedModel("The requested Parakeet model is not mapped to a supported FluidAudio model version.")
         }

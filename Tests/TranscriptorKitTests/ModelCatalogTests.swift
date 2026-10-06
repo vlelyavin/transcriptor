@@ -20,7 +20,7 @@ final class ModelCatalogTests: XCTestCase {
         let catalog = ModelCatalog.defaultCatalog
         let parakeetModels = catalog.sections.first(where: { $0.id == "parakeet" })?.models ?? []
 
-        XCTAssertEqual(parakeetModels.map(\.id), ["parakeet-v3-multilingual"])
+        XCTAssertEqual(parakeetModels.map(\.id), ["parakeet-ultra-multilingual", "parakeet-v3-multilingual"])
         XCTAssertTrue(
             parakeetModels.allSatisfy {
                 $0.supportsLocalTranscription && $0.localProviderID == "parakeet-local"

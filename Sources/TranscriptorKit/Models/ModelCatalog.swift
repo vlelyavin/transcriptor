@@ -144,6 +144,24 @@ public struct ModelCatalog: Equatable, Sendable {
                 description: "Beta. Parakeet v3 runs locally through the FluidAudio Core ML backend. Requires Apple Silicon; the model is downloaded from Hugging Face (over 1 GB).",
                 models: [
                     ModelDescriptor(
+                        id: "parakeet-ultra-multilingual",
+                        name: "Parakeet Ultra (Multilingual)",
+                        family: "Parakeet",
+                        localProviderID: "parakeet-local",
+                        engineLabel: "Parakeet Local",
+                        notes: "Moondream's post-trained Parakeet v3: clearly better in background noise, on long-form audio and across the 25-language suite. Top local pick.",
+                        downloadSizeDescription: "~600 MB",
+                        speedDescription: "Fast on Apple Silicon",
+                        accuracyDescription: "Best local (25 languages)",
+                        intendedUseLabel: "Highest-accuracy local dictation",
+                        languageScopeLabel: "Multilingual",
+                        supportsLocalTranscription: true,
+                        accentBadgeLabel: "Recommended",
+                        availability: .available(
+                            note: "Beta: downloadable and runnable locally through FluidAudio Core ML on Apple Silicon."
+                        )
+                    ),
+                    ModelDescriptor(
                         id: "parakeet-v3-multilingual",
                         name: "Parakeet v3 (Multilingual)",
                         family: "Parakeet",

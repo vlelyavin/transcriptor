@@ -17,7 +17,7 @@ struct TranscriptorSmokeChecks {
         let catalog = ModelCatalog.defaultCatalog
         expect(catalog.sections.map(\.id) == ["whisper", "parakeet"], "Model catalog exposes Whisper and Parakeet sections.", failures: &failures)
         expect(catalog.whisperModels.contains { $0.remoteVariantName == "openai_whisper-large-v3-v20240930_turbo_632MB" }, "Model catalog pins a verified Large V3 Turbo runtime variant.", failures: &failures)
-        expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
+        expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-ultra-multilingual" }, "Model catalog includes Parakeet Ultra as the top local model.", failures: &failures)
 
         let providers = ProviderCatalog.defaultCatalog
         expect(providers.providers.map(\.id) == ["openai", "groq", "elevenlabs", "custom"], "Provider catalog includes OpenAI, Groq, ElevenLabs, and the custom OpenAI-compatible server.", failures: &failures)
