@@ -131,7 +131,6 @@ public struct ModelCatalog: Equatable, Sendable {
                         remoteVariantName: "openai_whisper-large-v3-v20240930_turbo_632MB",
                         approximateDownloadBytes: 632 * 1_048_576,
                         supportsLocalTranscription: true,
-                        accentBadgeLabel: "Recommended",
                         availability: .available(
                             note: "Downloadable and runnable locally with WhisperKit."
                         )

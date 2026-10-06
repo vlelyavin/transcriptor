@@ -11,8 +11,8 @@ struct TranscriptorSmokeChecks {
         expect(appState.recordingState.mode == .holdToTalk, "Recording mode defaults to Hold to Talk.", failures: &failures)
         expect(appState.overlayState.isEnabled, "Overlay defaults to enabled.", failures: &failures)
         expect(appState.overlayState.showsLiveAudioIndicator, "Overlay defaults to showing the live audio indicator.", failures: &failures)
-        expect(appState.transcriptionPreferences.preferredLocalProviderID == "whisperkit-local", "Preferred local provider defaults to WhisperKit.", failures: &failures)
-        expect(appState.selectedModel?.id == "whisper-large-v3-turbo", "Preferred model defaults to Large V3 Turbo.", failures: &failures)
+        expect(appState.transcriptionPreferences.preferredLocalProviderID == "parakeet-local", "Preferred local provider defaults to Parakeet.", failures: &failures)
+        expect(appState.selectedModel?.id == "parakeet-ultra-multilingual", "Preferred model defaults to Parakeet Ultra.", failures: &failures)
 
         let catalog = ModelCatalog.defaultCatalog
         expect(catalog.sections.map(\.id) == ["whisper", "parakeet"], "Model catalog exposes Whisper and Parakeet sections.", failures: &failures)

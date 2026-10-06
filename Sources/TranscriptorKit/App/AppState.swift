@@ -102,11 +102,11 @@ public final class AppState {
     }
 
     /// The model offered first in the mandatory setup flow — the catalog's
-    /// flagged recommendation, falling back to the first downloadable WhisperKit
+    /// flagged recommendation, falling back to the first downloadable local
     /// model so there is always a one-click path to a working model.
     public var recommendedSetupModel: ModelDescriptor? {
-        let whisper = modelCatalog.whisperModels
-        return whisper.first(where: { $0.accentBadgeLabel == "Recommended" }) ?? whisper.first
+        let locals = modelCatalog.localModels
+        return locals.first(where: { $0.accentBadgeLabel == "Recommended" }) ?? locals.first
     }
 
     /// Presents the welcome guide (used by the first-launch auto-present and the

@@ -10,10 +10,10 @@ public struct TranscriptionPreferences: Equatable, Sendable {
     public var transcriptionLanguage: String
 
     public init(
-        selectedModelID: String = "whisper-large-v3-turbo",
+        selectedModelID: String = "parakeet-ultra-multilingual",
         autoTranscribeAfterCapture: Bool = false,
-        preferredLocalProviderID: String = "whisperkit-local",
-        preferredProviderID: String = "whisperkit-local",
+        preferredLocalProviderID: String = "parakeet-local",
+        preferredProviderID: String = "parakeet-local",
         transcriptionLanguage: String = ""
     ) {
         self.selectedModelID = selectedModelID
