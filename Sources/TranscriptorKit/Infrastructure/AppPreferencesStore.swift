@@ -10,26 +10,31 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var recordingModeRawValue: String
     public var hotkeyKeyCode: UInt32
     public var hotkeyCarbonModifiers: UInt32
-    public var saveOriginalAudio: Bool
     public var overlayEnabled: Bool
-    public var overlayIsNonActivating: Bool
     public var overlayShowsLiveIndicator: Bool
     public var overlayPositionRawValue: String
     public var selectedModelID: String
     public var autoTranscribeAfterCapture: Bool
     public var preferredLocalProviderID: String
     public var preferredProviderID: String
-    public var historyLimitMegabytes: Int
-    public var autoDeleteOldestHistory: Bool
-    public var excludesDownloadedModels: Bool
     public var openAIEnabled: Bool
     public var groqEnabled: Bool
+    public var elevenLabsEnabled: Bool
     public var openAIModelID: String
     public var groqModelID: String
+    public var elevenLabsModelID: String
     public var openAIPrivacyAcknowledged: Bool
     public var groqPrivacyAcknowledged: Bool
+    public var elevenLabsPrivacyAcknowledged: Bool
     public var openAICredentialValidated: Bool
     public var groqCredentialValidated: Bool
+    public var elevenLabsCredentialValidated: Bool
+    public var transcriptionLanguage: String
+    public var showDockIcon: Bool
+    public var customBaseURL: String
+    public var customModelID: String
+    public var customPrivacyAcknowledged: Bool
+    public var customCredentialValidated: Bool
 
     public init(
         launchAtLoginEnabled: Bool = false,
@@ -40,26 +45,31 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         recordingModeRawValue: String = RecordingMode.holdToTalk.rawValue,
         hotkeyKeyCode: UInt32 = UInt32(kVK_Space),
         hotkeyCarbonModifiers: UInt32 = UInt32(optionKey | shiftKey),
-        saveOriginalAudio: Bool = true,
         overlayEnabled: Bool = true,
-        overlayIsNonActivating: Bool = true,
         overlayShowsLiveIndicator: Bool = true,
         overlayPositionRawValue: String = OverlayPosition.topCenter.rawValue,
         selectedModelID: String = "whisper-large-v3-turbo",
         autoTranscribeAfterCapture: Bool = false,
         preferredLocalProviderID: String = "whisperkit-local",
         preferredProviderID: String = "whisperkit-local",
-        historyLimitMegabytes: Int = 2_048,
-        autoDeleteOldestHistory: Bool = true,
-        excludesDownloadedModels: Bool = true,
         openAIEnabled: Bool = false,
         groqEnabled: Bool = false,
+        elevenLabsEnabled: Bool = false,
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
+        elevenLabsModelID: String = "scribe_v2",
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
+        elevenLabsPrivacyAcknowledged: Bool = false,
         openAICredentialValidated: Bool = false,
-        groqCredentialValidated: Bool = false
+        groqCredentialValidated: Bool = false,
+        elevenLabsCredentialValidated: Bool = false,
+        transcriptionLanguage: String = "",
+        showDockIcon: Bool = false,
+        customBaseURL: String = "",
+        customModelID: String = "whisper-1",
+        customPrivacyAcknowledged: Bool = false,
+        customCredentialValidated: Bool = false
     ) {
         self.launchAtLoginEnabled = launchAtLoginEnabled
         self.showMenuBarIcon = showMenuBarIcon
@@ -69,26 +79,31 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.recordingModeRawValue = recordingModeRawValue
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyCarbonModifiers = hotkeyCarbonModifiers
-        self.saveOriginalAudio = saveOriginalAudio
         self.overlayEnabled = overlayEnabled
-        self.overlayIsNonActivating = overlayIsNonActivating
         self.overlayShowsLiveIndicator = overlayShowsLiveIndicator
         self.overlayPositionRawValue = overlayPositionRawValue
         self.selectedModelID = selectedModelID
         self.autoTranscribeAfterCapture = autoTranscribeAfterCapture
         self.preferredLocalProviderID = preferredLocalProviderID
         self.preferredProviderID = preferredProviderID
-        self.historyLimitMegabytes = historyLimitMegabytes
-        self.autoDeleteOldestHistory = autoDeleteOldestHistory
-        self.excludesDownloadedModels = excludesDownloadedModels
         self.openAIEnabled = openAIEnabled
         self.groqEnabled = groqEnabled
+        self.elevenLabsEnabled = elevenLabsEnabled
         self.openAIModelID = openAIModelID
         self.groqModelID = groqModelID
+        self.elevenLabsModelID = elevenLabsModelID
         self.openAIPrivacyAcknowledged = openAIPrivacyAcknowledged
         self.groqPrivacyAcknowledged = groqPrivacyAcknowledged
+        self.elevenLabsPrivacyAcknowledged = elevenLabsPrivacyAcknowledged
         self.openAICredentialValidated = openAICredentialValidated
         self.groqCredentialValidated = groqCredentialValidated
+        self.elevenLabsCredentialValidated = elevenLabsCredentialValidated
+        self.transcriptionLanguage = transcriptionLanguage
+        self.showDockIcon = showDockIcon
+        self.customBaseURL = customBaseURL
+        self.customModelID = customModelID
+        self.customPrivacyAcknowledged = customPrivacyAcknowledged
+        self.customCredentialValidated = customCredentialValidated
     }
 }
 
@@ -101,26 +116,31 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var recordingModeRawValue: String
     var hotkeyKeyCode: UInt32
     var hotkeyCarbonModifiers: UInt32
-    var saveOriginalAudio: Bool
     var overlayEnabled: Bool
-    var overlayIsNonActivating: Bool
     var overlayShowsLiveIndicator: Bool
     var overlayPositionRawValue: String
     var selectedModelID: String
     var autoTranscribeAfterCapture: Bool?
     var preferredLocalProviderID: String?
     var preferredProviderID: String?
-    var historyLimitMegabytes: Int
-    var autoDeleteOldestHistory: Bool
-    var excludesDownloadedModels: Bool
     var openAIEnabled: Bool
     var groqEnabled: Bool
+    var elevenLabsEnabled: Bool?
     var openAIModelID: String?
     var groqModelID: String?
+    var elevenLabsModelID: String?
     var openAIPrivacyAcknowledged: Bool?
     var groqPrivacyAcknowledged: Bool?
+    var elevenLabsPrivacyAcknowledged: Bool?
     var openAICredentialValidated: Bool?
     var groqCredentialValidated: Bool?
+    var elevenLabsCredentialValidated: Bool?
+    var transcriptionLanguage: String?
+    var showDockIcon: Bool?
+    var customBaseURL: String?
+    var customModelID: String?
+    var customPrivacyAcknowledged: Bool?
+    var customCredentialValidated: Bool?
 }
 
 @MainActor
@@ -153,26 +173,35 @@ public final class AppPreferencesStore {
             recordingModeRawValue: decoded.recordingModeRawValue,
             hotkeyKeyCode: decoded.hotkeyKeyCode,
             hotkeyCarbonModifiers: decoded.hotkeyCarbonModifiers,
-            saveOriginalAudio: decoded.saveOriginalAudio,
             overlayEnabled: decoded.overlayEnabled,
-            overlayIsNonActivating: decoded.overlayIsNonActivating,
             overlayShowsLiveIndicator: decoded.overlayShowsLiveIndicator,
             overlayPositionRawValue: decoded.overlayPositionRawValue,
             selectedModelID: decoded.selectedModelID,
             autoTranscribeAfterCapture: decoded.autoTranscribeAfterCapture ?? false,
             preferredLocalProviderID: decoded.preferredLocalProviderID ?? "whisperkit-local",
             preferredProviderID: decoded.preferredProviderID ?? "whisperkit-local",
-            historyLimitMegabytes: decoded.historyLimitMegabytes,
-            autoDeleteOldestHistory: decoded.autoDeleteOldestHistory,
-            excludesDownloadedModels: decoded.excludesDownloadedModels,
             openAIEnabled: decoded.openAIEnabled,
             groqEnabled: decoded.groqEnabled,
+            elevenLabsEnabled: decoded.elevenLabsEnabled ?? false,
             openAIModelID: decoded.openAIModelID ?? "gpt-4o-mini-transcribe",
             groqModelID: decoded.groqModelID ?? "whisper-large-v3-turbo",
+            // One-time migration: scribe_v1 is deprecated by ElevenLabs and
+            // outclassed by scribe_v2; stored v1 IDs are bumped on load.
+            elevenLabsModelID: (decoded.elevenLabsModelID.map { id in
+                id == "scribe_v1" ? "scribe_v2" : id
+            }) ?? "scribe_v2",
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
             groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
+            elevenLabsPrivacyAcknowledged: decoded.elevenLabsPrivacyAcknowledged ?? false,
             openAICredentialValidated: decoded.openAICredentialValidated ?? false,
-            groqCredentialValidated: decoded.groqCredentialValidated ?? false
+            groqCredentialValidated: decoded.groqCredentialValidated ?? false,
+            elevenLabsCredentialValidated: decoded.elevenLabsCredentialValidated ?? false,
+            transcriptionLanguage: decoded.transcriptionLanguage ?? "",
+            showDockIcon: decoded.showDockIcon ?? false,
+            customBaseURL: decoded.customBaseURL ?? "",
+            customModelID: decoded.customModelID ?? "whisper-1",
+            customPrivacyAcknowledged: decoded.customPrivacyAcknowledged ?? false,
+            customCredentialValidated: decoded.customCredentialValidated ?? false
         )
     }
 
@@ -186,26 +215,31 @@ public final class AppPreferencesStore {
             recordingModeRawValue: snapshot.recordingModeRawValue,
             hotkeyKeyCode: snapshot.hotkeyKeyCode,
             hotkeyCarbonModifiers: snapshot.hotkeyCarbonModifiers,
-            saveOriginalAudio: snapshot.saveOriginalAudio,
             overlayEnabled: snapshot.overlayEnabled,
-            overlayIsNonActivating: snapshot.overlayIsNonActivating,
             overlayShowsLiveIndicator: snapshot.overlayShowsLiveIndicator,
             overlayPositionRawValue: snapshot.overlayPositionRawValue,
             selectedModelID: snapshot.selectedModelID,
             autoTranscribeAfterCapture: snapshot.autoTranscribeAfterCapture,
             preferredLocalProviderID: snapshot.preferredLocalProviderID,
             preferredProviderID: snapshot.preferredProviderID,
-            historyLimitMegabytes: snapshot.historyLimitMegabytes,
-            autoDeleteOldestHistory: snapshot.autoDeleteOldestHistory,
-            excludesDownloadedModels: snapshot.excludesDownloadedModels,
             openAIEnabled: snapshot.openAIEnabled,
             groqEnabled: snapshot.groqEnabled,
+            elevenLabsEnabled: snapshot.elevenLabsEnabled,
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
+            elevenLabsModelID: snapshot.elevenLabsModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            elevenLabsPrivacyAcknowledged: snapshot.elevenLabsPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
-            groqCredentialValidated: snapshot.groqCredentialValidated
+            groqCredentialValidated: snapshot.groqCredentialValidated,
+            elevenLabsCredentialValidated: snapshot.elevenLabsCredentialValidated,
+            transcriptionLanguage: snapshot.transcriptionLanguage,
+            showDockIcon: snapshot.showDockIcon,
+            customBaseURL: snapshot.customBaseURL,
+            customModelID: snapshot.customModelID,
+            customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
+            customCredentialValidated: snapshot.customCredentialValidated
         )
 
         guard let data = try? encoder.encode(codableSnapshot) else {

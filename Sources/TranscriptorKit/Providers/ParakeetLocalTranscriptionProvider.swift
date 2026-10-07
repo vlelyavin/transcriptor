@@ -198,10 +198,10 @@ public actor ParakeetLocalTranscriptionProvider: LocalTranscriptionProvider {
 
     private func version(for model: ModelDescriptor) throws -> AsrModelVersion {
         switch model.id {
-        case "parakeet-v2-en":
-            .v2
         case "parakeet-v3-multilingual":
             .v3
+        case "parakeet-ultra-multilingual":
+            .ultra
         default:
             throw TranscriptionError.unsupportedModel("The requested Parakeet model is not mapped to a supported FluidAudio model version.")
         }
@@ -209,8 +209,6 @@ public actor ParakeetLocalTranscriptionProvider: LocalTranscriptionProvider {
 
     private func inferredLanguage(for model: ModelDescriptor) -> String? {
         switch model.id {
-        case "parakeet-v2-en":
-            "en"
         default:
             nil
         }

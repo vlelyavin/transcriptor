@@ -234,7 +234,7 @@ final class MenuBarStatusItemController: NSObject {
             switch supplementalPhase {
             case .transcribing, .inserting:
                 return .transcribing
-            case .saved, .preview, .unconfigured:
+            case .saved, .unconfigured:
                 return .idle
             case .error, .setupRequired:
                 return .failed
@@ -281,15 +281,6 @@ final class MenuBarStatusItemController: NSObject {
     @objc
     private func openSettingsView() {
         appState.openSettings()
-        NSApp.activate(ignoringOtherApps: true)
-
-        for window in NSApp.windows {
-            guard window.canBecomeMain else {
-                continue
-            }
-
-            window.makeKeyAndOrderFront(nil)
-        }
     }
 
     @objc
@@ -305,14 +296,6 @@ final class MenuBarStatusItemController: NSObject {
 
     private func bringAppToFront(screen: NavigationScreen) {
         appState.selectedScreen = screen
-        NSApp.activate(ignoringOtherApps: true)
-
-        for window in NSApp.windows {
-            guard window.canBecomeMain else {
-                continue
-            }
-
-            window.makeKeyAndOrderFront(nil)
-        }
+        appState.showMainWindow()
     }
 }

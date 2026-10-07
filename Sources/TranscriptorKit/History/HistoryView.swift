@@ -3,6 +3,8 @@ import SwiftUI
 
 public struct HistoryView: View {
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var filterDebounceTask: Task<Void, Never>?
     @State private var selectedFilter: HistoryFilter = .all
     @State private var selectedEntryID: HistoryEntry.ID?
     @State private var isCompactDetailVisible = false
@@ -38,7 +40,6 @@ public struct HistoryView: View {
                     }
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
             .toolbar {
                 // In the narrow single-column layout, a native toolbar back
                 // button returns to the list — replacing the old in-content
@@ -57,6 +58,18 @@ public struct HistoryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
             appState.selectedScreen = .history
+        }
+        // Debounce search so typing over a large history doesn't re-filter
+        // on every keystroke; the query below searches all entries.
+        .onChange(of: searchText) { _, newValue in
+            filterDebounceTask?.cancel()
+            filterDebounceTask = Task {
+                if !newValue.isEmpty {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+                guard !Task.isCancelled else { return }
+                debouncedSearchText = newValue
+            }
         }
         .onAppear {
             if let pending = appState.pendingHistoryEntryID {
@@ -103,129 +116,135 @@ public struct HistoryView: View {
     }
 
     private func historyListPane(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerControls(isCompact: isCompact)
-
-            Group {
-                if filteredEntries.isEmpty {
-                    emptyState
-                } else {
-                    List(filteredEntries, selection: isCompact ? .constant(nil) : $selectedEntryID) { entry in
-                        HStack(spacing: 8) {
-                            Button {
-                                selectedEntryID = entry.id
-                                if isCompact {
-                                    isCompactDetailVisible = true
-                                }
-                            } label: {
-                                historyRow(entry)
-                                    .contentShape(Rectangle())
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            // A trailing delete affordance so an item can be
-                            // removed directly from the list (not only via the
-                            // context menu or the detail "More…" menu). Routes
-                            // through the same confirmation alert.
-                            Button {
-                                entryPendingDeletion = entry
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                            .help("Delete this item")
-                        }
-                        .tag(entry.id)
-                        .swipeActions(edge: .trailing) {
-                            Button("Delete", role: .destructive) {
-                                entryPendingDeletion = entry
+        // Same template as the Models page: a bare segmented filter strip
+        // above (no card), then a grouped Form holding the items. The
+        // strip sits where every other page's content starts.
+        Group {
+            if filteredEntries.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Picker("Source", selection: $selectedFilter) {
+                            ForEach(HistoryFilter.allCases) { filter in
+                                Text(filter.title).tag(filter)
                             }
                         }
-                        .contextMenu {
-                            if canTriggerTranscription(for: entry) {
-                                Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
-                                    appState.transcribe(entry)
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+
+                        HStack {
+                            if let historyActionMessage = appState.historyActionMessage {
+                                Text(historyActionMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if !isCompact {
+                                Button("Delete All", role: .destructive) {
+                                    showDeleteAllConfirmation = true
                                 }
-                            } else if !appState.isTranscriptionConfigured {
-                                Button("Set Up Transcription…") {
-                                    appState.selectedScreen = .models
-                                }
-                            }
-
-                            if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
-                                Button("Cancel Transcription") {
-                                    appState.cancelTranscription(for: entry)
-                                }
-                            }
-
-                            Button("Play / Pause") {
-                                appState.togglePlayback(for: entry)
-                            }
-                            .disabled(!hasPlayableAudioFile(entry))
-
-                            Button("Copy Transcript") {
-                                appState.copyTranscript(for: entry)
-                            }
-                            .disabled(!entry.canCopyTranscript)
-
-                            Button("Export Transcript") {
-                                appState.exportTranscript(for: entry)
-                            }
-                            .disabled(!entry.canExportTranscript)
-
-                            Divider()
-
-                            Button("Delete", role: .destructive) {
-                                entryPendingDeletion = entry
+                                .disabled(appState.historyStore.entries.isEmpty)
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 6)
+                        .padding(.bottom, 2)
+
+                        Form {
+                            Section {
+                                ForEach(filteredEntries) { entry in
+                                    historyListRow(entry, isCompact: isCompact)
+                                        .tag(entry.id)
+                                        .listRowBackground(
+                                            selectedEntryID == entry.id && !isCompact
+                                                ? Color.accentColor.opacity(0.14)
+                                                : Color.clear
+                                        )
+                                }
+                            }
+                        }
+                        .formStyle(.grouped)
                     }
-                    .listStyle(.inset(alternatesRowBackgrounds: false))
                 }
+                .contentMargins(.horizontal, 0, for: .scrollContent)
             }
-            .searchable(text: $searchText, prompt: "Search transcripts or filenames")
         }
+        .searchable(text: $searchText, prompt: "Search transcripts or filenames")
     }
 
-    private func headerControls(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Source", selection: $selectedFilter) {
-                ForEach(HistoryFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
+    /// One history list row: opens the entry on tap, with a trailing delete
+    /// affordance (same confirmation dialog as the context menu).
+    private func historyListRow(_ entry: HistoryEntry, isCompact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                selectedEntryID = entry.id
+                if isCompact {
+                    isCompactDetailVisible = true
+                }
+            } label: {
+                historyRow(entry)
+                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                entryPendingDeletion = entry
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Delete this item")
+        }
+                .contextMenu {
+            if canTriggerTranscription(for: entry) {
+                Button(entry.hasCompletedTranscript ? "Re-transcribe" : "Transcribe") {
+                    appState.transcribe(entry)
+                }
+            } else if !appState.isTranscriptionConfigured {
+                Button("Set Up Transcription…") {
+                    appState.selectedScreen = .models
                 }
             }
-            .pickerStyle(.segmented)
 
-            HStack {
-                if let historyActionMessage = appState.historyActionMessage {
-                    Text(historyActionMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let storageWarningMessage = appState.storageWarningMessage {
-                    Text(storageWarningMessage)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes)) / \(appState.storageSettings.capMegabytes) MB")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            if appState.transcriptionQueueController.isQueuedOrRunning(entryID: entry.id) {
+                Button("Cancel Transcription") {
+                    appState.cancelTranscription(for: entry)
                 }
+            }
 
-                Spacer()
+            Button("Play / Pause") {
+                appState.togglePlayback(for: entry)
+            }
+            .disabled(!hasPlayableAudioFile(entry))
 
-                if !isCompact {
-                    Button("Delete All", role: .destructive) {
-                        showDeleteAllConfirmation = true
-                    }
-                    .disabled(appState.historyStore.entries.isEmpty)
-                }
+            Button("Copy Transcript") {
+                appState.copyTranscript(for: entry)
+            }
+            .disabled(!entry.canCopyTranscript)
+
+            Button("Export Transcript") {
+                appState.exportTranscript(for: entry)
+            }
+            .disabled(!entry.canExportTranscript)
+
+            Divider()
+
+            Button("Delete", role: .destructive) {
+                entryPendingDeletion = entry
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -591,7 +610,19 @@ public struct HistoryView: View {
             return true
         }
 
-        return entry.searchableText.localizedCaseInsensitiveContains(searchText)
+        // Search the live transcript text plus identifying metadata. Building
+        // the joined searchableText (which concatenates every stored version)
+        // per entry per keystroke made large histories stutter — these fields
+        // are what users actually search for.
+        let fields = [
+            entry.displayName,
+            entry.transcriptText,
+            entry.modelName ?? "",
+            entry.providerName ?? "",
+            entry.originalFileName ?? "",
+        ]
+        let query = debouncedSearchText
+        return fields.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     private func canTriggerTranscription(for entry: HistoryEntry) -> Bool {

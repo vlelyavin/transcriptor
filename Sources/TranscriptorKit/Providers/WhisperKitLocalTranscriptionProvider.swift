@@ -166,8 +166,14 @@ public actor WhisperKitLocalTranscriptionProvider: LocalTranscriptionProvider {
         do {
             let results = try await whisperKit.transcribe(
                 audioPath: job.audioFileURL.path,
+                // WhisperKit's prefill prompt defaults to English when no
+                // language is given and detection is off (its default), which
+                // made multilingual models answer Russian speech in English.
+                // Pass the user's language, or explicitly detect it.
                 decodeOptions: DecodingOptions(
                     verbose: false,
+                    language: job.language,
+                    detectLanguage: job.language == nil,
                     wordTimestamps: false
                 ),
                 callback: { upstreamProgress in

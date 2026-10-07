@@ -142,8 +142,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
             return finish(copyOrSaveOnly(
                 text: text,
                 settings: settings,
-                copiedMessage: "The original text field is no longer available. Transcript copied to the clipboard.",
-                savedMessage: "The original text field is no longer available. Transcript saved to history."
+                copiedMessage: "Transcript copied to the clipboard.",
+                savedMessage: "Transcript saved to history."
             ))
         }
 
@@ -164,8 +164,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
             return finish(copyOrSaveOnly(
                 text: text,
                 settings: settings,
-                copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                savedMessage: "The original app is no longer available. Transcript saved to history."
+                copiedMessage: "Transcript copied to the clipboard.",
+                savedMessage: "Transcript saved to history."
             ))
         }
 
@@ -194,8 +194,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 return finish(copyOrSaveOnly(
                     text: text,
                     settings: settings,
-                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                    copiedMessage: "Transcript copied to the clipboard.",
+                    savedMessage: "Transcript saved to history."
                 ))
             case .secureField:
                 debugSnapshot.targetSummary = "Secure text field detected."
@@ -221,8 +221,10 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 platform.copyTextToPasteboard(text)
             }
 
-            debugSnapshot.targetSummary = "Transcript inserted into \(target.appName)."
-            return finish(.inserted("Transcript inserted into the active app."))
+            // A synthetic ⌘V can't be verified into the target field, so the
+            // message says "pasted" — never a stronger claim than what ran.
+            debugSnapshot.targetSummary = "Transcript pasted into \(target.appName)."
+            return finish(.inserted("Transcript pasted into the active app."))
         } catch let error as TranscriptInsertionPlatformError {
             switch error {
             case .targetUnavailable:
@@ -230,8 +232,8 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
                 return finish(copyOrSaveOnly(
                     text: text,
                     settings: settings,
-                    copiedMessage: "The original app is no longer available. Transcript copied to the clipboard.",
-                    savedMessage: "The original app is no longer available. Transcript saved to history."
+                    copiedMessage: "Transcript copied to the clipboard.",
+                    savedMessage: "Transcript saved to history."
                 ))
             case .secureField:
                 debugSnapshot.targetSummary = "Secure text field detected."
@@ -293,6 +295,12 @@ public final class TranscriptInsertionService: TranscriptInsertionServing {
         return outcome
     }
 }
+
+// kAXTrustedCheckOptionPrompt is a CF global var whose reference strict
+// concurrency rejects ("shared mutable state") even from a constant — and its
+// documented value is the literal string below. CFDictionary looks keys up by
+// content, so we use the literal and skip the global entirely.
+private let axPromptOptionKey = "AXTrustedCheckOptionPrompt"
 
 @MainActor
 protocol TranscriptInsertionPlatform {
@@ -358,9 +366,42 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         NSWorkspace.shared.frontmostApplication?.localizedName
     }
 
+    /// Secure-field detection, kept as a pure function so it's unit-testable:
+    /// `AXSecureTextField` is a SUBROLE (`kAXSecureTextFieldSubrole`) — a
+    /// password field's role is plain `AXTextField`, so comparing the role
+    /// alone could never match and every secure-field branch was dead code.
+    /// The subrole is authoritative; the role-level comparison stays for
+    /// non-conforming apps that report the secure marker on the role itself.
+    static func isSecureFieldElement(role: String?, subrole: String?) -> Bool {
+        subrole == (kAXSecureTextFieldSubrole as String) || role == (kAXSecureTextFieldSubrole as String)
+    }
+
+    /// Whether a focused element can plausibly accept inserted text. Buttons,
+    /// checkboxes, and other non-text controls must never become insertion
+    /// targets — a write into the wrong control is worse than a clipboard
+    /// fallback. Custom editors (Electron, web content) use nonstandard roles
+    /// but still expose a string value plus a selection range, which is the
+    /// closest AX signal for "editable" and is treated as such here.
+    static func isEditableTextElement(role: String?, hasStringValue: Bool, hasSelectionRange: Bool) -> Bool {
+        let textRoles: Set<String> = [
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            kAXComboBoxRole as String,
+        ]
+        if let role, textRoles.contains(role) {
+            return true
+        }
+
+        return hasStringValue && hasSelectionRange
+    }
+
     func requestAccessibilityPermissionPrompt() -> Bool {
-        openAccessibilitySettings()
-        return isAccessibilityTrusted
+        // `AXIsProcessTrusted()` alone only queries; it never registers the app
+        // in Privacy ▸ Accessibility, so a user sent to System Settings finds
+        // an empty list and must add Transcriptor by hand. Asking with the
+        // prompt option posts the real system alert once and adds the entry.
+        let options = [axPromptOptionKey: true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     func openAccessibilitySettings() {
@@ -374,7 +415,11 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
     func captureFocusedTarget() -> CapturedTextTarget? {
         guard
             isAccessibilityTrusted,
-            let app = NSWorkspace.shared.frontmostApplication
+            let app = NSWorkspace.shared.frontmostApplication,
+            // Never capture Transcriptor's own UI — e.g. a recording started
+            // from the toolbar while the settings window is focused — or the
+            // transcript would be aimed back at our own controls.
+            app.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else {
             return nil
         }
@@ -398,7 +443,18 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         AXUIElementSetMessagingTimeout(focusedElement, Self.axMessagingTimeout)
 
         let role = stringAttribute(kAXRoleAttribute as CFString, on: focusedElement)
-        let isSecureField = role == "AXSecureTextField"
+        let subrole = stringAttribute(kAXSubroleAttribute as CFString, on: focusedElement)
+        let isSecureField = Self.isSecureFieldElement(role: role, subrole: subrole)
+
+        // Secure fields are captured (flagged) so the service can deliberately
+        // choose the clipboard path; any other non-editable focus is ignored.
+        guard isSecureField || Self.isEditableTextElement(
+            role: role,
+            hasStringValue: stringAttribute(kAXValueAttribute as CFString, on: focusedElement) != nil,
+            hasSelectionRange: selectedTextRange(on: focusedElement) != nil
+        ) else {
+            return nil
+        }
 
         return CapturedTextTarget(
             appName: app.localizedName ?? "Current App",
@@ -443,29 +499,73 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
             throw TranscriptInsertionPlatformError.targetUnavailable
         }
 
-        guard let currentValue = stringAttribute(kAXValueAttribute as CFString, on: target.focusedElement),
-              var selectedRange = selectedTextRange(on: target.focusedElement) else {
+        guard var selectedRange = selectedTextRange(on: target.focusedElement) else {
+            return false
+        }
+
+        // Preferred path: write `AXSelectedText`, which replaces the current
+        // selection at the caret — the one mutation Cocoa text views and most
+        // AX-aware editors honour. Only success confirmed by re-reading the
+        // value counts; an element that silently discards the write falls
+        // through to the splice path (which would then read stale state and
+        // bail to paste — it never double-inserts, because a confirmed write
+        // already returned).
+        if AXUIElementSetAttributeValue(target.focusedElement, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success,
+           confirmsInsertion(text, atLocation: selectedRange.location, in: target.focusedElement) {
+            selectedRange.location += (text as NSString).length
+            selectedRange.length = 0
+            restoreCaret(selectedRange, on: target.focusedElement)
+            return true
+        }
+
+        // Fallback for elements that reject `AXSelectedText` writes: splice
+        // the text into `AXValue` ourselves.
+        guard let currentValue = stringAttribute(kAXValueAttribute as CFString, on: target.focusedElement) else {
             return false
         }
 
         let nsValue = currentValue as NSString
         let clampedLocation = min(max(selectedRange.location, 0), nsValue.length)
         let clampedLength = min(max(selectedRange.length, 0), nsValue.length - clampedLocation)
-        let replacementRange = NSRange(location: clampedLocation, length: clampedLength)
-        let updatedValue = nsValue.replacingCharacters(in: replacementRange, with: text)
+        let updatedValue = nsValue.replacingCharacters(in: NSRange(location: clampedLocation, length: clampedLength), with: text)
 
-        let setResult = AXUIElementSetAttributeValue(target.focusedElement, kAXValueAttribute as CFString, updatedValue as CFTypeRef)
-        guard setResult == .success else {
+        guard AXUIElementSetAttributeValue(target.focusedElement, kAXValueAttribute as CFString, updatedValue as CFTypeRef) == .success else {
             return false
         }
 
-        selectedRange.location = clampedLocation + text.count
+        // CFRange/NSRange count UTF-16 units; `String.count` counts grapheme
+        // clusters, so any emoji or combined character used to misplace the caret.
+        selectedRange.location = clampedLocation + (text as NSString).length
         selectedRange.length = 0
-        if let newSelection = axValue(for: selectedRange) {
-            _ = AXUIElementSetAttributeValue(target.focusedElement, kAXSelectedTextRangeAttribute as CFString, newSelection)
+        restoreCaret(selectedRange, on: target.focusedElement)
+
+        // Verify by re-reading the value: an unconfirmed write is a failure,
+        // not an "inserted" report.
+        return confirmsInsertion(text, atLocation: clampedLocation, in: target.focusedElement)
+    }
+
+    /// Re-reads the element's `AXValue`: the insertion counts as confirmed only
+    /// when the written text is actually present at the expected position.
+    private func confirmsInsertion(_ text: String, atLocation location: Int, in element: AXUIElement) -> Bool {
+        guard let value = stringAttribute(kAXValueAttribute as CFString, on: element) else {
+            return false
         }
 
-        return true
+        let nsValue = value as NSString
+        let expectedRange = NSRange(location: location, length: (text as NSString).length)
+        guard nsValue.length >= expectedRange.location + expectedRange.length else {
+            return false
+        }
+
+        return nsValue.substring(with: expectedRange) == text
+    }
+
+    private func restoreCaret(_ range: CFRange, on element: AXUIElement) {
+        var mutableRange = range
+        guard let newSelection = AXValueCreate(.cfRange, &mutableRange) else {
+            return
+        }
+        _ = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, newSelection)
     }
 
     func pasteViaClipboard(_ text: String, into target: CapturedTextTarget, restorePreviousClipboard: Bool) async throws {
@@ -479,20 +579,27 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
 
         let clipboardSnapshot = restorePreviousClipboard ? pasteboardSnapshot() : nil
         copyTextToPasteboard(text)
+        // The change count right after our write: if the count differs when we
+        // get to restoring, something else touched the clipboard meanwhile —
+        // don't stomp the user's newer copy.
+        let expectedChangeCount = NSPasteboard.general.changeCount
 
         _ = app.activate()
         try? await Task.sleep(for: .milliseconds(150))
 
         guard sendPasteCommand() else {
-            if let clipboardSnapshot {
+            if let clipboardSnapshot, NSPasteboard.general.changeCount == expectedChangeCount {
                 restorePasteboardSnapshot(clipboardSnapshot)
             }
             throw TranscriptInsertionPlatformError.pasteFailed
         }
 
-        try? await Task.sleep(for: .milliseconds(250))
+        // The paste keystroke is asynchronous — the target app reads the
+        // pasteboard on its own time, so restore only after a solid wait or
+        // the field would receive the OLD clipboard contents.
+        try? await Task.sleep(for: .milliseconds(400))
 
-        if let clipboardSnapshot {
+        if let clipboardSnapshot, NSPasteboard.general.changeCount == expectedChangeCount {
             restorePasteboardSnapshot(clipboardSnapshot)
         }
     }
@@ -515,21 +622,25 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
     private func selectedTextRange(on element: AXUIElement) -> CFRange? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-              let value else {
+              let value,
+              // The attribute is declared AXValue-carrying but a hostile or
+              // buggy AX server can hand back anything — check before casting.
+              CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
-        let axValue = value as! AXValue
+        let axValue = value as! AXValue // safe: the type ID was checked above
         guard AXValueGetType(axValue) == .cfRange else {
             return nil
         }
 
         var range = CFRange()
-        return AXValueGetValue(axValue, .cfRange, &range) ? range : nil
-    }
-
-    private func axValue(for range: CFRange) -> AXValue? {
-        var mutableRange = range
-        return AXValueCreate(.cfRange, &mutableRange)
+        guard AXValueGetValue(axValue, .cfRange, &range),
+              // A caretless element reports kCFNotFound; clamping that to 0
+              // would insert at the top of the document — refuse instead.
+              range.location != kCFNotFound else {
+            return nil
+        }
+        return range
     }
 
     private func sendPasteCommand() -> Bool {

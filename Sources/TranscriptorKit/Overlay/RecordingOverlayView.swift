@@ -31,6 +31,21 @@ public struct RecordingOverlayView: View {
     }
 
     public var body: some View {
+        statusBody
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .frame(width: 320)
+            .modifier(GlassCardBackground())
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.separator, lineWidth: 0.5)
+            )
+    }
+
+    /// Single layout for every state: glyph + title + subtitle + accessory.
+    /// While listening the glyph itself pulses (variable-color effect) — the
+    /// one live indicator; the old capsule meter is gone per design review.
+    private var statusBody: some View {
         HStack(spacing: 14) {
             statusGlyph
 
@@ -38,10 +53,7 @@ public struct RecordingOverlayView: View {
                 Text(statusTitle)
                     .font(.headline)
 
-                if showsLiveMeter {
-                    LiveAudioMeter(levels: voiceInputController.liveLevels)
-                        .frame(height: 14)
-                } else if !statusSubtitle.isEmpty {
+                if !statusSubtitle.isEmpty {
                     Text(statusSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -53,22 +65,16 @@ public struct RecordingOverlayView: View {
 
             trailingAccessory
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(width: 320)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.separator, lineWidth: 0.5)
-        )
     }
 
     // MARK: - Leading glyph
 
     private var statusGlyph: some View {
         // The same beveled dark tile used by the app's settings sidebar — one
-        // consistent treatment for every state (no per-state colors).
-        SidebarIconView(systemImage: statusSymbol, size: 40, animated: isListening)
+        // consistent treatment for every state (no per-state colors). While
+        // listening the glyph pulses (variable-color effect); the user can
+        // turn the pulsing off via the "live audio indicator" overlay setting.
+        SidebarIconView(systemImage: statusSymbol, size: 40, animated: showsLiveMeter)
     }
 
     // MARK: - Trailing accessory (timer / spinner / actions)
@@ -109,9 +115,9 @@ public struct RecordingOverlayView: View {
         supplementalPhase == nil && voiceInputController.state == .recording
     }
 
-    /// While actively recording, the static "what to do next" subtitle is
-    /// replaced by a live level meter so the user can see the app is hearing
-    /// them — unless they've turned the indicator off in Overlay settings.
+    /// While actively recording the glyph pulses so the user can see the app
+    /// is hearing them — unless they've turned the indicator off in Overlay
+    /// settings (then the glyph stays static).
     private var showsLiveMeter: Bool {
         isListening && overlayState.showsLiveAudioIndicator
     }
@@ -124,7 +130,6 @@ public struct RecordingOverlayView: View {
             case .saved: return "Done"
             case .error: return "Couldn’t Transcribe"
             case .setupRequired: return "Setup Needed"
-            case .preview: return "Transcript Ready"
             case .unconfigured: return "Recording Saved"
             }
         }
@@ -148,7 +153,7 @@ public struct RecordingOverlayView: View {
                  let .error(message),
                  let .setupRequired(message):
                 return message
-            case .preview, .unconfigured:
+            case .unconfigured:
                 return ""
             }
         }
@@ -179,7 +184,6 @@ public struct RecordingOverlayView: View {
             case .saved: return "checkmark.circle.fill"
             case .error: return "exclamationmark.triangle.fill"
             case .setupRequired: return "gearshape.fill"
-            case .preview: return "text.quote"
             case .unconfigured: return "mic.badge.plus"
             }
         }
@@ -214,45 +218,18 @@ public struct RecordingOverlayView: View {
         guard let supplementalPhase else { return false }
         switch supplementalPhase {
         case .transcribing, .inserting: return true
-        case .saved, .error, .setupRequired, .preview, .unconfigured: return false
+        case .saved, .error, .setupRequired, .unconfigured: return false
         }
     }
 }
 
-/// A compact, native-feeling live input meter: a row of capsule bars driven by
-/// the recorder's per-band levels. It gives immediate visual confirmation that
-/// the microphone is picking up the user's voice.
-private struct LiveAudioMeter: View {
-    let levels: AudioLevelSnapshot
-
-    var body: some View {
-        GeometryReader { proxy in
-            let bars = levels.bars
-            let count = max(bars.count, 1)
-            let spacing: CGFloat = 3
-            let barWidth = max(2, (proxy.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
-
-            HStack(alignment: .center, spacing: spacing) {
-                ForEach(bars.indices, id: \.self) { index in
-                    let magnitude = CGFloat(min(max(bars[index], 0), 1))
-                    Capsule(style: .continuous)
-                        .fill(Color.accentColor.opacity(0.35 + 0.65 * magnitude))
-                        .frame(
-                            width: barWidth,
-                            height: max(2, proxy.size.height * magnitude)
-                        )
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
-            // No per-frame `.animation` here. The levels are already smoothed in
-            // the recorder (see `smoothedSnapshot`), so animating every ~20–30 Hz
-            // update only spawned overlapping Core Animation transactions that
-            // saturated the main run loop — starving the global-hotkey handlers
-            // so a toggle-mode "stop" press wasn't processed until recording
-            // ended (the "overlay won't close / equalizer sticks" bug, confirmed
-            // in the logs). Driving the bars straight off the smoothed data stays
-            // visually smooth without the continuous animation churn.
+/// Liquid-glass card background on macOS 26+, regular material below.
+private struct GlassCardBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .accessibilityHidden(true)
     }
 }

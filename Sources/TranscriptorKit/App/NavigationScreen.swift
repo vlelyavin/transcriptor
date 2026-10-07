@@ -9,9 +9,9 @@ public enum SidebarItem: Hashable {
 
 public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
     case overview
+    case models
     case history
     case importAudio
-    case models
 
     public var id: String { rawValue }
 

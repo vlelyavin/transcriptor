@@ -25,6 +25,10 @@ public struct WelcomeGuideView: View {
 
     public init(appState: AppState) {
         self.appState = appState
+        // A permission-recheck presentation (permissions lost or revoked since
+        // the last launch) skips the marketing intro and lands directly on the
+        // permission cards.
+        _step = State(initialValue: appState.hasSeenWelcomeGuide ? .setUp : .intro)
     }
 
     public var body: some View {
@@ -161,7 +165,9 @@ public struct WelcomeGuideView: View {
             VStack(spacing: 8) {
                 Text("Set Up Transcriptor")
                     .font(.title2.weight(.bold))
-                Text("Grant the permissions Transcriptor needs to record and type for you. You can change these anytime in Settings.")
+                Text(appState.hasSeenWelcomeGuide
+                    ? "Transcriptor lost a permission it needs to work — grant it below to continue."
+                    : "Grant the permissions Transcriptor needs to record and type for you. You can change these anytime in Settings.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -293,11 +299,21 @@ public struct WelcomeGuideView: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
             case .setUp:
-                Button("Start Exploring") {
-                    appState.dismissWelcomeGuide()
+                if appState.requiresPermissionsSetup {
+                    Button("Start Exploring") {
+                        appState.dismissWelcomeGuide()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(true)
+                    .help("Grant Microphone and Accessibility access first — dictation cannot work without them.")
+                } else {
+                    Button("Start Exploring") {
+                        appState.dismissWelcomeGuide()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                 }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
             }
         }
     }

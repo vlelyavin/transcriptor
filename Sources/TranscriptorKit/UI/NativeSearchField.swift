@@ -26,6 +26,14 @@ struct NativeSearchField: NSViewRepresentable {
         field.focusRingType = .default
         field.controlSize = .regular
         field.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
+        // SwiftUI's .frame(maxWidth/height) proposes a size, but the field's
+        // intrinsic high-hugging priorities win and the field stayed at its
+        // ~200x24 intrinsic size — visibly narrower than the System Settings
+        // search. Drop the resistance so the SwiftUI frame is honored.
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentHuggingPriority(.defaultLow, for: .vertical)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         field.onBecomeFirstResponder = {
             // Guarantee the keystrokes route to this app, not whatever was
             // frontmost when the window appeared.

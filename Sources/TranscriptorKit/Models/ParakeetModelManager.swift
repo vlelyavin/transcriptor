@@ -45,14 +45,20 @@ public final class ParakeetModelManager {
 
         downloadTasks[model.id] = Task {
             do {
-                let folder = try await provider.downloadModel(model) { [weak self] progress in
-                    Task { @MainActor in
-                        self?.inventory[model.id] = LocalModelInventoryItem(
-                            modelID: model.id,
-                            state: .downloading(progress: progress),
-                            localFolderPath: self?.inventory[model.id]?.localFolderPath
-                        )
+                var folder: URL?
+                try await ModelDownloadRetry.run {
+                    folder = try await self.provider.downloadModel(model) { [weak self] progress in
+                        Task { @MainActor in
+                            self?.inventory[model.id] = LocalModelInventoryItem(
+                                modelID: model.id,
+                                state: .downloading(progress: progress),
+                                localFolderPath: self?.inventory[model.id]?.localFolderPath
+                            )
+                        }
                     }
+                }
+                guard let folder else {
+                    throw TranscriptionError.transcriptionFailed("Download produced no folder.")
                 }
 
                 await MainActor.run {

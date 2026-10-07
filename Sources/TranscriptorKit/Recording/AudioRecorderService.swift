@@ -39,6 +39,10 @@ public protocol AudioRecorderServing: AnyObject, Sendable {
     /// surface a clear, actionable error instead of leaving a frozen overlay.
     var onRecordingError: (@MainActor (Error) -> Void)? { get set }
     var isRecording: Bool { get }
+    /// The input device the recorder is bound to (while recording) or the
+    /// current system default input (while idle). `nil` when macOS reports no
+    /// usable input device at all.
+    var currentInputDeviceName: String? { get }
 
     func authorizationStatus() -> MicrophonePermissionStatus
     func requestPermission() async -> Bool
@@ -51,6 +55,16 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     public var onLevelsDidChange: (@MainActor (AudioLevelSnapshot) -> Void)?
     public var onRecordingError: (@MainActor (Error) -> Void)?
     public private(set) var isRecording = false
+
+    public var currentInputDeviceName: String? {
+        if isRecording {
+            return activeInputDeviceName
+        }
+        guard let deviceID = Self.currentDefaultInputDeviceID() else {
+            return nil
+        }
+        return Self.deviceName(for: deviceID)
+    }
 
     private let storage: RecordingStorage
     private var engine: AVAudioEngine?
@@ -218,14 +232,23 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         engine?.stop()
         log.notice("stopRecording: frames=\(self.totalFramesRecorded, privacy: .public) buffers=\(self.bufferCount, privacy: .public)")
 
-        let durationSeconds = Int((Double(totalFramesRecorded) / sampleRate).rounded())
+        let preciseDuration = Double(totalFramesRecorded) / sampleRate
+        let durationSeconds = Int(preciseDuration.rounded())
         let fileSizeBytes: Int64
 
-        do {
-            fileSizeBytes = try storage.fileSize(for: outputURL)
-        } catch {
-            resetSession(deleteOutput: false)
-            throw AudioRecorderError.failedToStopRecording(error.localizedDescription)
+        if totalFramesRecorded == 0 {
+            // Stopped before the first buffer ever arrived (a sub-10 ms tap or a
+            // dead route that never delivered). No output file was created, so
+            // report an empty asset and let the controller's accidental-tap rule
+            // discard it silently instead of surfacing a stop failure.
+            fileSizeBytes = 0
+        } else {
+            do {
+                fileSizeBytes = try storage.fileSize(for: outputURL)
+            } catch {
+                resetSession(deleteOutput: false)
+                throw AudioRecorderError.failedToStopRecording(error.localizedDescription)
+            }
         }
 
         resetSession(deleteOutput: false)
@@ -234,7 +257,8 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             url: outputURL,
             createdAt: recordingStartedAt,
             durationSeconds: durationSeconds,
-            fileSizeBytes: fileSizeBytes
+            fileSizeBytes: fileSizeBytes,
+            preciseDuration: preciseDuration
         )
     }
 

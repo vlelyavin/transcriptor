@@ -12,6 +12,10 @@ public final class VoiceInputController {
     public private(set) var liveLevels: AudioLevelSnapshot = .zero
     public private(set) var failureMessage: String?
     public private(set) var permissionStatus: MicrophonePermissionStatus
+    /// Name of the microphone currently in use — the bound device while
+    /// recording, the system default while idle. `nil` when the system reports
+    /// no usable input device.
+    public private(set) var inputDeviceName: String?
 
     private let recorder: AudioRecorderServing
     private let pendingStateDuration: Duration
@@ -21,6 +25,23 @@ public final class VoiceInputController {
     private var recordingStartedAt: Date?
     private var onRecordingStarted: @MainActor () -> Void
     private var onRecordingFinished: @MainActor (RecordedAudioAsset) -> Void
+    private var onRecordingDiscarded: @MainActor () -> Void = {}
+    /// Whether the hotkey is physically held right now. A release that lands
+    /// while the microphone permission prompt is on screen can't stop a
+    /// recording that hasn't started, so the flag is also consulted right after
+    /// the prompt resolves — if the key is already up, hold-to-talk must not
+    /// begin a recording the user has already let go of.
+    private var hotkeyCurrentlyDown = false
+    /// Bumped on every press; a release only stops recording if the epoch
+    /// is unchanged after its grace period (see handleHotkeyReleased).
+    private var hotkeyEpoch: UInt64 = 0
+    private var failureResetTask: Task<Void, Never>?
+
+    /// Captures shorter than this are accidental taps of the shortcut: no
+    /// engine can transcribe them (Parakeet rejects < 300 ms outright; Whisper
+    /// returns nothing or hallucinates), and they used to pile up as failed
+    /// history items.
+    public static let minimumRecordingDuration: TimeInterval = 0.5
 
     public init(
         recorder: AudioRecorderServing,
@@ -39,6 +60,7 @@ public final class VoiceInputController {
         self.onRecordingFinished = onRecordingFinished
         self.sleep = sleep
         self.permissionStatus = recorder.authorizationStatus()
+        self.inputDeviceName = recorder.currentInputDeviceName
         recorder.onLevelsDidChange = { [weak self] snapshot in
             guard let self else {
                 return
@@ -84,6 +106,10 @@ public final class VoiceInputController {
         onRecordingFinished = handler
     }
 
+    public func replaceOnRecordingDiscarded(_ handler: @escaping @MainActor () -> Void) {
+        onRecordingDiscarded = handler
+    }
+
     public func replaceOnRecordingStarted(_ handler: @escaping @MainActor () -> Void) {
         onRecordingStarted = handler
     }
@@ -121,7 +147,12 @@ public final class VoiceInputController {
     }
 
     public func handleHotkeyPressed() async {
+        hotkeyCurrentlyDown = true
         log.notice("hotkey pressed: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
+        // A press inside the release grace window means the combo never
+        // actually left the user's fingers — bump the epoch so the pending
+        // debounced stop is cancelled and recording continues seamlessly.
+        hotkeyEpoch &+= 1
         switch recordingModeProvider() {
         case .holdToTalk:
             await startRecordingIfNeeded()
@@ -135,8 +166,20 @@ public final class VoiceInputController {
     }
 
     public func handleHotkeyReleased() async {
+        hotkeyCurrentlyDown = false
         log.notice("hotkey released: mode=\(String(describing: self.recordingModeProvider()), privacy: .public) state=\(self.state.rawValue, privacy: .public)")
         guard recordingModeProvider() == .holdToTalk else {
+            return
+        }
+
+        // A brief modifier wobble while holding the combo (e.g. ⌥ or D slips
+        // for a frame) delivers a phantom release and splits one utterance
+        // into "first part inserts, second part follows". Debounce: wait a
+        // short grace period, then stop only if no press arrived meanwhile
+        // (the press bumps the epoch, cancelling the pending stop).
+        let epochAtRelease = hotkeyEpoch
+        await sleep(.milliseconds(350))
+        guard hotkeyEpoch == epochAtRelease else {
             return
         }
 
@@ -151,13 +194,19 @@ public final class VoiceInputController {
         do {
             try recorder.cancelRecording()
             resetToIdle()
+            // Same cleanup as the accidental-tap path: drop the captured
+            // insertion target and any lingering overlay card.
+            onRecordingDiscarded()
         } catch {
             transitionToFailure(message: error.localizedDescription)
         }
     }
 
     private func startRecordingIfNeeded() async {
-        guard state == .idle || state == .failed else {
+        // `.pendingTranscription` is only a short "saved" flash after a stop;
+        // the recorder is already free, so a quick follow-up dictation must
+        // start instead of being dropped as "busy".
+        guard state == .idle || state == .failed || state == .pendingTranscription else {
             log.notice("start ignored: busy (state=\(self.state.rawValue, privacy: .public))")
             return
         }
@@ -169,6 +218,14 @@ public final class VoiceInputController {
             state = .requestingPermission
             let granted = await recorder.requestPermission()
             permissionStatus = granted ? .granted : .denied
+
+            // While the system prompt was up, any hotkey release was dropped
+            // (there was no recording to stop). In hold-to-talk the key is no
+            // longer down, so the user already "let go" — don't start now.
+            if recordingModeProvider() == .holdToTalk && !hotkeyCurrentlyDown {
+                resetToIdle()
+                return
+            }
         }
 
         guard permissionStatus == .granted else {
@@ -179,8 +236,12 @@ public final class VoiceInputController {
         do {
             log.notice("starting recording")
             _ = try recorder.startRecording()
-            onRecordingStarted()
+            inputDeviceName = recorder.currentInputDeviceName
+            // Set the state BEFORE the callback: `onRecordingStarted` triggers an
+            // overlay refresh, and it must already see `.recording` — otherwise a
+            // lingering card's hide animation can outlive the show that follows.
             state = .recording
+            onRecordingStarted()
             recordingStartedAt = .now
             startElapsedTimer()
             log.notice("recording active")
@@ -202,6 +263,13 @@ public final class VoiceInputController {
 
         do {
             let savedRecording = try recorder.stopRecording()
+            guard savedRecording.preciseDuration >= Self.minimumRecordingDuration else {
+                log.notice("discarding \(savedRecording.preciseDuration, privacy: .public)s capture (accidental tap)")
+                try? FileManager.default.removeItem(at: savedRecording.url)
+                resetToIdle()
+                onRecordingDiscarded()
+                return
+            }
             lastSavedRecording = savedRecording
             onRecordingFinished(savedRecording)
             state = .pendingTranscription
@@ -250,6 +318,9 @@ public final class VoiceInputController {
         liveLevels = .zero
         failureMessage = nil
         permissionStatus = recorder.authorizationStatus()
+        // Back to the system default input (the take may have been bound to a
+        // transient route like a Bluetooth HFP profile).
+        inputDeviceName = recorder.currentInputDeviceName
     }
 
     private func transitionToFailure(message: String) {
@@ -261,5 +332,21 @@ public final class VoiceInputController {
         failureMessage = message
         state = .failed
         permissionStatus = recorder.authorizationStatus()
+
+        // `.failed` is a transient display state: the overlay shows the message
+        // briefly, then the controller must return to `.idle` so the menu-bar
+        // icon and shortcuts recover. `failureMessage` stays set for logs and
+        // the overlay until the next attempt clears it.
+        failureResetTask?.cancel()
+        failureResetTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            await self.sleep(.seconds(2))
+            guard self.state == .failed else {
+                return
+            }
+            self.state = .idle
+        }
     }
 }

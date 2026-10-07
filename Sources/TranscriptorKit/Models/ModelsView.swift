@@ -1,86 +1,201 @@
 import SwiftUI
 
 public struct ModelsView: View {
+    /// Which group of transcription sources the page is showing.
+    private enum ModelSourceTab: Hashable {
+        case whisper
+        case parakeet
+        case remote
+    }
+
     @State private var openAIAPIKeyInput = ""
     @State private var groqAPIKeyInput = ""
+    @State private var elevenLabsAPIKeyInput = ""
+    @State private var customAPIKeyInput = ""
+    /// Draft edits for model IDs and custom server URLs. While a draft
+    /// differs from the stored value the provider is untouched — nothing
+    /// applies until "Save" (which also stores a typed API key).
+    @State private var refreshTick = 0
+    @State private var modelIDDrafts: [String: String] = [:]
+    @State private var baseURLDrafts: [String: String] = [:]
+    @State private var selectedTab: ModelSourceTab
+    @State private var modelPendingDeletion: ModelDescriptor?
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
         self.appState = appState
+        // Open on the tab that holds the user's chosen target: the matching
+        // local engine tab for a local model, Remote for a cloud provider.
+        // Anything unrecognised falls back to the first tab.
+        _selectedTab = State(initialValue: Self.defaultTab(for: appState))
+    }
+
+    private static func defaultTab(for appState: AppState) -> ModelSourceTab {
+        switch appState.transcriptionPreferences.preferredProviderID {
+        case "parakeet-local":
+            .parakeet
+        case "openai", "groq", "custom", "elevenlabs":
+            .remote
+        default:
+            .whisper
+        }
     }
 
     public var body: some View {
-        Form {
-            Section("Current Selection") {
-                if appState.availableTargets.isEmpty {
-                    LabeledContent("Active model") {
-                        Text("None ready")
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Picker("Active model", selection: activeTargetBinding) {
-                        ForEach(appState.availableTargets, id: \.self) { target in
-                            Text(appState.targetDisplayName(target)).tag(target)
-                        }
-                    }
-                }
-
-                LabeledContent("Ready local models") {
-                    Text("\(appState.readyLocalModelIDs.count)")
-                }
-
-                Toggle(
-                    "Auto-transcribe after recording or import",
-                    isOn: Binding(
-                        get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
-                        set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
-                    )
-                )
-                .disabled(!appState.canEnableAutoTranscribe)
-            }
-
-            ForEach(appState.modelCatalog.sections) { section in
-                // Each model is its own grouped card so models are clearly
-                // separated with native spacing. The catalog group title sits
-                // above the first card and its description below the last.
-                ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
+        // The filter strip sits between the selection card and the content
+        // cards, boxless — two grouped forms stacked with the strip in
+        // between keeps native cards everywhere except the tabs row.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Form {
                     Section {
-                        localModelRows(model)
-                    } header: {
-                        if index == 0 {
-                            Text(section.title)
+                        if appState.availableTargets.isEmpty {
+                            LabeledContent("Active model") {
+                                Text("None ready")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Picker("Active model", selection: activeTargetBinding) {
+                                ForEach(appState.availableTargets, id: \.self) { target in
+                                    Text(appState.targetDisplayName(target)).tag(target)
+                                }
+                            }
                         }
-                    } footer: {
-                        if index == section.models.count - 1 {
-                            Text(section.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+
+                        Toggle(
+                            "Auto-transcribe after recording or import",
+                            isOn: Binding(
+                                get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+                                set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+                            )
+                        )
+                        .disabled(!appState.canEnableAutoTranscribe)
                     }
                 }
-            }
+                .formStyle(.grouped)
 
-            if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-                cloudProviderSection(
-                    provider: openAI,
-                    modelID: $appState.providerSettings.openAIModelID,
-                    privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                    apiKeyInput: $openAIAPIKeyInput
-                )
-            }
+                Picker("Filter", selection: $selectedTab) {
+                    Text("OpenAI Whisper").tag(ModelSourceTab.whisper)
+                    Text("NVIDIA Parakeet").tag(ModelSourceTab.parakeet)
+                    Text("Remote").tag(ModelSourceTab.remote)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
 
-            if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-                cloudProviderSection(
-                    provider: groq,
-                    modelID: $appState.providerSettings.groqModelID,
-                    privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
-                    apiKeyInput: $groqAPIKeyInput
-                )
+                Form {
+                    if selectedTab == .remote {
+                        remoteProviderSections
+                    } else {
+                        localModelSections(for: selectedTab == .parakeet ? "parakeet" : "whisper")
+                    }
+                }
+                .formStyle(.grouped)
             }
         }
-        .formStyle(.grouped)
+        .contentMargins(.horizontal, 0, for: .scrollContent)
+        .task(id: refreshTick) {
+            for provider in appState.providerCatalog.providers {
+                if appState.providerRuntimeState(for: provider).isReady {
+                    appState.refreshCloudModelChoices(for: provider.id)
+                }
+            }
+        }
+        .confirmationDialog(
+            "Delete \(modelPendingDeletion?.name ?? "model")?",
+            isPresented: Binding(
+                get: { modelPendingDeletion != nil },
+                set: { if !$0 { modelPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Model", role: .destructive) {
+                if let model = modelPendingDeletion {
+                    delete(model)
+                }
+                modelPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                modelPendingDeletion = nil
+            }
+        } message: {
+            Text("The downloaded files for this model are removed from this Mac. You can download it again later.")
+        }
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
+    }
+
+    /// The catalog's local model cards for one engine section — each model is
+    /// its own grouped card so models are clearly separated with native
+    /// spacing. The catalog group title sits above the first card and its
+    /// description below the last.
+    @ViewBuilder
+    private func localModelSections(for sectionID: String) -> some View {
+        if let section = appState.modelCatalog.sections.first(where: { $0.id == sectionID }) {
+            ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
+                Section {
+                    localModelRows(model)
+                } header: {
+                    if index == 0 {
+                        Text(section.title)
+                    }
+                } footer: {
+                    if index == section.models.count - 1 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(section.description)
+                            Text("Local models transcribe on this Mac. Remote providers send audio to their server only when enabled.")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// All cloud provider configuration sections, shown under the Remote tab.
+    @ViewBuilder
+    private var remoteProviderSections: some View {
+        if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
+            cloudProviderSection(
+                provider: openAI,
+                modelID: $appState.providerSettings.openAIModelID,
+                privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
+                apiKeyInput: $openAIAPIKeyInput,
+                sectionHeader: "Remote Providers"
+            )
+        }
+
+        if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
+            cloudProviderSection(
+                provider: groq,
+                modelID: $appState.providerSettings.groqModelID,
+                privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
+                apiKeyInput: $groqAPIKeyInput
+            )
+        }
+
+        if let elevenLabs = appState.providerCatalog.providers.first(where: { $0.id == "elevenlabs" }) {
+            cloudProviderSection(
+                provider: elevenLabs,
+                modelID: $appState.providerSettings.elevenLabsModelID,
+                privacyConsent: $appState.providerSettings.elevenLabsPrivacyAcknowledged,
+                apiKeyInput: $elevenLabsAPIKeyInput
+            )
+        }
+
+        if let custom = appState.providerCatalog.providers.first(where: { $0.id == "custom" }) {
+            cloudProviderSection(
+                provider: custom,
+                modelID: $appState.providerSettings.customModelID,
+                privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
+                apiKeyInput: $customAPIKeyInput,
+                baseURL: $appState.providerSettings.customBaseURL
+            )
+        }
     }
 
     /// Binds the unified "Active model" picker to the app's active target,
@@ -148,7 +263,7 @@ public struct ModelsView: View {
 
             if canDelete(state) {
                 Button {
-                    delete(model)
+                    modelPendingDeletion = model
                 } label: {
                     Image(systemName: "trash")
                 }
@@ -198,13 +313,25 @@ public struct ModelsView: View {
         provider: ProviderDescriptor,
         modelID: Binding<String>,
         privacyConsent: Binding<Bool>,
-        apiKeyInput: Binding<String>
+        apiKeyInput: Binding<String>,
+        baseURL: Binding<String>? = nil,
+        sectionHeader: String? = nil
     ) -> some View {
         let runtimeState = appState.providerRuntimeState(for: provider)
         let validationState = appState.providerCredentialValidationStates[provider.id] ?? .idle
         let hasStoredKey = appState.hasStoredAPIKey(for: provider.id)
         let hasConsent = privacyConsent.wrappedValue
         let keyInputEmpty = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let storedMask = appState.maskedStoredAPIKey(for: provider.id, provider: provider)
+            let apiKeyPlaceholder: String = storedMask
+                ?? (provider.requiresAPIKey ? "Enter API key" : "Optional — leave empty if the server has no auth")
+            let statusText: String
+            if let storedMask {
+                statusText = "Stored: \(storedMask) — type to replace, empty keeps it"
+            } else {
+                statusText = provider.requiresAPIKey ? "No key stored" : "Optional — leave empty if the server has no auth"
+            }
+
         let isTesting: Bool = {
             if case .testing = validationState { return true }
             return false
@@ -238,11 +365,41 @@ public struct ModelsView: View {
                     .help("Send audio to \(provider.name). Required before any audio leaves this Mac.")
             }
 
-            LabeledContent {
-                TextField("Model ID", text: modelID)
+            if let baseURL {
+                LabeledContent {
+                    TextField(
+                        "https://host/v1",
+                        text: Binding(
+                            get: { baseURLDrafts[provider.id] ?? baseURL.wrappedValue },
+                            set: { baseURLDrafts[provider.id] = $0 }
+                        )
+                    )
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Server URL")
+                        Text("Base URL of an OpenAI-compatible API; Transcriptor calls <URL>/audio/transcriptions.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(!hasConsent)
+            }
+
+            LabeledContent {
+                TextField(
+                    "Model ID",
+                    text: Binding(
+                        get: { modelIDDrafts[provider.id] ?? modelID.wrappedValue },
+                        set: { modelIDDrafts[provider.id] = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Model ID")
@@ -255,33 +412,53 @@ public struct ModelsView: View {
             .disabled(!hasConsent)
 
             LabeledContent {
-                SecureField(hasStoredKey ? "Stored — enter to replace" : "Enter API key", text: apiKeyInput)
+                SecureField(apiKeyPlaceholder, text: apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                     .frame(width: 230)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("API Key")
-                    // Plain gray status text — no icons.
-                    Text(hasStoredKey ? "Stored in Keychain" : "No key stored")
+                    // Masked stored key (start…end) or plain status — no icons.
+                    Text(statusText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .disabled(!hasConsent)
 
+            let modelIDDirty = modelIDDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != modelID.wrappedValue } ?? false
+            let baseURLDirty = baseURL.map { base in
+                baseURLDrafts[provider.id].map { $0.trimmingCharacters(in: .whitespaces) != base.wrappedValue } ?? false
+            } ?? false
+            let hasChanges = !keyInputEmpty || modelIDDirty || baseURLDirty
+
             HStack(spacing: 8) {
                 Button("Save") {
-                    appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
-                    apiKeyInput.wrappedValue = ""
+                    if modelIDDirty, let draft = modelIDDrafts[provider.id] {
+                        modelID.wrappedValue = draft.trimmingCharacters(in: .whitespaces)
+                        modelIDDrafts[provider.id] = nil
+                    }
+                    if baseURLDirty, let draft = baseURLDrafts[provider.id], let base = baseURL {
+                        base.wrappedValue = draft.trimmingCharacters(in: .whitespaces)
+                        baseURLDrafts[provider.id] = nil
+                    }
+                    let typed = apiKeyInput.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // A pasted mask is not a key — ignore it.
+                    if !keyInputEmpty, typed != storedMask {
+                        appState.saveAPIKey(apiKeyInput.wrappedValue, for: provider.id)
+                        appState.invalidateMaskedAPIKeyCache(for: provider.id)
+                        apiKeyInput.wrappedValue = ""
+                    }
                 }
-                .disabled(!hasConsent || keyInputEmpty)
+                .buttonStyle(.borderedProminent)
+                .disabled(!hasConsent || !hasChanges)
 
                 Button("Test") {
                     appState.testAPIKey(for: provider.id, enteredKey: apiKeyInput.wrappedValue)
                     apiKeyInput.wrappedValue = ""
                 }
-                .disabled(!hasConsent || (keyInputEmpty && !hasStoredKey) || isTesting)
+                .disabled(!hasConsent || (keyInputEmpty && !hasStoredKey && provider.requiresAPIKey) || isTesting)
 
                 Button("Remove") {
                     appState.removeAPIKey(for: provider.id)
@@ -292,6 +469,8 @@ public struct ModelsView: View {
 
                 Button("Reset") {
                     apiKeyInput.wrappedValue = ""
+                    modelIDDrafts[provider.id] = nil
+                    baseURLDrafts[provider.id] = nil
                     appState.resetCloudProvider(provider.id)
                 }
                 .help("Reset \(provider.name): clears the key, consent, and model.")
@@ -302,6 +481,10 @@ public struct ModelsView: View {
                     .font(.caption)
                     .foregroundStyle(validationStateStyle(validationState))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            if let sectionHeader {
+                Text(sectionHeader)
             }
         } footer: {
             Text(provider.summary)
@@ -454,10 +637,19 @@ public struct ModelsView: View {
         "cloud"
     }
 
-    /// The status text shown beneath a cloud provider's name: the current
-    /// requirement to finish setup, or "Ready" once the provider is usable.
+    /// The status text shown beneath a cloud provider's name. A provider that
+    /// is merely switched off — consent, key, or URL missing — reads plainly
+    /// "Disabled"; detailed messages are kept only for states that carry real
+    /// information (awaiting key test, blocked/unavailable, ready).
     private func cloudStatusText(_ state: ProviderRuntimeState) -> String {
-        state.isReady ? "Ready" : state.message
+        switch state {
+        case .ready:
+            "Ready"
+        case .needsValidation, .unavailable:
+            state.message
+        case .disabled, .missingAPIKey, .privacyConsentRequired:
+            "Disabled"
+        }
     }
 
     /// A short, provider-specific hint on where to find a valid model ID.
@@ -466,7 +658,11 @@ public struct ModelsView: View {
         case "openai":
             "Find model IDs in the OpenAI dashboard under API → Models (e.g. gpt-4o-mini-transcribe)."
         case "groq":
-            "Find model IDs on the Groq Console models page (e.g. whisper-large-v3)."
+            "Find model IDs on the Groq Console models page (e.g. whisper-large-v3-turbo)."
+        case "elevenlabs":
+            "scribe_v2 is the current Scribe model; experimental IDs appear in ElevenLabs docs."
+        case "custom":
+            "The model name your server expects (e.g. whisper-1)."
         default:
             "Use a transcription model ID from \(provider.name)'s documentation."
         }

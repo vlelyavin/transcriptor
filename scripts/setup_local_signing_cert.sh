@@ -40,7 +40,20 @@ if [[ "${1:-}" == "--remove" ]]; then
   exit 0
 fi
 
-if security find-identity -p codesigning 2>/dev/null | grep -q "${IDENTITY}"; then
+# The signing keychain must NOT be in the user's keychain search list. Apps
+# that query the keychain without pinning a specific keychain walk that list,
+# and a locked extra keychain in front of "login" makes macOS ask for its
+# password ("Transcriptor wants to use the transcriptor-codesign keychain").
+# codesign and find-identity get the keychain path explicitly instead.
+drop_from_search_list() {
+  local others
+  others=$(security list-keychains -d user | sed -e 's/^[[:space:]]*//' -e 's/"//g' | grep -v "transcriptor-codesign.keychain" || true)
+  # shellcheck disable=SC2086
+  security list-keychains -d user -s ${others} >/dev/null 2>&1 || true
+}
+
+if [[ -f "${KEYCHAIN}" ]] && security find-identity -p codesigning "${KEYCHAIN}" 2>/dev/null | grep -q "${IDENTITY}"; then
+  drop_from_search_list
   echo "Local signing identity '${IDENTITY}' already present. Nothing to do."
   echo "scripts/build_release.sh signs with it automatically; just rebuild:"
   echo "  bash scripts/build_release.sh"
@@ -96,24 +109,18 @@ security set-key-partition-list \
   -S apple-tool:,apple:,codesign: \
   -s -k "${KEYCHAIN_PWD}" "${KEYCHAIN}" >/dev/null 2>&1
 
-# Add the keychain to the user search list (so codesign/find-identity see it),
-# keeping the existing keychains.
-EXISTING=$(security list-keychains -d user | sed -e 's/^[[:space:]]*//' -e 's/"//g')
-if ! echo "${EXISTING}" | grep -q "transcriptor-codesign.keychain"; then
-  # shellcheck disable=SC2086
-  security list-keychains -d user -s "${KEYCHAIN}" ${EXISTING}
-fi
+drop_from_search_list
 
 echo
-if security find-identity -p codesigning | grep -q "${IDENTITY}"; then
+if security find-identity -p codesigning "${KEYCHAIN}" | grep -q "${IDENTITY}"; then
   echo "✅ Created stable local signing identity: '${IDENTITY}'"
   echo
   echo "scripts/build_release.sh now signs with it automatically, so Microphone /"
-  echo "Accessibility grants persist across rebuilds. Rebuild + reinstall once"
-  echo "(one final permission re-grant), then you're set:"
+  echo "Accessibility grants and Keychain access persist across rebuilds. Rebuild +"
+  echo "reinstall once (one final permission re-grant), then you're set:"
   echo "  bash scripts/build_release.sh"
 else
   echo "⚠️  Identity created but not visible to codesign. Check:"
-  echo "  security find-identity -p codesigning"
+  echo "  security find-identity -p codesigning \"${KEYCHAIN}\""
   exit 1
 fi

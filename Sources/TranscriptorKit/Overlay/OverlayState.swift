@@ -2,6 +2,7 @@ import Foundation
 
 public enum OverlayPosition: String, CaseIterable, Identifiable, Hashable, Sendable {
     case topCenter
+    case center
     case bottomCenter
 
     public var id: String { rawValue }
@@ -10,6 +11,8 @@ public enum OverlayPosition: String, CaseIterable, Identifiable, Hashable, Senda
         switch self {
         case .topCenter:
             "Top Center"
+        case .center:
+            "Center"
         case .bottomCenter:
             "Bottom Center"
         }
@@ -18,18 +21,15 @@ public enum OverlayPosition: String, CaseIterable, Identifiable, Hashable, Senda
 
 public struct OverlayState: Equatable, Sendable {
     public var isEnabled: Bool
-    public var isNonActivating: Bool
     public var showsLiveAudioIndicator: Bool
     public var position: OverlayPosition
 
     public init(
         isEnabled: Bool = true,
-        isNonActivating: Bool = true,
         showsLiveAudioIndicator: Bool = true,
         position: OverlayPosition = .topCenter
     ) {
         self.isEnabled = isEnabled
-        self.isNonActivating = isNonActivating
         self.showsLiveAudioIndicator = showsLiveAudioIndicator
         self.position = position
     }

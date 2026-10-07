@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public protocol HTTPDataLoading: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
@@ -15,6 +16,10 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     private let secretStore: any SecretStore
     private let urlSession: any HTTPDataLoading
     private let fileManager: FileManager
+    /// Runtime base URL for providers whose endpoint is user-configured (the
+    /// custom server). Lock-protected so the main actor can update it
+    /// synchronously before a request is queued.
+    private let baseURLOverride = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     public init(
         descriptor: ProviderDescriptor,
@@ -30,30 +35,155 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         self.displayName = descriptor.name
     }
 
-    public func validateCredentials(modelID: String) async throws {
-        let apiKey = try requireAPIKey()
-        var request = URLRequest(url: descriptor.baseURL.appending(path: "models"))
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    public nonisolated func setBaseURL(_ url: URL?) {
+        baseURLOverride.withLock { $0 = url }
+    }
 
-        let (data, response) = try await urlSession.data(for: request)
+    private var baseURL: URL {
+        baseURLOverride.withLock { $0 } ?? descriptor.baseURL
+    }
+
+    public func validateCredentials(modelID: String) async throws {
+        let apiKey = try resolveAPIKey()
+        var request = URLRequest(url: baseURL.appending(path: "models"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        authorize(&request, apiKey: apiKey)
+
+        let (data, response) = try await performData(for: request)
         let httpResponse = try requireHTTPResponse(response)
+
+        // Self-hosted / proxy servers frequently implement only the
+        // transcription endpoint. For the custom server, fall back to a real
+        // (tiny, silent) transcription request — the exact path dictation uses.
+        if !descriptor.requiresAPIKey, [404, 405, 501].contains(httpResponse.statusCode) {
+            try await validateByTranscribingSilence(modelID: modelID, apiKey: apiKey)
+            return
+        }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
         }
 
-        let decoded = try JSONDecoder().decode(CloudModelsListResponse.self, from: data)
-        guard decoded.data.contains(where: { $0.id == modelID }) else {
-            throw TranscriptionError.unsupportedModel("\(descriptor.name) does not currently expose the configured model '\(modelID)'.")
+        // Built-in vendors list their models, so a missing ID is almost
+        // certainly a typo. Custom servers often list nothing or aliases, so
+        // a reachable, authorized endpoint is enough there.
+        guard descriptor.requiresAPIKey else {
+            return
         }
+        if descriptor.apiDialect == .elevenLabs {
+            // STT models (Scribe family) are not reliably present in the
+            // /models listing, so validation is done by actually
+            // transcribing a tiny silent sample — the same request the
+            // dictation path uses.
+            try await validateByTranscribingSilence(modelID: modelID, apiKey: apiKey)
+            return
+        }
+        let modelIDs: [String]
+        do {
+            modelIDs = try Self.decodeModelList(data: data, dialect: descriptor.apiDialect)
+        } catch {
+            // Diagnostic: surface the actual response shape so a vendor
+            // format change is visible in the UI. Snippet is response data,
+            // not a secret.
+            let snippet = String(data: data.prefix(160), encoding: .utf8) ?? "<binary>"
+            throw TranscriptionError.unsupportedModel("\(descriptor.name) /models response could not be parsed (snippet: \(snippet))")
+        }
+        guard modelIDs.contains(modelID) else {
+            // Show what the vendor actually exposes so the right ID is one
+            // glance away. Keep the list short.
+            let preview = modelIDs.prefix(8).joined(separator: ", ")
+            throw TranscriptionError.unsupportedModel("\(descriptor.name) does not expose '\(modelID)'. Available models: \(preview)\(modelIDs.count > 8 ? ", …" : "")")
+        }
+    }
+
+    /// Live model catalog from the provider. Returns IDs as advertised by
+    /// `GET /models` (OpenAI-compatible) or ElevenLabs' `/models` shape.
+    /// Throws when the endpoint/key is unavailable — callers treat an error
+    /// as "no list" and keep manual entry.
+    public func listAvailableModelIDs() async throws -> [String] {
+        let apiKey = try resolveAPIKey()
+        var request = URLRequest(url: baseURL.appending(path: "models"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        authorize(&request, apiKey: apiKey)
+
+        let (data, response) = try await performData(for: request)
+        let httpResponse = try requireHTTPResponse(response)
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+
+        return try Self.decodeModelList(data: data, dialect: descriptor.apiDialect)
+    }
+
+    private static func decodeModelList(data: Data, dialect: CloudAPIDialect) throws -> [String] {
+        if dialect == .elevenLabs {
+            struct ElevenModelsResponse: Decodable, Sendable {
+                struct Item: Decodable, Sendable {
+                    let modelID: String
+                    enum CodingKeys: String, CodingKey { case modelID = "model_id" }
+                }
+                let models: [Item]
+            }
+            // The endpoint has shipped both shapes: a bare array of model
+            // objects and a {"models": [...]} wrapper.
+            if let decoded = try? JSONDecoder().decode([ElevenModelsResponse.Item].self, from: data) {
+                return decoded.map(\.modelID)
+            }
+            let decoded = try JSONDecoder().decode(ElevenModelsResponse.self, from: data)
+            return decoded.models.map(\.modelID)
+        }
+        let decoded = try JSONDecoder().decode(CloudModelsListResponse.self, from: data)
+        return decoded.data.map(\.id)
+    }
+
+    private func validateByTranscribingSilence(modelID: String, apiKey: String?) async throws {
+        let directory = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let audioURL = directory.appendingPathComponent("validation.wav")
+        try Self.silentWAV(seconds: 0.6).write(to: audioURL)
+
+        let body = try multipartBody(for: audioURL, modelID: modelID, language: nil)
+        let validationPath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: validationPath))
+        request.httpMethod = "POST"
+        request.httpBody = body.body
+        request.timeoutInterval = 30
+        request.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
+        authorize(&request, apiKey: apiKey)
+
+        let (data, response) = try await performData(for: request)
+        let httpResponse = try requireHTTPResponse(response)
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw mapAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+    }
+
+    /// 16 kHz mono 16-bit PCM silence.
+    static func silentWAV(seconds: Double) -> Data {
+        let sampleRate: UInt32 = 16_000
+        let sampleCount = UInt32(Double(sampleRate) * seconds)
+        let dataSize = sampleCount * 2
+        var data = Data()
+        func append<T: FixedWidthInteger>(_ value: T) {
+            withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+        }
+        data.append(contentsOf: Array("RIFF".utf8)); append(UInt32(36) + dataSize)
+        data.append(contentsOf: Array("WAVE".utf8))
+        data.append(contentsOf: Array("fmt ".utf8)); append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
+        append(sampleRate); append(sampleRate * 2); append(UInt16(2)); append(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); append(dataSize)
+        data.append(Data(count: Int(dataSize)))
+        return data
     }
 
     public func transcribe(
         job: TranscriptionJob,
         progressHandler: @escaping @Sendable (TranscriptionProgress) -> Void
     ) async throws -> TranscriptionResult {
-        let apiKey = try requireAPIKey()
+        let apiKey = try resolveAPIKey()
         guard fileManager.fileExists(atPath: job.audioFileURL.path) else {
             throw TranscriptionError.missingAudioFile("The audio file for this history item could not be found.")
         }
@@ -75,11 +205,21 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID)
-        var request = URLRequest(url: descriptor.baseURL.appending(path: "audio/transcriptions"))
+        // Downmix to 16 kHz mono for upload: Whisper-class engines run on
+        // 16 kHz input, so this is quality-neutral while shrinking typical
+        // 48 kHz captures ~6× (keeps us far below the 25 MB direct limit).
+        let uploadURL = try SpeechUploadTranscoder.speechBandMonoWav(from: job.audioFileURL)
+        defer { if uploadURL != job.audioFileURL { try? FileManager.default.removeItem(at: uploadURL) } }
+
+        let requestBody = try multipartBody(for: uploadURL, modelID: job.requestedModelID, language: job.language)
+        let transcribePath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: transcribePath))
         request.httpMethod = "POST"
         request.httpBody = requestBody.body
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // Long dictations upload several MB; the 60 s default is too tight on
+        // a slow uplink.
+        request.timeoutInterval = 120
+        authorize(&request, apiKey: apiKey)
         request.setValue(requestBody.contentType, forHTTPHeaderField: "Content-Type")
 
         progressHandler(
@@ -89,7 +229,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await performData(for: request)
         let httpResponse = try requireHTTPResponse(response)
 
         guard (200..<300).contains(httpResponse.statusCode) else {
@@ -121,12 +261,38 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         )
     }
 
-    private func requireAPIKey() throws -> String {
-        guard let secret = try secretStore.secret(for: descriptor.keychainAccount), !secret.isEmpty else {
+    /// The stored key, or `nil` for a keyless custom server.
+    private func resolveAPIKey() throws -> String? {
+        let secret = try secretStore.secret(for: descriptor.keychainAccount)
+        if let secret, !secret.isEmpty {
+            return secret
+        }
+        guard !descriptor.requiresAPIKey else {
             throw TranscriptionError.missingCredentials("Add a \(descriptor.name) API key in Settings before using cloud transcription.")
         }
+        return nil
+    }
 
-        return secret
+    private func authorize(_ request: inout URLRequest, apiKey: String?) {
+        guard let apiKey else { return }
+        switch descriptor.apiDialect {
+        case .elevenLabs:
+            request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        case .openAICompatible:
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
+    /// `URLSession.data(for:)` throws `URLError(.cancelled)` — not
+    /// `CancellationError` — when the surrounding task is cancelled. Map it so
+    /// a user-cancelled upload takes the quiet `.cancelled` path instead of
+    /// being recorded (and notified) as a failure.
+    private func performData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await urlSession.data(for: request)
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw TranscriptionError.cancelled
+        }
     }
 
     private func requireHTTPResponse(_ response: URLResponse) throws -> HTTPURLResponse {
@@ -137,25 +303,39 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         return httpResponse
     }
 
-    private func multipartBody(for audioURL: URL, modelID: String) throws -> MultipartBody {
+    private func multipartBody(for audioURL: URL, modelID: String, language: String?) throws -> MultipartBody {
         let boundary = "Boundary-\(UUID().uuidString)"
         let audioData = try Data(contentsOf: audioURL, options: .mappedIfSafe)
         var body = Data()
 
+        let modelFieldName = descriptor.apiDialect == .elevenLabs ? "model_id" : "model"
+        let languageFieldName = descriptor.apiDialect == .elevenLabs ? "language_code" : "language"
+
         body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="model""#)
+        body.appendMultipartLine("Content-Disposition: form-data; name=\"\(modelFieldName)\"")
         body.appendMultipartLine("")
         body.appendMultipartLine(modelID)
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("json")
+        if descriptor.apiDialect != .elevenLabs {
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("json")
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("0")
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("0")
+        }
+
+        // Without a hint, auto-detection on short clips often picks the wrong
+        // language (short Russian phrases came back transliterated to Latin).
+        if let language, !language.isEmpty {
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine("Content-Disposition: form-data; name=\"\(languageFieldName)\"")
+            body.appendMultipartLine("")
+            body.appendMultipartLine(language)
+        }
 
         body.appendMultipartLine("--\(boundary)")
         body.appendMultipartLine(#"Content-Disposition: form-data; name="file"; filename="\#(audioURL.lastPathComponent)""#)
@@ -177,11 +357,15 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             .redactingAPIKeys()
 
         switch statusCode {
-        case 401, 403:
+        case 401:
             // Unified across providers: the upstream wording differs between
             // OpenAI and Groq, so present one consistent, non-leaking message.
-            _ = apiMessage
             return .missingCredentials("The API key was rejected. Check that the key is correct and active, then try again.")
+        case 403:
+            // A 403 can also mean a region or model-permission block — the key
+            // itself may be fine, so "key rejected" would give the wrong advice.
+            // Prefer the provider's own (already API-key-redacted) message.
+            return .missingCredentials(apiMessage ?? "\(descriptor.name) refused the request (HTTP 403). Check the key's permissions and region access, then try again.")
         case 413:
             return .fileTooLarge(apiMessage ?? "\(descriptor.name) rejected the audio upload because it exceeded the provider's current file-size limit.")
         case 429:
