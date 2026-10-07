@@ -111,10 +111,23 @@ public final class RecordingOverlayManager {
         // returns `acceptsFirstMouse == false`, which is why the initial clicks
         // were being swallowed and only "passed through" after the panel had
         // incidentally become key.
-        let hostingView = FirstMouseHostingView(rootView: rootView)
-        hostingView.autoresizingMask = [.width, .height]
-        panel.contentViewController = nil
-        panel.contentView = hostingView
+        // Reuse the existing hosting view when possible: replacing
+        // `contentView` tears down the SwiftUI tree and its @Observable
+        // tracking (the historical "meter frozen while listening" bug).
+        // `NSHostingView.rootView` assignment updates content in place.
+        let hostingView: FirstMouseHostingView<AnyView>
+        if
+            let existing = panel.contentView as? FirstMouseHostingView<AnyView>,
+            existing.frame.size == NSSize(width: panelSize.width, height: panelSize.height)
+        {
+            existing.rootView = rootView
+            hostingView = existing
+        } else {
+            hostingView = FirstMouseHostingView(rootView: rootView)
+            hostingView.autoresizingMask = [.width, .height]
+            panel.contentViewController = nil
+            panel.contentView = hostingView
+        }
 
         panel.setContentSize(panelSize)
         position(panel: panel, screen: screen, using: overlayState.position)

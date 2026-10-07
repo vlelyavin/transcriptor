@@ -31,6 +31,52 @@ public struct RecordingOverlayView: View {
     }
 
     public var body: some View {
+        Group {
+            if showsLiveMeter {
+                listeningBody
+            } else {
+                statusBody
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(width: 320)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.separator, lineWidth: 0.5)
+        )
+    }
+
+    /// While listening: one compact mic glyph, the title, and a single
+    /// full-width live waveform — one continuous line, macOS-native.
+    private var listeningBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.tint)
+
+                Text(statusTitle)
+                    .font(.headline)
+
+                Spacer()
+
+                if showsTimer {
+                    Text(durationLabel)
+                        .font(.system(.callout, design: .monospaced).weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+
+            ContinuousWaveformView(voiceInputController: voiceInputController)
+                .frame(height: 26)
+        }
+    }
+
+    /// Every non-listening state keeps the established glyph + text layout.
+    private var statusBody: some View {
         HStack(spacing: 14) {
             statusGlyph
 
@@ -38,10 +84,7 @@ public struct RecordingOverlayView: View {
                 Text(statusTitle)
                     .font(.headline)
 
-                if showsLiveMeter {
-                    LiveAudioMeter(levels: voiceInputController.liveLevels)
-                        .frame(height: 14)
-                } else if !statusSubtitle.isEmpty {
+                if !statusSubtitle.isEmpty {
                     Text(statusSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -53,14 +96,6 @@ public struct RecordingOverlayView: View {
 
             trailingAccessory
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(width: 320)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.separator, lineWidth: 0.5)
-        )
     }
 
     // MARK: - Leading glyph
@@ -214,43 +249,5 @@ public struct RecordingOverlayView: View {
         case .transcribing, .inserting: return true
         case .saved, .error, .setupRequired, .unconfigured: return false
         }
-    }
-}
-
-/// A compact, native-feeling live input meter: a row of capsule bars driven by
-/// the recorder's per-band levels. It gives immediate visual confirmation that
-/// the microphone is picking up the user's voice.
-private struct LiveAudioMeter: View {
-    let levels: AudioLevelSnapshot
-
-    var body: some View {
-        GeometryReader { proxy in
-            let bars = levels.bars
-            let count = max(bars.count, 1)
-            let spacing: CGFloat = 3
-            let barWidth = max(2, (proxy.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
-
-            HStack(alignment: .center, spacing: spacing) {
-                ForEach(bars.indices, id: \.self) { index in
-                    let magnitude = CGFloat(min(max(bars[index], 0), 1))
-                    Capsule(style: .continuous)
-                        .fill(Color.accentColor.opacity(0.35 + 0.65 * magnitude))
-                        .frame(
-                            width: barWidth,
-                            height: max(2, proxy.size.height * magnitude)
-                        )
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
-            // No per-frame `.animation` here. The levels are already smoothed in
-            // the recorder (see `smoothedSnapshot`), so animating every ~20–30 Hz
-            // update only spawned overlapping Core Animation transactions that
-            // saturated the main run loop — starving the global-hotkey handlers
-            // so a toggle-mode "stop" press wasn't processed until recording
-            // ended (the "overlay won't close / equalizer sticks" bug, confirmed
-            // in the logs). Driving the bars straight off the smoothed data stays
-            // visually smooth without the continuous animation churn.
-        }
-        .accessibilityHidden(true)
     }
 }
