@@ -31,45 +31,20 @@ public struct RecordingOverlayView: View {
     }
 
     public var body: some View {
-        Group {
-            if showsLiveMeter {
-                listeningBody
-            } else {
-                statusBody
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(width: 320)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.separator, lineWidth: 0.5)
-        )
+        statusBody
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .frame(width: 320)
+            .modifier(GlassCardBackground())
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.separator, lineWidth: 0.5)
+            )
     }
 
-    /// While listening: the familiar icon-tile-left card, but the tile's
-    /// bars are live (pulse with the mic) and the capsule strip under the
-    /// title is gone — one live visual, not two competing ones.
-    private var listeningBody: some View {
-        HStack(spacing: 14) {
-            PulseBarsIconView(voiceInputController: voiceInputController, size: 40, animated: true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(statusTitle)
-                    .font(.headline)
-
-                Text(statusSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            trailingAccessory
-        }
-    }
-
-    /// Every non-listening state keeps the established glyph + text layout.
+    /// Single layout for every state: glyph + title + subtitle + accessory.
+    /// While listening the glyph itself pulses (variable-color effect) — the
+    /// one live indicator; the old capsule meter is gone per design review.
     private var statusBody: some View {
         HStack(spacing: 14) {
             statusGlyph
@@ -96,8 +71,10 @@ public struct RecordingOverlayView: View {
 
     private var statusGlyph: some View {
         // The same beveled dark tile used by the app's settings sidebar — one
-        // consistent treatment for every state (no per-state colors).
-        SidebarIconView(systemImage: statusSymbol, size: 40, animated: isListening)
+        // consistent treatment for every state (no per-state colors). While
+        // listening the glyph pulses (variable-color effect); the user can
+        // turn the pulsing off via the "live audio indicator" overlay setting.
+        SidebarIconView(systemImage: statusSymbol, size: 40, animated: showsLiveMeter)
     }
 
     // MARK: - Trailing accessory (timer / spinner / actions)
@@ -138,9 +115,9 @@ public struct RecordingOverlayView: View {
         supplementalPhase == nil && voiceInputController.state == .recording
     }
 
-    /// While actively recording, the static "what to do next" subtitle is
-    /// replaced by a live level meter so the user can see the app is hearing
-    /// them — unless they've turned the indicator off in Overlay settings.
+    /// While actively recording the glyph pulses so the user can see the app
+    /// is hearing them — unless they've turned the indicator off in Overlay
+    /// settings (then the glyph stays static).
     private var showsLiveMeter: Bool {
         isListening && overlayState.showsLiveAudioIndicator
     }
@@ -242,6 +219,17 @@ public struct RecordingOverlayView: View {
         switch supplementalPhase {
         case .transcribing, .inserting: return true
         case .saved, .error, .setupRequired, .unconfigured: return false
+        }
+    }
+}
+
+/// Liquid-glass card background on macOS 26+, regular material below.
+private struct GlassCardBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 }
