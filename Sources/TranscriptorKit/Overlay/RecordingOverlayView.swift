@@ -48,30 +48,24 @@ public struct RecordingOverlayView: View {
         )
     }
 
-    /// While listening: one compact mic glyph, the title, and a single
-    /// full-width live waveform — one continuous line, macOS-native.
+    /// While listening: the familiar icon-tile-left card, but the tile's
+    /// bars are live (pulse with the mic) and the capsule strip under the
+    /// title is gone — one live visual, not two competing ones.
     private var listeningBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.tint)
+        HStack(spacing: 14) {
+            PulseBarsIconView(voiceInputController: voiceInputController, size: 40, animated: true)
 
+            VStack(alignment: .leading, spacing: 4) {
                 Text(statusTitle)
                     .font(.headline)
 
-                Spacer()
-
-                if showsTimer {
-                    Text(durationLabel)
-                        .font(.system(.callout, design: .monospaced).weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                Text(statusSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            ContinuousWaveformView(voiceInputController: voiceInputController)
-                .frame(height: 26)
+            trailingAccessory
         }
     }
 
