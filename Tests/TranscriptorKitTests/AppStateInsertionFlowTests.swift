@@ -267,6 +267,11 @@ final class AppStateInsertionFlowTests: XCTestCase {
         let suiteName = "TranscriptorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
+        // Each run makes a fresh suite; without this every test left a
+        // TranscriptorTests.<UUID>.plist behind in ~/Library/Preferences.
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
 
         let insertionService = MockInsertionService()
         let appState = AppState(
