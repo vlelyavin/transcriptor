@@ -84,13 +84,15 @@ exactly and fixed the still-broken sidebar search:
 | Hold-to-talk and toggle-to-talk | Done | Both modes record through the same voice input state machine. |
 | Recording overlay | Done | The overlay is centered, dimmed, and covers listening, finishing, transcribing, inserting, saved, error, and setup-required states. |
 | Local recording save | Done | Recordings are saved under Application Support and queued into history. |
+| Audio storage policy | Done | Dictation audio is captured at the device format (AirPods/HFP reliability) and converted to 16 kHz mono m4a once a transcript exists — roughly 250 KB per minute instead of ~5 MB. Cloud uploads use a temporary 16 kHz mono WAV copy; the stored file is never sent. “Keep recordings” and a retention window (7/30/90/365 days or forever, default forever) control how long audio lives; transcripts are never removed by either rule. |
 | Import audio: `.mp3`, `.m4a`, `.wav`, `.ogg`, `.oga`, `.opus` | Done | Drag-and-drop plus file-picker import copy files into app-managed storage. Ogg audio (Telegram voice messages) is converted to WAV working files at import. |
 | Transcript history, search, playback, copy/export, re-transcribe | Done | Durable local metadata, transcript actions, playback, and versioned re-transcription are in place. |
 | Storage cap and pruning | Done | Current usage is visible and oldest-first pruning is enforced when enabled. |
 | Automatic transcript insertion | Partial | The insertion service captures the original app and focused target, blocks wrong-target and secure-field insertion, and falls back to clipboard/history safely. Unit coverage now includes AppState-level flow tests (auto-transcribe on insertion, completion-triggered insertion, setup-required fallback). A final manual cross-app QA pass with Accessibility permission granted is still pending. |
 | Menu bar status item | Done | A native menu bar item reflects voice input state and exposes quick actions. |
 | Launch at login | Partial | Packaged `Transcriptor.app` builds can use Service Management. Raw `swift run` and command-line development builds truthfully report “Needs Packaged App”. |
-| Save original audio toggle | Partial | The preference persists, but dictation audio is still retained for safe pending/re-transcription workflows. |
+| Save original audio toggle | Done | “Keep recordings” is enforced: audio is archived to 16 kHz mono m4a after transcription, removed immediately when the toggle is off, and expired by the retention window. Pending/failed captures keep their audio so retries remain possible. |
+| Recording diagnostics | Done | Every attempt is appended to a rotating log (device, transport, tap formats, route changes, watchdog, engine errors), readable and revealable from Settings ▸ Advanced. |
 | Input device selection | Partial | The app currently records from the system default input device only. |
 | Local Whisper-family transcription | Done | WhisperKit-backed local model download, load, transcribe, and delete flows are implemented. |
 | OpenAI and Groq cloud transcription | Done | Keychain-backed keys, configurable model IDs, explicit privacy gating, and provider errors are implemented. |

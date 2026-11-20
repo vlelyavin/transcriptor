@@ -86,6 +86,14 @@ public struct AppStorageLayout: @unchecked Sendable {
         try directory(named: "Metadata")
     }
 
+    /// Diagnostic logs (recording attempts, AirPods route changes). Kept under
+    /// the managed root so "Clear History" and the storage cap reports stay
+    /// honest, in their own folder so they are easy to find and attach to a bug
+    /// report.
+    public func logsDirectory() throws -> URL {
+        try directory(named: "Logs")
+    }
+
     public func modelsDirectory() throws -> URL {
         try directory(named: "Models")
     }
@@ -99,12 +107,13 @@ public struct AppStorageLayout: @unchecked Sendable {
         let importsBytes = try directorySizeIfPresent(importsDirectory)
         let exportsBytes = try directorySizeIfPresent(exportsDirectory)
         let metadataBytes = try directorySizeIfPresent(metadataDirectory)
+        let logsBytes = try directorySizeIfPresent(logsDirectory)
         let modelBytes = try directorySizeIfPresent(modelsDirectory)
 
         return ManagedStorageUsage(
             historyBytes: exportsBytes,
             audioBytes: recordingsBytes + importsBytes,
-            metadataBytes: metadataBytes,
+            metadataBytes: metadataBytes + logsBytes,
             modelBytes: modelBytes
         )
     }

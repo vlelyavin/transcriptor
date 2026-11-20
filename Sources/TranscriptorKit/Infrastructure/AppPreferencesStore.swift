@@ -11,6 +11,10 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var hotkeyKeyCode: UInt32
     public var hotkeyCarbonModifiers: UInt32
     public var saveOriginalAudio: Bool
+    /// Days kept before audio is deleted; `0` keeps recordings forever. Stored
+    /// separately from `saveOriginalAudio` so an older build can still read the
+    /// checkbox and a newer build can add retention without losing it.
+    public var audioRetentionDays: Int
     public var overlayEnabled: Bool
     public var overlayIsNonActivating: Bool
     public var overlayShowsLiveIndicator: Bool
@@ -32,6 +36,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var groqCredentialValidated: Bool
     public var transcriptionLanguage: String
     public var showDockIcon: Bool
+    /// Dock icon for the duration of a recording, independent of `showDockIcon`.
+    public var showDockIconWhileRecording: Bool
     public var customBaseURL: String
     public var customModelID: String
     public var customPrivacyAcknowledged: Bool
@@ -47,6 +53,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         hotkeyKeyCode: UInt32 = UInt32(kVK_Space),
         hotkeyCarbonModifiers: UInt32 = UInt32(optionKey | shiftKey),
         saveOriginalAudio: Bool = true,
+        audioRetentionDays: Int = AudioRetentionWindow.forever.rawValue,
         overlayEnabled: Bool = true,
         overlayIsNonActivating: Bool = true,
         overlayShowsLiveIndicator: Bool = true,
@@ -68,6 +75,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         groqCredentialValidated: Bool = false,
         transcriptionLanguage: String = "",
         showDockIcon: Bool = false,
+        showDockIconWhileRecording: Bool = false,
         customBaseURL: String = "",
         customModelID: String = "whisper-1",
         customPrivacyAcknowledged: Bool = false,
@@ -82,6 +90,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.hotkeyKeyCode = hotkeyKeyCode
         self.hotkeyCarbonModifiers = hotkeyCarbonModifiers
         self.saveOriginalAudio = saveOriginalAudio
+        self.audioRetentionDays = audioRetentionDays
         self.overlayEnabled = overlayEnabled
         self.overlayIsNonActivating = overlayIsNonActivating
         self.overlayShowsLiveIndicator = overlayShowsLiveIndicator
@@ -103,6 +112,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.groqCredentialValidated = groqCredentialValidated
         self.transcriptionLanguage = transcriptionLanguage
         self.showDockIcon = showDockIcon
+        self.showDockIconWhileRecording = showDockIconWhileRecording
         self.customBaseURL = customBaseURL
         self.customModelID = customModelID
         self.customPrivacyAcknowledged = customPrivacyAcknowledged
@@ -120,6 +130,7 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var hotkeyKeyCode: UInt32
     var hotkeyCarbonModifiers: UInt32
     var saveOriginalAudio: Bool
+    var audioRetentionDays: Int?
     var overlayEnabled: Bool
     var overlayIsNonActivating: Bool
     var overlayShowsLiveIndicator: Bool
@@ -141,6 +152,7 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var groqCredentialValidated: Bool?
     var transcriptionLanguage: String?
     var showDockIcon: Bool?
+    var showDockIconWhileRecording: Bool?
     var customBaseURL: String?
     var customModelID: String?
     var customPrivacyAcknowledged: Bool?
@@ -178,6 +190,7 @@ public final class AppPreferencesStore {
             hotkeyKeyCode: decoded.hotkeyKeyCode,
             hotkeyCarbonModifiers: decoded.hotkeyCarbonModifiers,
             saveOriginalAudio: decoded.saveOriginalAudio,
+            audioRetentionDays: decoded.audioRetentionDays ?? AudioRetentionWindow.forever.rawValue,
             overlayEnabled: decoded.overlayEnabled,
             overlayIsNonActivating: decoded.overlayIsNonActivating,
             overlayShowsLiveIndicator: decoded.overlayShowsLiveIndicator,
@@ -199,6 +212,7 @@ public final class AppPreferencesStore {
             groqCredentialValidated: decoded.groqCredentialValidated ?? false,
             transcriptionLanguage: decoded.transcriptionLanguage ?? "",
             showDockIcon: decoded.showDockIcon ?? false,
+            showDockIconWhileRecording: decoded.showDockIconWhileRecording ?? false,
             customBaseURL: decoded.customBaseURL ?? "",
             customModelID: decoded.customModelID ?? "whisper-1",
             customPrivacyAcknowledged: decoded.customPrivacyAcknowledged ?? false,
@@ -217,6 +231,7 @@ public final class AppPreferencesStore {
             hotkeyKeyCode: snapshot.hotkeyKeyCode,
             hotkeyCarbonModifiers: snapshot.hotkeyCarbonModifiers,
             saveOriginalAudio: snapshot.saveOriginalAudio,
+            audioRetentionDays: snapshot.audioRetentionDays,
             overlayEnabled: snapshot.overlayEnabled,
             overlayIsNonActivating: snapshot.overlayIsNonActivating,
             overlayShowsLiveIndicator: snapshot.overlayShowsLiveIndicator,
@@ -238,6 +253,7 @@ public final class AppPreferencesStore {
             groqCredentialValidated: snapshot.groqCredentialValidated,
             transcriptionLanguage: snapshot.transcriptionLanguage,
             showDockIcon: snapshot.showDockIcon,
+            showDockIconWhileRecording: snapshot.showDockIconWhileRecording,
             customBaseURL: snapshot.customBaseURL,
             customModelID: snapshot.customModelID,
             customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,

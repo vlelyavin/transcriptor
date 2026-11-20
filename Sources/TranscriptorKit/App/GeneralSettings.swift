@@ -10,6 +10,9 @@ public struct GeneralSettings: Equatable, Sendable {
     /// default: Transcriptor is a menu bar app and only shows a Dock icon while
     /// its window is open.
     public var showDockIcon: Bool
+    /// Show a Dock icon for the duration of a recording even when
+    /// `showDockIcon` is off — a visible "the microphone is live" reminder.
+    public var showDockIconWhileRecording: Bool
 
     public init(
         launchAtLoginEnabled: Bool = false,
@@ -17,7 +20,8 @@ public struct GeneralSettings: Equatable, Sendable {
         insertTranscriptIntoActiveApp: Bool = true,
         alsoCopyTranscriptToClipboard: Bool = false,
         restoreClipboardAfterInsertion: Bool = true,
-        showDockIcon: Bool = false
+        showDockIcon: Bool = false,
+        showDockIconWhileRecording: Bool = false
     ) {
         self.launchAtLoginEnabled = launchAtLoginEnabled
         self.showMenuBarIcon = showMenuBarIcon
@@ -25,5 +29,6 @@ public struct GeneralSettings: Equatable, Sendable {
         self.alsoCopyTranscriptToClipboard = alsoCopyTranscriptToClipboard
         self.restoreClipboardAfterInsertion = restoreClipboardAfterInsertion
         self.showDockIcon = showDockIcon
+        self.showDockIconWhileRecording = showDockIconWhileRecording
     }
 }

@@ -126,7 +126,32 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             throw TranscriptionError.missingAudioFile("The audio file for this history item could not be found.")
         }
 
-        let fileAttributes = try fileManager.attributesOfItem(atPath: job.audioFileURL.path)
+        // Upload 16 kHz mono instead of the device-format capture. A 30 s 48 kHz
+        // stereo WAV is ~5.5 MB; the same speech as 16 kHz mono PCM is ~1 MB, and
+        // every provider downsamples to 16 kHz mono server-side anyway. The local
+        // file is untouched — the copy is temporary and removed below.
+        let uploadURL: URL
+        var temporaryUploadURL: URL?
+        do {
+            if let copy = try SpeechUploadTranscoder(fileManager: fileManager).makeUploadCopy(of: job.audioFileURL) {
+                temporaryUploadURL = copy
+                uploadURL = copy
+            } else {
+                uploadURL = job.audioFileURL
+            }
+        } catch {
+            // A failed optimisation must never fail the transcription: fall back
+            // to uploading the original file, exactly as before.
+            temporaryUploadURL = nil
+            uploadURL = job.audioFileURL
+        }
+        defer {
+            if let temporaryUploadURL {
+                try? fileManager.removeItem(at: temporaryUploadURL)
+            }
+        }
+
+        let fileAttributes = try fileManager.attributesOfItem(atPath: uploadURL.path)
         let fileSize = (fileAttributes[.size] as? NSNumber)?.int64Value ?? 0
         guard fileSize <= descriptor.directUploadLimitBytes else {
             let limitMegabytes = Int(descriptor.directUploadLimitBytes / 1_048_576)
@@ -143,7 +168,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let requestBody = try multipartBody(for: job.audioFileURL, modelID: job.requestedModelID, language: job.language)
+        let requestBody = try multipartBody(for: uploadURL, modelID: job.requestedModelID, language: job.language)
         var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
         request.httpMethod = "POST"
         request.httpBody = requestBody.body

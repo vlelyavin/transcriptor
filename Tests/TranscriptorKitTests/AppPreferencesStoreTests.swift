@@ -23,6 +23,7 @@ final class AppPreferencesStoreTests: XCTestCase {
             hotkeyKeyCode: 15,
             hotkeyCarbonModifiers: 2,
             saveOriginalAudio: false,
+            audioRetentionDays: 30,
             overlayEnabled: false,
             overlayIsNonActivating: true,
             overlayShowsLiveIndicator: false,

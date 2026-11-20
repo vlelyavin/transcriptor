@@ -79,6 +79,18 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     private var levelPump: Task<Void, Never>?
 
     private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "audio")
+    // A persistent, user-inspectable copy of the same events (Settings ▸
+    // Advanced). Writes go through a utility queue, so neither the main actor nor
+    // the real-time audio thread ever waits on disk I/O.
+    private let diagnostics: RecordingDiagnosticsLog
+    private let diagnosticsQueue = DispatchQueue(
+        label: "com.vlelyavin.Transcriptor.recording-diagnostics",
+        qos: .utility
+    )
+    // The format the tap is currently delivering, kept for route-change log
+    // lines ("48000 Hz → 24000 Hz").
+    private var activeStreamFormatDescription = "unknown"
+    private var routeChangeCount = 0
     // `didReceiveBuffer` / `bufferCount` are guarded by `levelLock`. They let the
     // start-up watchdog detect the "engine started but no audio ever arrives"
     // failure that AirPods / Bluetooth routes hit, and feed the diagnostic logs.
@@ -92,9 +104,23 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     // The human-readable name of the input device this recording is bound to,
     // used in diagnostics and the no-audio watchdog message. Set at start.
     private var activeInputDeviceName = "the selected input device"
+    private var activeInputDeviceTransport = "unknown"
 
-    public init(storage: RecordingStorage = RecordingStorage()) {
+    public init(
+        storage: RecordingStorage = RecordingStorage(),
+        diagnostics: RecordingDiagnosticsLog = .shared
+    ) {
         self.storage = storage
+        self.diagnostics = diagnostics
+    }
+
+    /// Mirrors a capture event into the on-disk diagnostic log. Never blocks the
+    /// caller: the recorder runs this from the main actor and from the audio tap.
+    private func recordDiagnostics(_ category: String, _ message: String) {
+        let diagnostics = diagnostics
+        diagnosticsQueue.async {
+            diagnostics.record(category, message)
+        }
     }
 
     public func authorizationStatus() -> MicrophonePermissionStatus {
@@ -126,9 +152,11 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         }
 
         guard authorizationStatus() == .granted else {
+            recordDiagnostics("capture", "start refused: microphone permission is not granted")
             throw AudioRecorderError.microphonePermissionDenied
         }
 
+        recordDiagnostics("capture", "start requested")
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
@@ -156,18 +184,26 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             ?? "the selected input device"
         let hardwareFormat = inputNode.inputFormat(forBus: 0)
         log.notice("startRecording: input=\(self.activeInputDeviceName, privacy: .public) tap=\(recordingFormat.sampleRate, privacy: .public)Hz/\(recordingFormat.channelCount, privacy: .public)ch hw=\(hardwareFormat.sampleRate, privacy: .public)Hz/\(hardwareFormat.channelCount, privacy: .public)ch")
+        recordDiagnostics(
+            "capture",
+            "start input=\"\(activeInputDeviceName)\" transport=\(activeInputDeviceTransport) "
+                + "tap=\(Self.formatDescription(recordingFormat)) hw=\(Self.formatDescription(hardwareFormat))"
+        )
 
         // A just-connected or mid-route-change device can momentarily report a
         // zero sample rate / channel count. Recording with that yields an invalid
         // file and a failed start, so surface a clear, actionable message instead
         // of the opaque engine error.
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
+            recordDiagnostics("capture", "start failed: input reports an invalid format (\(Self.formatDescription(recordingFormat)))")
             throw AudioRecorderError.failedToStartEngine(
                 "The audio input isn’t ready yet. If you just connected AirPods or another device, wait a second and try again."
             )
         }
 
         sampleRate = recordingFormat.sampleRate
+        activeStreamFormatDescription = Self.formatDescription(recordingFormat)
+        routeChangeCount = 0
 
         let outputURL = try storage.nextRecordingURL()
 
@@ -197,6 +233,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             try engine.start()
         } catch {
             log.error("engine.start() failed: \(error.localizedDescription, privacy: .public)")
+            recordDiagnostics("capture", "engine.start() failed: \(error.localizedDescription)")
             inputNode.removeTap(onBus: 0)
             resetSession(deleteOutput: true)
             throw AudioRecorderError.failedToStartEngine(error.localizedDescription)
@@ -206,6 +243,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         startLevelPump()
         startBufferWatchdog()
         log.notice("engine started; recording to \(outputURL.lastPathComponent, privacy: .public)")
+        recordDiagnostics("capture", "engine started; file=\(outputURL.lastPathComponent)")
         return outputURL
     }
 
@@ -225,9 +263,17 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         do {
             fileSizeBytes = try storage.fileSize(for: outputURL)
         } catch {
+            recordDiagnostics("capture", "stop failed reading file size: \(error.localizedDescription)")
             resetSession(deleteOutput: false)
             throw AudioRecorderError.failedToStopRecording(error.localizedDescription)
         }
+
+        recordDiagnostics(
+            "capture",
+            "stop duration=\(String(format: "%.2f", preciseDuration))s frames=\(totalFramesRecorded) "
+                + "buffers=\(receivedBufferCount()) bytes=\(fileSizeBytes) stream=\(activeStreamFormatDescription) "
+                + "routeChanges=\(routeChangeCount)"
+        )
 
         resetSession(deleteOutput: false)
 
@@ -245,6 +291,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             throw AudioRecorderError.noActiveRecording
         }
 
+        recordDiagnostics("capture", "cancelled after \(totalFramesRecorded) frames")
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         resetSession(deleteOutput: true)
@@ -271,6 +318,8 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         isRecording = false
         isReconfiguringRoute = false
         lastLevels = .zero
+        activeStreamFormatDescription = "unknown"
+        routeChangeCount = 0
 
         levelLock.lock()
         latestLevels = .zero
@@ -294,7 +343,9 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         let file = try AVAudioFile(forWriting: outputURL, settings: format.settings)
         outputFile = file
         sampleRate = format.sampleRate
+        activeStreamFormatDescription = Self.formatDescription(format)
         log.notice("output file → \(format.sampleRate, privacy: .public)Hz/\(format.channelCount, privacy: .public)ch")
+        recordDiagnostics("capture", "output file → \(Self.formatDescription(format))")
         return file
     }
 
@@ -308,6 +359,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         levelLock.unlock()
         if isFirst {
             log.notice("first audio buffer received")
+            recordDiagnostics("capture", "first audio buffer received")
         }
     }
 
@@ -315,6 +367,13 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         levelLock.lock()
         defer { levelLock.unlock() }
         return didReceiveBuffer
+    }
+
+    /// Lock-guarded buffer count for diagnostics, which run outside the tap.
+    private func receivedBufferCount() -> Int {
+        levelLock.lock()
+        defer { levelLock.unlock() }
+        return bufferCount
     }
 
     private func resetBufferTracking() {
@@ -337,11 +396,16 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     @discardableResult
     private func bindCurrentDefaultInputDevice(to inputNode: AVAudioInputNode) -> String? {
         guard let deviceID = Self.currentDefaultInputDeviceID() else {
+            activeInputDeviceTransport = "unknown"
             log.notice("input device: no system default input; using engine default")
+            recordDiagnostics("capture", "input device: no system default input; using engine default")
             return nil
         }
+        activeInputDeviceTransport = Self.transportDescription(for: deviceID)
+
         guard let audioUnit = inputNode.audioUnit else {
             log.notice("input device: input node has no audio unit; using engine default")
+            recordDiagnostics("capture", "input device: input node has no audio unit; using engine default")
             return nil
         }
 
@@ -358,10 +422,12 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         let name = Self.deviceName(for: deviceID)
         guard status == noErr else {
             log.error("input device: failed to bind \(name, privacy: .public) (status \(status, privacy: .public)); using engine default")
+            recordDiagnostics("capture", "input device: failed to bind \(name) (status \(status)); using engine default")
             return nil
         }
 
         log.notice("input device: bound \(name, privacy: .public) (id \(deviceID, privacy: .public))")
+        recordDiagnostics("capture", "input device: bound \(name) transport=\(activeInputDeviceTransport)")
         return name
     }
 
@@ -405,6 +471,63 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             return "input device \(deviceID)"
         }
         return name as String
+    }
+
+    /// Human-readable transport (built-in / Bluetooth / USB …) for the given
+    /// input device. Bluetooth routes are the ones that fail, so the transport is
+    /// recorded alongside the device name in every diagnostic line.
+    private static func transportDescription(for deviceID: AudioDeviceID) -> String {
+        var transportType: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transportType) == noErr else {
+            return "unknown"
+        }
+
+        let bytes = [
+            UInt8((transportType >> 24) & 0xFF),
+            UInt8((transportType >> 16) & 0xFF),
+            UInt8((transportType >> 8) & 0xFF),
+            UInt8(transportType & 0xFF),
+        ]
+        let code = (String(bytes: bytes, encoding: .ascii) ?? "")
+            .trimmingCharacters(in: .whitespaces)
+
+        switch code {
+        case "bltn":
+            return "built-in"
+        case "blue", "blea":
+            return "Bluetooth"
+        case "usb":
+            return "USB"
+        case "airp":
+            return "AirPlay"
+        case "hdmi":
+            return "HDMI"
+        case "dprt":
+            return "DisplayPort"
+        case "thun":
+            return "Thunderbolt"
+        case "virt":
+            return "virtual"
+        case "aggr", "grup":
+            return "aggregate"
+        case "1394":
+            return "FireWire"
+        case "":
+            return "unknown"
+        default:
+            return code
+        }
+    }
+
+    /// "48000 Hz/2 ch" — compact enough for a log line, unambiguous for support.
+    private static func formatDescription(_ format: AVAudioFormat) -> String {
+        "\(Int(format.sampleRate.rounded())) Hz/\(format.channelCount) ch"
     }
 
     private func installConfigChangeObserver(for engine: AVAudioEngine) {
@@ -454,6 +577,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
                 self.totalFramesRecorded += AVAudioFramePosition(buffer.frameLength)
             } catch {
                 self.log.error("buffer write failed: \(error.localizedDescription, privacy: .public)")
+                self.recordDiagnostics("capture", "buffer write failed: \(error.localizedDescription)")
             }
         }
     }
@@ -474,7 +598,13 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
 
         let inputNode = engine.inputNode
         let newFormat = inputNode.outputFormat(forBus: 0)
+        routeChangeCount += 1
         log.notice("route changed mid-session → \(newFormat.sampleRate, privacy: .public)Hz/\(newFormat.channelCount, privacy: .public)ch; re-establishing capture")
+        recordDiagnostics(
+            "route",
+            "configuration change #\(routeChangeCount): \(activeStreamFormatDescription) → "
+                + "\(Self.formatDescription(newFormat)); re-establishing capture"
+        )
 
         // Safe to reset the file here: the old tap is removed before the new one
         // is installed, so no audio-thread callback touches `outputFile` in
@@ -485,6 +615,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
 
         guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
             log.error("route change reported an invalid format; capture cannot resume")
+            recordDiagnostics("route", "configuration change reported an invalid format (\(Self.formatDescription(newFormat))); capture cannot resume")
             return
         }
 
@@ -495,8 +626,10 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             do {
                 try engine.start()
                 log.notice("engine restarted after route change")
+                recordDiagnostics("route", "engine restarted after route change")
             } catch {
                 log.error("engine restart after route change failed: \(error.localizedDescription, privacy: .public)")
+                recordDiagnostics("route", "engine restart after route change failed: \(error.localizedDescription)")
             }
         }
 
@@ -523,6 +656,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     /// window (see `handleConfigurationChange`).
     private func startBufferWatchdog() {
         bufferWatchdog?.cancel()
+        recordDiagnostics("watchdog", "armed 4s window (buffers so far: \(receivedBufferCount()))")
         bufferWatchdog = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(4_000))
             guard let self, !Task.isCancelled, self.isRecording, !self.hasReceivedBuffer() else {
@@ -531,6 +665,12 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
 
             let deviceName = self.activeInputDeviceName
             self.log.error("watchdog: no audio buffers 4s after start from \(deviceName, privacy: .public)")
+            self.recordDiagnostics(
+                "watchdog",
+                "no audio buffers 4s after start from \"\(deviceName)\" "
+                    + "(transport=\(self.activeInputDeviceTransport) stream=\(self.activeStreamFormatDescription) "
+                    + "routeChanges=\(self.routeChangeCount)); aborting capture"
+            )
             self.engine?.inputNode.removeTap(onBus: 0)
             self.engine?.stop()
             let onError = self.onRecordingError

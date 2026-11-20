@@ -6,6 +6,8 @@ public struct SettingsPaneDetailView: View {
     @Bindable private var appState: AppState
     private let pane: SettingsPane
     @State private var showClearHistoryConfirmation = false
+    @State private var showDeleteRecordingsConfirmation = false
+    @State private var diagnosticsRefreshToken = 0
 
     public init(pane: SettingsPane, appState: AppState) {
         self.pane = pane
@@ -118,6 +120,13 @@ public struct SettingsPaneDetailView: View {
             )
 
             Toggle(
+                "Show Dock icon while recording",
+                isOn: $appState.generalSettings.showDockIconWhileRecording
+            )
+            .disabled(appState.generalSettings.showDockIcon)
+            .help("Shows Transcriptor in the Dock only for the duration of a recording, then returns to menu-bar-only.")
+
+            Toggle(
                 "Launch at login",
                 isOn: Binding(
                     get: { appState.generalSettings.launchAtLoginEnabled },
@@ -149,17 +158,21 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var recordingDetailSection: some View {
         Section {
-            Toggle(isOn: $appState.recordingState.savesAudioLocally) {
+            Toggle(isOn: $appState.audioRetentionSettings.keepsRecordings) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Save original audio")
-                    if !appState.recordingState.savesAudioLocally {
-                        Text("Currently partial: dictation audio is still kept locally for pending transcription and reliable re-transcription until cleanup rules are fully implemented.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text("Keep recordings")
+                    Text("Audio is converted to 16 kHz mono m4a as soon as a transcript exists.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
+
+            Picker("Delete recordings after", selection: $appState.audioRetentionSettings.window) {
+                ForEach(AudioRetentionWindow.allCases) { window in
+                    Text(window.title).tag(window)
+                }
+            }
+            .disabled(!appState.audioRetentionSettings.keepsRecordings)
 
             LabeledContent("Permission") {
                 Text(appState.voiceInputController.permissionStatus.rawValue.capitalized)
@@ -176,7 +189,7 @@ public struct SettingsPaneDetailView: View {
         } header: {
             Text("Microphone & Audio")
         } footer: {
-            Text("Input device selection is a follow-up item. This build records from the current system default microphone.")
+            Text("Transcripts are never deleted by these rules — only audio files. With “Keep recordings” off, audio is removed once its transcript exists; audio for pending or failed transcriptions stays until it can be transcribed. Input device selection is a follow-up item: this build records from the current system default microphone.")
         }
     }
 
@@ -312,6 +325,43 @@ public struct SettingsPaneDetailView: View {
         }
 
         Section {
+            LabeledContent("Keep recordings") {
+                Text(appState.audioRetentionSettings.keepsRecordings ? "On" : "Off")
+            }
+
+            LabeledContent("Delete recordings after") {
+                Text(appState.audioRetentionSettings.keepsRecordings
+                    ? appState.audioRetentionSettings.window.title
+                    : "When transcribed")
+            }
+
+            LabeledContent("Stored audio") {
+                Text(megabyteString(for: appState.storageUsage.audioBytes))
+            }
+
+            Button("Delete Stored Recordings…", role: .destructive) {
+                showDeleteRecordingsConfirmation = true
+            }
+            .disabled(appState.storageUsage.audioBytes == 0)
+            .confirmationDialog(
+                "Delete all stored recordings?",
+                isPresented: $showDeleteRecordingsConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Recordings", role: .destructive) {
+                    appState.deleteStoredRecordings()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Audio files are deleted from this Mac. Every transcript and history item is kept, but the recordings can no longer be played or re-transcribed.")
+            }
+        } header: {
+            Text("Recordings")
+        } footer: {
+            Text("Dictation audio is stored as 16 kHz mono m4a — about 250 KB per minute instead of roughly 5 MB per minute for the raw device recording — and only after a transcript exists. Cloud uploads use a temporary 16 kHz mono copy; the stored file is never sent anywhere.")
+        }
+
+        Section {
             Button("Clear History…", role: .destructive) {
                 showClearHistoryConfirmation = true
             }
@@ -370,6 +420,57 @@ public struct SettingsPaneDetailView: View {
                 }
             }
         }
+
+        Section("Recording Diagnostics") {
+            LabeledContent("Diagnostic log") {
+                Text(appState.recordingDiagnosticsLogURL?.lastPathComponent ?? "Not created yet")
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button("Reveal Log in Finder") {
+                    appState.openRecordingDiagnosticsFolder()
+                }
+
+                Button("Refresh") {
+                    diagnosticsRefreshToken += 1
+                }
+
+                Button("Clear Log", role: .destructive) {
+                    appState.clearRecordingDiagnostics()
+                    diagnosticsRefreshToken += 1
+                }
+            }
+
+            if recentRecordingDiagnostics.isEmpty {
+                Text("No recording attempts logged yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(recentRecordingDiagnostics.enumerated()), id: \.offset) { entry in
+                            Text(entry.element)
+                                .font(.system(size: 10, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(height: 140)
+            }
+        } header: {
+            Text("Recording Diagnostics")
+        } footer: {
+            Text("Every recording attempt records the input device, its transport (Bluetooth, built-in, USB…), the formats the tap delivered, mid-recording route changes, watchdog timeouts and engine failures. Attach this file to a bug report when AirPods recording fails — it is the only durable record of an intermittent failure.")
+        }
+    }
+
+    /// Read on demand (not observed) — the Refresh button bumps
+    /// `diagnosticsRefreshToken` to re-run the body after new events land.
+    private var recentRecordingDiagnostics: [String] {
+        _ = diagnosticsRefreshToken
+        return appState.recentRecordingDiagnostics(limit: 40)
     }
 
     private func settingsForm<Content: View>(

@@ -492,13 +492,18 @@ public struct HistoryView: View {
     private func detailsRows(for entry: HistoryEntry) -> some View {
         LabeledContent("Audio") {
             if let path = audioRevealPath(for: entry) {
-                Button("Open in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                HStack(spacing: 8) {
+                    Text(entry.audioStorageDescription ?? "Audio")
+                        .foregroundStyle(.secondary)
+
+                    Button("Open in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             } else {
-                Text("Unavailable")
+                Text("Removed (transcript kept)")
                     .foregroundStyle(.secondary)
             }
         }

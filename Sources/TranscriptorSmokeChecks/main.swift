@@ -6,10 +6,36 @@ struct TranscriptorSmokeChecks {
     static func main() {
         var failures: [String] = []
 
-        let appState = AppState()
+        // Isolated storage + defaults: the retention pass AppState runs at launch
+        // must never touch the developer's real recordings or preferences.
+        let rootDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptorSmokeChecks-\(UUID().uuidString)", isDirectory: true)
+        let layout = AppStorageLayout(
+            fileManager: .default,
+            applicationSupportURLProvider: { rootDirectory }
+        )
+        let suiteName = "TranscriptorSmokeChecks.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+
+        let appState = AppState(
+            preferencesStore: AppPreferencesStore(defaults: defaults),
+            storageLayout: layout,
+            historyRepository: try? HistoryRepository(layout: layout, inMemory: true)
+        )
+
+        // `exit()` skips `defer`, so clean up explicitly at both exits.
+        func cleanUp() {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: rootDirectory)
+        }
         expect(appState.selectedScreen == .overview, "App state starts on the Overview screen.", failures: &failures)
         expect(appState.recordingState.mode == .holdToTalk, "Recording mode defaults to Hold to Talk.", failures: &failures)
-        expect(appState.recordingState.savesAudioLocally, "Recording defaults to local save enabled.", failures: &failures)
+        expect(appState.audioRetentionSettings.keepsRecordings, "Recording defaults to keeping recordings.", failures: &failures)
+        expect(appState.audioRetentionSettings.window == .forever, "Recording retention defaults to forever, so an upgrade never deletes audio.", failures: &failures)
+        expect(SpeechAudioFormat.sampleRate == 16_000, "Stored and uploaded speech audio is 16 kHz.", failures: &failures)
+        expect(SpeechAudioFormat.channelCount == 1, "Stored and uploaded speech audio is mono.", failures: &failures)
+        expect(!DockIconPolicy.shouldShowDockIcon(for: .init()), "A menu-bar app shows no Dock icon by default.", failures: &failures)
+        expect(DockIconPolicy.shouldShowDockIcon(for: .init(showsDockIconWhileRecording: true, isRecording: true)), "Recording can opt into a Dock icon.", failures: &failures)
         expect(appState.overlayState.isNonActivating, "Overlay defaults to non-activating.", failures: &failures)
         expect(appState.storageSettings.autoDeleteOldestHistory, "Storage defaults to auto-deleting oldest history.", failures: &failures)
         expect(appState.transcriptionPreferences.preferredLocalProviderID == "whisperkit-local", "Preferred local provider defaults to WhisperKit.", failures: &failures)
@@ -26,6 +52,7 @@ struct TranscriptorSmokeChecks {
 
         if failures.isEmpty {
             print("Transcriptor smoke checks passed.")
+            cleanUp()
             exit(EXIT_SUCCESS)
         }
 
@@ -33,6 +60,7 @@ struct TranscriptorSmokeChecks {
             fputs("FAIL: \(failure)\n", stderr)
         }
 
+        cleanUp()
         exit(EXIT_FAILURE)
     }
 

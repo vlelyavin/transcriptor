@@ -163,8 +163,12 @@ public final class AppState {
     public var generalSettings: GeneralSettings {
         didSet {
             persistPreferences()
-            if oldValue.showDockIcon != generalSettings.showDockIcon {
-                Self.applyDockIconPolicy(showDockIcon: generalSettings.showDockIcon)
+            if oldValue.showDockIcon != generalSettings.showDockIcon
+                || oldValue.showDockIconWhileRecording != generalSettings.showDockIconWhileRecording {
+                Self.applyDockIconPolicy(
+                    showDockIcon: generalSettings.showDockIcon,
+                    showDockIconWhileRecording: generalSettings.showDockIconWhileRecording
+                )
             }
         }
     }
@@ -192,6 +196,16 @@ public final class AppState {
         didSet {
             persistPreferences()
             refreshStorageState()
+        }
+    }
+    /// "Keep recordings" plus how long they are kept. Changing either re-applies
+    /// the policy immediately: turning the checkbox off removes audio whose
+    /// transcript already exists, and narrowing the window deletes what is now
+    /// past it — both without touching a single transcript.
+    public var audioRetentionSettings: AudioRetentionSettings {
+        didSet {
+            persistPreferences()
+            applyAudioRetentionPolicy()
         }
     }
     public var providerSettings: ProviderSettings {
@@ -249,11 +263,14 @@ public final class AppState {
     @ObservationIgnored private let storageLayout: AppStorageLayout
     @ObservationIgnored private let importService: AudioImportService
     @ObservationIgnored private let storageQuotaService: StorageQuotaService
+    @ObservationIgnored private let audioRetentionService: AudioRetentionService
+    @ObservationIgnored private let recordingDiagnostics: RecordingDiagnosticsLog
     @ObservationIgnored private let transcriptExportService: TranscriptExportService
     @ObservationIgnored private let transcriptInsertionService: any TranscriptInsertionServing
     @ObservationIgnored private let launchAtLoginService: any LaunchAtLoginServing
     @ObservationIgnored private let secretStore: any SecretStore
     @ObservationIgnored private var isEnforcingStorageCap = false
+    @ObservationIgnored private var isApplyingAudioRetention = false
     @ObservationIgnored private var overlaySupplementalClearTask: Task<Void, Never>?
     @ObservationIgnored private var pendingInsertionEntryID: UUID?
 
@@ -279,8 +296,12 @@ public final class AppState {
         )
         let hotkeyManager = GlobalHotkeyManager(configuration: hotkeyConfiguration)
         let recordingOverlayManager = RecordingOverlayManager()
+        let recordingDiagnostics = RecordingDiagnosticsLog(layout: storageLayout)
         let voiceInputController = VoiceInputController(
-            recorder: AudioRecorderService(storage: RecordingStorage(layout: storageLayout)),
+            recorder: AudioRecorderService(
+                storage: RecordingStorage(layout: storageLayout),
+                diagnostics: recordingDiagnostics
+            ),
             recordingModeProvider: { recordingMode }
         )
         let resolvedHistoryRepository = historyRepository
@@ -340,6 +361,11 @@ public final class AppState {
         self.storageLayout = storageLayout
         self.importService = AudioImportService(layout: storageLayout)
         self.storageQuotaService = StorageQuotaService(layout: storageLayout)
+        self.audioRetentionService = AudioRetentionService(
+            layout: storageLayout,
+            diagnostics: recordingDiagnostics
+        )
+        self.recordingDiagnostics = recordingDiagnostics
         self.transcriptExportService = TranscriptExportService()
         self.transcriptInsertionService = transcriptInsertionService
         self.launchAtLoginService = launchAtLoginService
@@ -351,12 +377,16 @@ public final class AppState {
             insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
             alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
             restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion,
-            showDockIcon: snapshot.showDockIcon
+            showDockIcon: snapshot.showDockIcon,
+            showDockIconWhileRecording: snapshot.showDockIconWhileRecording
         )
         self.recordingState = RecordingState(
             mode: recordingMode,
-            hotkey: hotkeyConfiguration,
-            savesAudioLocally: snapshot.saveOriginalAudio
+            hotkey: hotkeyConfiguration
+        )
+        self.audioRetentionSettings = AudioRetentionSettings(
+            keepsRecordings: snapshot.saveOriginalAudio,
+            window: AudioRetentionWindow(rawValue: snapshot.audioRetentionDays) ?? .forever
         )
         self.audioCaptureState = audioCaptureState
         self.overlayState = OverlayState(
@@ -394,7 +424,10 @@ public final class AppState {
         customProvider.setBaseURL(
             ProviderSettings(customBaseURL: snapshot.customBaseURL).customBaseURLValue
         )
-        AppState.prefersDockIcon = snapshot.showDockIcon
+        AppState.applyDockIconPolicy(
+            showDockIcon: snapshot.showDockIcon,
+            showDockIconWhileRecording: snapshot.showDockIconWhileRecording
+        )
         self.historyStore = HistoryStore(entries: persistedEntries)
         self.modelCatalog = modelCatalog
         self.providerCatalog = providerCatalog
@@ -468,6 +501,10 @@ public final class AppState {
         }
         transcriptionQueueController.replaceOnCompletion { [weak self] entry in
             self?.handleCompletedTranscription(for: entry)
+            // The transcript now exists, so this is the moment the recording
+            // stops being needed: archive it to 16 kHz mono m4a, or drop it when
+            // "Keep recordings" is off.
+            self?.applyAudioRetentionPolicy()
         }
         transcriptionQueueController.replaceOnFailure { [weak self] entryID, message in
             self?.handleFailedTranscription(for: entryID, message: message)
@@ -503,9 +540,14 @@ public final class AppState {
             }
         }
 
+        // Retention is applied at launch as well as after every transcription:
+        // a recording that has been on disk past the window is removed even if
+        // the app has not transcribed anything since the setting was changed.
         Task { [weak self] in
             await self?.autoLoadSelectedModelOnLaunch()
+            self?.applyAudioRetentionPolicy()
         }
+        observeDockIconActivity()
     }
 
     /// Loads the active local model automatically so transcription is ready
@@ -1209,7 +1251,8 @@ public final class AppState {
                 recordingModeRawValue: recordingState.mode.rawValue,
                 hotkeyKeyCode: recordingState.hotkey.keyCode,
                 hotkeyCarbonModifiers: recordingState.hotkey.carbonModifiers,
-                saveOriginalAudio: recordingState.savesAudioLocally,
+                saveOriginalAudio: audioRetentionSettings.keepsRecordings,
+                audioRetentionDays: audioRetentionSettings.window.rawValue,
                 overlayEnabled: overlayState.isEnabled,
                 overlayIsNonActivating: overlayState.isNonActivating,
                 overlayShowsLiveIndicator: overlayState.showsLiveAudioIndicator,
@@ -1231,6 +1274,7 @@ public final class AppState {
                 groqCredentialValidated: providerSettings.groqCredentialValidated,
                 transcriptionLanguage: transcriptionPreferences.transcriptionLanguage,
                 showDockIcon: generalSettings.showDockIcon,
+                showDockIconWhileRecording: generalSettings.showDockIconWhileRecording,
                 customBaseURL: providerSettings.customBaseURL,
                 customModelID: providerSettings.customModelID,
                 customPrivacyAcknowledged: providerSettings.customPrivacyAcknowledged,
@@ -1326,6 +1370,93 @@ public final class AppState {
         for path in paths {
             _ = storageLayout.removeManagedFileIfPresent(atPath: path)
         }
+    }
+
+    // MARK: - Audio retention
+
+    /// Applies the retention policy to every dictation entry.
+    ///
+    /// Only audio is ever rewritten or deleted here — transcripts, transcript
+    /// versions and metadata are untouched, so an entry whose audio expired still
+    /// shows its text and can still be copied or exported.
+    public func applyAudioRetentionPolicy() {
+        guard !isApplyingAudioRetention else {
+            return
+        }
+        isApplyingAudioRetention = true
+        defer { isApplyingAudioRetention = false }
+
+        let settings = audioRetentionSettings
+        let expiredIDs = Set(
+            audioRetentionService.expiredEntryIDs(in: historyStore.entries, settings: settings)
+        )
+
+        for entry in historyStore.entries where entry.sourceType == .dictation {
+            var updated = entry
+
+            if settings.keepsRecordings {
+                if entry.hasCompletedTranscript {
+                    // Device-format WAV → 16 kHz mono m4a. No-op once archived.
+                    updated = audioRetentionService.archiveRecording(for: entry) ?? updated
+                }
+                if expiredIDs.contains(entry.id) {
+                    updated = audioRetentionService.removeRecordings(for: updated) ?? updated
+                }
+            } else {
+                // "Keep recordings" is off: audio goes as soon as a transcript
+                // exists. Pending and failed captures keep theirs — the audio is
+                // the input those entries still need to be transcribed or
+                // retried, and deleting it would make a retry impossible.
+                guard entry.hasCompletedTranscript else {
+                    continue
+                }
+                updated = audioRetentionService.removeRecordings(for: entry) ?? updated
+            }
+
+            if updated != entry {
+                try? persistHistoryEntry(updated)
+            }
+        }
+    }
+
+    /// Deletes every stored recording while keeping history and transcripts.
+    public func deleteStoredRecordings() {
+        audioPlaybackService.stop()
+        var removedEntries = 0
+
+        for entry in historyStore.entries {
+            guard let updated = audioRetentionService.removeRecordings(for: entry) else {
+                continue
+            }
+            removedEntries += 1
+            try? persistHistoryEntry(updated)
+        }
+
+        historyActionMessage = removedEntries == 0
+            ? "There are no stored recordings to delete."
+            : "Deleted recordings for \(removedEntries) history item(s). Transcripts were kept."
+    }
+
+    // MARK: - Recording diagnostics
+
+    public var recordingDiagnosticsLogURL: URL? {
+        recordingDiagnostics.fileURL
+    }
+
+    /// The most recent recording-attempt lines, oldest first.
+    public func recentRecordingDiagnostics(limit: Int = 25) -> [String] {
+        recordingDiagnostics.recentLines(limit: limit)
+    }
+
+    public func openRecordingDiagnosticsFolder() {
+        guard let url = recordingDiagnostics.fileURL else {
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    public func clearRecordingDiagnostics() {
+        recordingDiagnostics.clear()
     }
 
     private func importPreview(for prepared: ImportedAudioPreparationResult) -> String {
@@ -1550,6 +1681,10 @@ public final class AppState {
     /// which owns the activation policy (Dock icon while a window is open,
     /// menu-bar-only otherwise).
     public private(set) static var prefersDockIcon = false
+    /// Whether a Dock icon should appear for the duration of a recording.
+    public private(set) static var showsDockIconWhileRecording = false
+    /// Set from `voiceInputController.state`; drives the recording-only Dock icon.
+    public private(set) static var isCapturingAudio = false
     public static let mainWindowID = "main"
 
     /// Re-creates the main window after the user closed it. SwiftUI releases a
@@ -1569,8 +1704,45 @@ public final class AppState {
         }
     }
 
-    public static func applyDockIconPolicy(showDockIcon: Bool) {
+    public static func applyDockIconPolicy(showDockIcon: Bool, showDockIconWhileRecording: Bool = false) {
         prefersDockIcon = showDockIcon
+        Self.showsDockIconWhileRecording = showDockIconWhileRecording
+        NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
+    }
+
+    /// The Dock-icon inputs, with the window state supplied by the app delegate
+    /// (the owner of `NSApp.windows`). Kept as one call so `DockIconPolicy` is
+    /// the only place that decides `.regular` vs `.accessory`.
+    public static func dockIconPolicyInput(hasVisibleWindow: Bool) -> DockIconPolicy.Input {
+        DockIconPolicy.Input(
+            pinnedDockIcon: prefersDockIcon,
+            showsDockIconWhileRecording: showsDockIconWhileRecording,
+            hasVisibleWindow: hasVisibleWindow,
+            isRecording: isCapturingAudio
+        )
+    }
+
+    /// Re-evaluates the recording half of the Dock policy whenever the voice
+    /// input state changes. Only the recording/stopping transitions matter; the
+    /// short `pendingTranscription` flash must not toggle the Dock icon.
+    private func observeDockIconActivity() {
+        withObservationTracking {
+            _ = voiceInputController.state
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.refreshDockIconRecordingActivity()
+                self?.observeDockIconActivity()
+            }
+        }
+    }
+
+    private func refreshDockIconRecordingActivity() {
+        let isCapturing = voiceInputController.state == .recording
+            || voiceInputController.state == .stopping
+        guard Self.isCapturingAudio != isCapturing else {
+            return
+        }
+        Self.isCapturingAudio = isCapturing
         NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
     }
 

@@ -151,6 +151,25 @@ public struct HistoryEntry: Identifiable, Equatable, Sendable {
         fileSizeBytes
     }
 
+    /// Human-readable description of the audio on disk, for the history detail
+    /// table. Archived dictation audio is 16 kHz mono m4a.
+    public var audioStorageDescription: String? {
+        guard let path = originalFilePath ?? workingFilePath else {
+            return nil
+        }
+
+        switch URL(fileURLWithPath: path).pathExtension.lowercased() {
+        case "m4a":
+            return "16 kHz mono m4a"
+        case "wav":
+            return "WAV"
+        case "":
+            return "Audio"
+        case let other:
+            return other.uppercased()
+        }
+    }
+
     public var latestTranscriptVersion: TranscriptVersion? {
         transcriptVersions.sorted(by: { $0.createdAt > $1.createdAt }).first
     }

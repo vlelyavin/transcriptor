@@ -122,6 +122,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             [
                 "Show Transcriptor in menu bar",
                 "Always show Dock icon",
+                "Show Dock icon while recording",
                 "Launch at login",
                 "Login items status",
             ]
@@ -129,7 +130,8 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             [
                 "Voice input mode",
                 "Transcription language",
-                "Save original audio",
+                "Keep recordings",
+                "Delete recordings after",
                 "Microphone permission",
                 "Insert transcript into active app",
                 "Also copy transcript to clipboard",
@@ -153,6 +155,9 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
                 "History storage limit",
                 "Auto-delete oldest history when over limit",
                 "Exclude downloaded model files from cap",
+                "Keep recordings",
+                "Delete recordings after",
+                "Delete stored recordings",
                 "Storage usage",
             ]
         case .privacy:
@@ -165,6 +170,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             [
                 "Last insertion attempt",
                 "Insertion diagnostics",
+                "Recording diagnostics",
             ]
         }
     }
@@ -195,19 +201,19 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     public var searchTokens: [String] {
         switch self {
         case .general:
-            ["launch", "login", "defaults", "startup"]
+            ["launch", "login", "defaults", "startup", "dock", "menu bar"]
         case .recording:
-            ["microphone", "audio", "recording", "save", "input"]
+            ["microphone", "audio", "recording", "save", "input", "keep", "retention"]
         case .keyboardShortcut:
             ["shortcut", "hotkey", "keyboard", "global"]
         case .overlay:
             ["overlay", "indicator", "position", "done"]
         case .storage:
-            ["history", "storage", "cap", "prune", "delete"]
+            ["history", "storage", "cap", "prune", "delete", "recordings", "retention", "m4a"]
         case .privacy:
             ["accessibility", "microphone", "permissions", "local", "cloud"]
         case .advanced:
-            ["advanced", "more", "extra", "diagnostics", "options", "insertion"]
+            ["advanced", "more", "extra", "diagnostics", "options", "insertion", "airpods", "log"]
         }
     }
 }

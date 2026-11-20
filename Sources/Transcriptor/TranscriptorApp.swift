@@ -44,7 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hasOpenWindow = NSApp.windows.contains { window in
             window.isVisible && window.canBecomeMain && !(window is NSPanel)
         }
-        let desired: NSApplication.ActivationPolicy = (AppState.prefersDockIcon || hasOpenWindow) ? .regular : .accessory
+        let input = AppState.dockIconPolicyInput(hasVisibleWindow: hasOpenWindow)
+        let desired: NSApplication.ActivationPolicy = DockIconPolicy.shouldShowDockIcon(for: input)
+            ? .regular
+            : .accessory
         guard NSApp.activationPolicy() != desired else {
             return
         }
