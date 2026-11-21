@@ -84,12 +84,16 @@ struct NativeSearchField: NSViewRepresentable {
         /// field to its window a runloop or two after `makeNSView`, so retry a
         /// few times instead of silently dropping the request.
         func focus(_ field: NSSearchField, attempt: Int = 0) {
+            Self.focus(field, attempt: attempt)
+        }
+
+        private static func focus(_ field: NSSearchField, attempt: Int) {
             DispatchQueue.main.async { [weak field] in
                 guard let field else { return }
                 guard let window = field.window else {
                     if attempt < 20 {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            self.focus(field, attempt: attempt + 1)
+                            Coordinator.focus(field, attempt: attempt + 1)
                         }
                     }
                     return
