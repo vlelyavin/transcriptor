@@ -212,9 +212,11 @@ final class DockIconPolicyTests: XCTestCase {
         XCTAssertFalse(DockIconPolicy.shouldShowDockIcon(for: .init()))
     }
 
-    func testOpenWindowOrPinnedIconShowsDockIcon() {
+    func testPinnedIconShowsDockIcon() {
         XCTAssertTrue(DockIconPolicy.shouldShowDockIcon(for: .init(pinnedDockIcon: true)))
-        XCTAssertTrue(DockIconPolicy.shouldShowDockIcon(for: .init(hasVisibleWindow: true)))
+        // An open window is not an input any more: with the preference off the
+        // app must stay menu-bar-only while Settings is open.
+        XCTAssertFalse(DockIconPolicy.shouldShowDockIcon(for: .init()))
     }
 
     func testRecordingIconIsOptInAndOnlyWhileRecording() {
@@ -227,7 +229,7 @@ final class DockIconPolicyTests: XCTestCase {
     func testPinnedIconWinsOverEverything() {
         XCTAssertTrue(
             DockIconPolicy.shouldShowDockIcon(
-                for: .init(pinnedDockIcon: true, showsDockIconWhileRecording: false, hasVisibleWindow: false, isRecording: false)
+                for: .init(pinnedDockIcon: true, showsDockIconWhileRecording: false, isRecording: false)
             )
         )
     }

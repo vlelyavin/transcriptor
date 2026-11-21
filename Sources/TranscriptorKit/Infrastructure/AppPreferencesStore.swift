@@ -19,6 +19,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var overlayIsNonActivating: Bool
     public var overlayShowsLiveIndicator: Bool
     public var overlayPositionRawValue: String
+    public var overlayDisplayModeRawValue: String
     public var selectedModelID: String
     public var autoTranscribeAfterCapture: Bool
     public var preferredLocalProviderID: String
@@ -58,6 +59,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         overlayIsNonActivating: Bool = true,
         overlayShowsLiveIndicator: Bool = true,
         overlayPositionRawValue: String = OverlayPosition.topCenter.rawValue,
+        overlayDisplayModeRawValue: String = OverlayDisplayMode.standard.rawValue,
         selectedModelID: String = "whisper-large-v3-turbo",
         autoTranscribeAfterCapture: Bool = false,
         preferredLocalProviderID: String = "whisperkit-local",
@@ -95,6 +97,7 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.overlayIsNonActivating = overlayIsNonActivating
         self.overlayShowsLiveIndicator = overlayShowsLiveIndicator
         self.overlayPositionRawValue = overlayPositionRawValue
+        self.overlayDisplayModeRawValue = overlayDisplayModeRawValue
         self.selectedModelID = selectedModelID
         self.autoTranscribeAfterCapture = autoTranscribeAfterCapture
         self.preferredLocalProviderID = preferredLocalProviderID
@@ -135,6 +138,7 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var overlayIsNonActivating: Bool
     var overlayShowsLiveIndicator: Bool
     var overlayPositionRawValue: String
+    var overlayDisplayModeRawValue: String?
     var selectedModelID: String
     var autoTranscribeAfterCapture: Bool?
     var preferredLocalProviderID: String?
@@ -195,6 +199,7 @@ public final class AppPreferencesStore {
             overlayIsNonActivating: decoded.overlayIsNonActivating,
             overlayShowsLiveIndicator: decoded.overlayShowsLiveIndicator,
             overlayPositionRawValue: decoded.overlayPositionRawValue,
+            overlayDisplayModeRawValue: decoded.overlayDisplayModeRawValue ?? OverlayDisplayMode.standard.rawValue,
             selectedModelID: decoded.selectedModelID,
             autoTranscribeAfterCapture: decoded.autoTranscribeAfterCapture ?? false,
             preferredLocalProviderID: decoded.preferredLocalProviderID ?? "whisperkit-local",
@@ -236,6 +241,7 @@ public final class AppPreferencesStore {
             overlayIsNonActivating: snapshot.overlayIsNonActivating,
             overlayShowsLiveIndicator: snapshot.overlayShowsLiveIndicator,
             overlayPositionRawValue: snapshot.overlayPositionRawValue,
+            overlayDisplayModeRawValue: snapshot.overlayDisplayModeRawValue,
             selectedModelID: snapshot.selectedModelID,
             autoTranscribeAfterCapture: snapshot.autoTranscribeAfterCapture,
             preferredLocalProviderID: snapshot.preferredLocalProviderID,

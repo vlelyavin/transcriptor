@@ -393,7 +393,8 @@ public final class AppState {
             isEnabled: snapshot.overlayEnabled,
             isNonActivating: snapshot.overlayIsNonActivating,
             showsLiveAudioIndicator: snapshot.overlayShowsLiveIndicator,
-            position: OverlayPosition(rawValue: snapshot.overlayPositionRawValue) ?? .topCenter
+            position: OverlayPosition(rawValue: snapshot.overlayPositionRawValue) ?? .topCenter,
+            displayMode: OverlayDisplayMode(rawValue: snapshot.overlayDisplayModeRawValue) ?? .standard
         )
         self.transcriptionPreferences = TranscriptionPreferences(
             selectedModelID: snapshot.selectedModelID,
@@ -1257,6 +1258,7 @@ public final class AppState {
                 overlayIsNonActivating: overlayState.isNonActivating,
                 overlayShowsLiveIndicator: overlayState.showsLiveAudioIndicator,
                 overlayPositionRawValue: overlayState.position.rawValue,
+                overlayDisplayModeRawValue: overlayState.displayMode.rawValue,
                 selectedModelID: transcriptionPreferences.selectedModelID,
                 autoTranscribeAfterCapture: transcriptionPreferences.autoTranscribeAfterCapture,
                 preferredLocalProviderID: transcriptionPreferences.preferredLocalProviderID,
@@ -1678,8 +1680,8 @@ public final class AppState {
     }
 
     /// Whether the user wants a permanent Dock icon. Read by the app delegate,
-    /// which owns the activation policy (Dock icon while a window is open,
-    /// menu-bar-only otherwise).
+    /// which owns the activation policy. When this is off the app stays
+    /// menu-bar-only even while a window is open.
     public private(set) static var prefersDockIcon = false
     /// Whether a Dock icon should appear for the duration of a recording.
     public private(set) static var showsDockIconWhileRecording = false
@@ -1710,14 +1712,14 @@ public final class AppState {
         NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
     }
 
-    /// The Dock-icon inputs, with the window state supplied by the app delegate
-    /// (the owner of `NSApp.windows`). Kept as one call so `DockIconPolicy` is
-    /// the only place that decides `.regular` vs `.accessory`.
-    public static func dockIconPolicyInput(hasVisibleWindow: Bool) -> DockIconPolicy.Input {
+    /// The Dock-icon inputs. Kept as one call so `DockIconPolicy` is the only
+    /// place that decides `.regular` vs `.accessory`. Windows are deliberately
+    /// not an input: an open window must not override the user's choice to
+    /// hide the Dock icon.
+    public static func dockIconPolicyInput() -> DockIconPolicy.Input {
         DockIconPolicy.Input(
             pinnedDockIcon: prefersDockIcon,
             showsDockIconWhileRecording: showsDockIconWhileRecording,
-            hasVisibleWindow: hasVisibleWindow,
             isRecording: isCapturingAudio
         )
     }

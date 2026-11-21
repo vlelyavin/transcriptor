@@ -151,7 +151,7 @@ public struct SettingsPaneDetailView: View {
         } header: {
             Text("Application")
         } footer: {
-            Text(appState.launchAtLoginStatus.detail + " Without the Dock icon, Transcriptor lives in the menu bar and shows in the Dock only while its window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
+            Text(appState.launchAtLoginStatus.detail + " Without the Dock icon, Transcriptor lives in the menu bar only, even while a window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
         }
     }
 
@@ -255,13 +255,19 @@ public struct SettingsPaneDetailView: View {
                 }
             }
 
+            Picker("Overlay Size", selection: $appState.overlayState.displayMode) {
+                ForEach(OverlayDisplayMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+
             Button("Restore Overlay Defaults") {
                 appState.resetOverlayDefaults()
             }
         } header: {
             Text("Overlay")
         } footer: {
-            Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into.")
+            Text("The overlay is non-activating by default so it stays above normal windows without stealing focus from the app you are dictating into. Compact keeps it a 40 pt pill.")
         }
     }
 

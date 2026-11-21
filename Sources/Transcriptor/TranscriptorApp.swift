@@ -3,57 +3,54 @@ import SwiftUI
 import TranscriptorKit
 
 /// Owns the activation policy. Transcriptor is a menu bar app
-/// (`LSUIElement`): it shows a Dock icon — and takes part in Cmd-Tab — only
-/// while one of its windows is open, or always when the user turned on
-/// "Show Dock icon".
+/// (`LSUIElement`): it shows a Dock icon only when the user turned on
+/// "Always show Dock icon" (or asked for one while recording). An open window
+/// does NOT promote it to `.regular` — that was the bug where turning the
+/// preference off still left an icon in the Dock while Settings was open.
 ///
-/// While a window is open the app is promoted to `.regular`. That also keeps
-/// the fix for the original bug this delegate was written for: a process that
-/// comes up as accessory/background (e.g. `swift run`) can't make its window
-/// key, so keystrokes leaked to the previously active app, and it ignored the
-/// system light/dark appearance.
+/// A `.accessory` app can still own key windows: every path that opens the
+/// window goes through `AppState.showMainWindow()`, which activates the app.
+/// That keeps Settings usable without paying for a Dock icon.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let center = NotificationCenter.default
-        for name in [
-            NSWindow.didBecomeKeyNotification,
-            NSWindow.didBecomeMainNotification,
-            NSWindow.willCloseNotification,
-            NSWindow.didChangeOcclusionStateNotification,
-            NSWindow.didMiniaturizeNotification,
-            NSWindow.didDeminiaturizeNotification,
-            .transcriptorDockIconPreferenceChanged,
-        ] {
-            center.addObserver(self, selector: #selector(windowSetChanged(_:)), name: name, object: nil)
-        }
+        // The policy no longer depends on which windows are open; only the
+        // user's Dock preference and the recording opt-in can change it.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(dockIconPreferenceChanged(_:)),
+            name: .transcriptorDockIconPreferenceChanged,
+            object: nil
+        )
         updateActivationPolicy()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc
-    private func windowSetChanged(_ notification: Notification) {
-        // `willClose` fires while the window is still visible; re-evaluate on
-        // the next runloop turn, after it is gone.
-        DispatchQueue.main.async { [weak self] in
-            self?.updateActivationPolicy()
-        }
+    private func dockIconPreferenceChanged(_ notification: Notification) {
+        updateActivationPolicy()
     }
 
     private func updateActivationPolicy() {
-        let hasOpenWindow = NSApp.windows.contains { window in
-            window.isVisible && window.canBecomeMain && !(window is NSPanel)
-        }
-        let input = AppState.dockIconPolicyInput(hasVisibleWindow: hasOpenWindow)
+        let input = AppState.dockIconPolicyInput()
         let desired: NSApplication.ActivationPolicy = DockIconPolicy.shouldShowDockIcon(for: input)
             ? .regular
             : .accessory
         guard NSApp.activationPolicy() != desired else {
             return
         }
+        let wasActive = NSApp.isActive
         NSApp.setActivationPolicy(desired)
         if desired == .regular {
             applyDockIcon()
+        } else if wasActive {
+            // Switching to `.accessory` deactivates the app and takes key
+            // status away from an open Settings window. Activate it again
+            // immediately: an accessory app's window stays keyable (verified
+            // with a probe), and the user keeps typing after flipping the
+            // preference. We only do this when the app was active, so a
+            // background launch never steals focus.
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 

@@ -6,7 +6,6 @@ import SwiftUI
 @MainActor
 public final class RecordingOverlayManager {
     private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "overlay")
-    private var dimmingPanel: NSPanel?
     private var panel: NSPanel?
     private var voiceInputController: VoiceInputController?
     private var overlayStateProvider: (() -> OverlayState)?
@@ -56,32 +55,37 @@ public final class RecordingOverlayManager {
         log.notice("refresh: state=\(voiceInputController.state.rawValue, privacy: .public) supplemental=\(String(describing: supplementalPhase), privacy: .public) shouldShow=\(shouldShow, privacy: .public)")
 
         guard shouldShow else {
-            hidePanels(animated: true)
+            hidePanels()
             return
         }
 
         let screen = presentationScreen()
-        let dimmingPanel = makeDimmingPanelIfNeeded()
         let panel = makePanelIfNeeded()
         hideTask?.cancel()
-        dimmingPanel.contentViewController = NSHostingController(
-            rootView: Color.black.opacity(0.16)
-                .ignoresSafeArea()
-        )
 
         let panelSize: NSSize
         let rootView: AnyView
+        let isResultCard: Bool
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+
         if let resultContent = resultContent(for: supplementalPhase) {
             // Interactive transcript-preview / unconfigured result card.
+            // It is its own surface, so the recording overlay's transparent
+            // shadow envelope does not apply.
             let actions = actionsProvider?() ?? RecordingOverlayActions()
             rootView = AnyView(ResultOverlayView(content: resultContent, actions: actions))
             panelSize = NSSize(width: 460, height: preferredHeight(for: resultContent))
+            isResultCard = true
+            cardWidth = panelSize.width
+            cardHeight = panelSize.height
         } else {
+            let recordingMode = recordingModeProvider()
             rootView = AnyView(
                 RecordingOverlayView(
                     voiceInputController: voiceInputController,
                     overlayState: overlayState,
-                    recordingMode: recordingModeProvider(),
+                    recordingMode: recordingMode,
                     supplementalPhase: supplementalPhase,
                     stopAction: {
                         voiceInputController.stopFromToolbar()
@@ -92,28 +96,56 @@ public final class RecordingOverlayManager {
                         }
                     }
                 )
+                // The card draws its own shadow. The transparent margin gives
+                // that shadow room inside the window, so it is never clipped
+                // by the panel's bounds.
+                .padding(OverlayDesign.Shadow.margin)
+                .frame(
+                    width: OverlayEnvelope.size.width,
+                    height: OverlayEnvelope.size.height,
+                    alignment: overlayState.position == .topCenter ? .top : .bottom
+                )
             )
-            panelSize = NSSize(width: 320, height: 120)
+            panelSize = OverlayEnvelope.size
+            isResultCard = false
+            let geometry = cardGeometry(for: overlayState, recordingMode: recordingMode)
+            cardWidth = geometry.width
+            cardHeight = geometry.height
         }
 
-        // Use a first-mouse-accepting hosting view so the overlay's buttons
-        // (toggle-mode Done/Cancel, result-card actions) respond on the FIRST
-        // click even while another app holds focus. A plain NSHostingView
-        // returns `acceptsFirstMouse == false`, which is why the initial clicks
-        // were being swallowed and only "passed through" after the panel had
-        // incidentally become key.
-        let hostingView = FirstMouseHostingView(rootView: rootView)
+        // A first-mouse-accepting hosting view is the whole point of the
+        // non-activating panel: the overlay's buttons (toggle-mode Stop/Cancel,
+        // result-card actions) respond on the FIRST click even while another
+        // app holds focus. A plain NSHostingView returns
+        // `acceptsFirstMouse == false`, so the initial clicks were swallowed
+        // and only "passed through" after the panel had incidentally become key.
+        //
+        // The same view also hit-tests only the card, so a click on the
+        // transparent 28 pt shadow margin reaches the app underneath instead
+        // of being eaten by an invisible window.
+        let hostingView = OverlayHostingView(rootView: rootView)
         hostingView.autoresizingMask = [.width, .height]
+        hostingView.restrictsHitsToCard = !isResultCard
+        hostingView.cardWidth = cardWidth
+        hostingView.cardHeight = cardHeight
+        hostingView.cardAnchoredTop = overlayState.position == .topCenter
         panel.contentViewController = nil
         panel.contentView = hostingView
 
-        dimmingPanel.setFrame(screen.frame, display: false)
+        // The recording card draws a SwiftUI shadow inside the envelope; the
+        // window's own shadow would be computed from the card's alpha mask and
+        // duplicated/clipped by the margin. The result card fills its window
+        // exactly, so it keeps the native window shadow.
+        panel.hasShadow = isResultCard
         panel.setContentSize(panelSize)
-        position(panel: panel, screen: screen, using: overlayState.position)
-        showPanel(dimmingPanel)
+        position(
+            panel: panel,
+            screen: screen,
+            using: overlayState.position,
+            cardMargin: isResultCard ? 0 : OverlayDesign.Shadow.margin
+        )
         showPanel(panel)
 
-        let isResultCard = resultContent(for: supplementalPhase) != nil
         let interactive = allowsInteraction(for: voiceInputController.state, mode: recordingModeProvider()) || isResultCard
         // Decide whether the panel may take key-window status. ONLY the
         // post-recording result card is allowed to (its text selection / default
@@ -179,6 +211,7 @@ public final class RecordingOverlayManager {
             _ = overlayStateProvider?().isEnabled
             _ = overlayStateProvider?().position
             _ = overlayStateProvider?().showsLiveAudioIndicator
+            _ = overlayStateProvider?().displayMode
             _ = recordingModeProvider?()
             _ = supplementalPhaseProvider?()
         } onChange: { [weak self] in
@@ -195,7 +228,7 @@ public final class RecordingOverlayManager {
         }
 
         let panel = FloatingOverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 210),
+            contentRect: NSRect(origin: .zero, size: OverlayEnvelope.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -210,43 +243,24 @@ public final class RecordingOverlayManager {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.ignoresMouseEvents = false
-        panel.alphaValue = 0
-        panel.animationBehavior = .utilityWindow
+        panel.alphaValue = 1
+        // AppKit's fade on top of the SwiftUI card reads as a double animation
+        // and made the old overlay feel sluggish.
+        panel.animationBehavior = .none
         self.panel = panel
         return panel
     }
 
-    private func makeDimmingPanelIfNeeded() -> NSPanel {
-        if let dimmingPanel {
-            return dimmingPanel
-        }
-
-        let dimmingPanel = NSPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        dimmingPanel.isFloatingPanel = true
-        // It has no controls and must never own the key window (see the main
-        // panel for why a non-activating panel becoming key breaks keyboard
-        // routing in the user's app).
-        dimmingPanel.becomesKeyOnlyIfNeeded = true
-        dimmingPanel.hidesOnDeactivate = false
-        dimmingPanel.level = .floating
-        dimmingPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        dimmingPanel.backgroundColor = .clear
-        dimmingPanel.isOpaque = false
-        dimmingPanel.hasShadow = false
-        dimmingPanel.ignoresMouseEvents = true
-        dimmingPanel.alphaValue = 0
-        self.dimmingPanel = dimmingPanel
-        return dimmingPanel
-    }
-
-    private func position(panel: NSPanel, screen: NSScreen, using position: OverlayPosition) {
+    /// Positions the panel by the card's edge, not by the window's: the
+    /// transparent shadow margin must not move the visible card.
+    private func position(
+        panel: NSPanel,
+        screen: NSScreen,
+        using position: OverlayPosition,
+        cardMargin: CGFloat
+    ) {
         let visibleFrame = screen.visibleFrame
         let size = panel.frame.size
         let originX = visibleFrame.midX - size.width / 2
@@ -254,50 +268,27 @@ public final class RecordingOverlayManager {
 
         switch position {
         case .topCenter:
-            originY = visibleFrame.midY - size.height / 2
+            // Card top sits 12 pt under the menu bar.
+            originY = visibleFrame.maxY - 12 + cardMargin - size.height
         case .bottomCenter:
-            originY = visibleFrame.midY - size.height / 2 - 80
+            // Card bottom sits 24 pt above the bottom of the visible area.
+            originY = visibleFrame.minY + 24 - cardMargin
         }
 
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
     }
 
     private func showPanel(_ panel: NSPanel) {
+        panel.alphaValue = 1
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            panel.animator().alphaValue = 1
-        }
     }
 
-    private func hidePanels(animated: Bool) {
-        log.notice("hide panels (animated=\(animated, privacy: .public))")
+    private func hidePanels() {
+        log.notice("hide overlay panel")
         hideTask?.cancel()
-        guard let panel, let dimmingPanel else {
-            return
-        }
-
-        guard animated, panel.isVisible || dimmingPanel.isVisible else {
-            panel.orderOut(nil)
-            dimmingPanel.orderOut(nil)
-            panel.alphaValue = 0
-            dimmingPanel.alphaValue = 0
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            panel.animator().alphaValue = 0
-            dimmingPanel.animator().alphaValue = 0
-        } completionHandler: {
-            Task { @MainActor in
-                panel.orderOut(nil)
-                dimmingPanel.orderOut(nil)
-            }
-        }
+        panel?.orderOut(nil)
     }
 
     private func scheduleHide(after duration: Duration) {
@@ -305,7 +296,26 @@ public final class RecordingOverlayManager {
         hideTask?.cancel()
         hideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: duration)
-            self?.hidePanels(animated: true)
+            self?.hidePanels()
+        }
+    }
+
+    private func cardGeometry(
+        for overlayState: OverlayState,
+        recordingMode: RecordingMode
+    ) -> (width: CGFloat, height: CGFloat) {
+        switch overlayState.displayMode {
+        case .standard:
+            return (OverlayDesign.Standard.width, OverlayDesign.Standard.minHeight)
+        case .compact:
+            return (
+                OverlayDesign.Compact.width(
+                    showsTimer: true,
+                    showsWave: overlayState.showsLiveAudioIndicator,
+                    showsStop: recordingMode == .toggleToTalk
+                ),
+                OverlayDesign.Compact.height
+            )
         }
     }
 
@@ -338,6 +348,16 @@ public final class RecordingOverlayManager {
     }
 }
 
+/// The fixed window around the card. It is large enough for the tallest
+/// standard card (78 pt) plus the 28 pt shadow margin on both sides; the card
+/// animates inside it and the window itself never changes size.
+private enum OverlayEnvelope {
+    static let size = NSSize(
+        width: OverlayDesign.Standard.width + OverlayDesign.Shadow.margin * 2,
+        height: OverlayDesign.Standard.maxHeight + OverlayDesign.Shadow.margin * 2
+    )
+}
+
 private final class FloatingOverlayPanel: NSPanel {
     /// Whether the panel is allowed to take key-window status. Set per state by
     /// `RecordingOverlayManager.refreshPresentation`.
@@ -358,11 +378,46 @@ private final class FloatingOverlayPanel: NSPanel {
 }
 
 /// A SwiftUI hosting view that accepts the first mouse click even when its
-/// window isn't key. Without this, clicking a control in the non-activating
-/// overlay while another app is focused only keys the window and discards the
-/// click — so Done/Cancel appeared to ignore the first press(es).
-private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+/// window isn't key, and (for the recording card) refuses clicks that land in
+/// the transparent shadow margin.
+private final class OverlayHostingView<Content: View>: NSHostingView<Content> {
+    var restrictsHitsToCard = false
+    var cardWidth: CGFloat = 0
+    var cardHeight: CGFloat = 0
+    var cardAnchoredTop = true
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard restrictsHitsToCard, cardWidth > 0, cardHeight > 0 else {
+            return super.hitTest(point)
+        }
+
+        let local = convert(point, from: superview)
+        // `NSHostingView` is flipped (top-left origin) on current macOS, but
+        // compute against the actual flag so a future flip cannot turn the
+        // click-through margin into a dead zone over the card.
+        let cardY: CGFloat
+        if isFlipped {
+            cardY = cardAnchoredTop
+                ? OverlayDesign.Shadow.margin
+                : bounds.height - OverlayDesign.Shadow.margin - cardHeight
+        } else {
+            cardY = cardAnchoredTop
+                ? bounds.height - OverlayDesign.Shadow.margin - cardHeight
+                : OverlayDesign.Shadow.margin
+        }
+        let cardRect = CGRect(
+            x: (bounds.width - cardWidth) / 2,
+            y: cardY,
+            width: cardWidth,
+            height: cardHeight
+        )
+        guard cardRect.contains(local) else {
+            return nil
+        }
+        return super.hitTest(point)
+    }
 
     @MainActor required init(rootView: Content) {
         super.init(rootView: rootView)
