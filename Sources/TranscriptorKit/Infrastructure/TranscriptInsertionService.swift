@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import Foundation
+import os
 
 public enum AccessibilityPermissionStatus: String, Equatable, Sendable {
     case granted = "Granted"
@@ -350,6 +351,37 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
     /// ones time out and we degrade gracefully to clipboard insertion.
     private static let axMessagingTimeout: Float = 0.5
 
+    private let log = Logger(subsystem: "com.vlelyavin.Transcriptor", category: "insertion")
+
+    /// Terminal emulators expose an AX text area whose value is a read-only
+    /// copy of the screen, but `AXUIElementSetAttributeValue` on it can return
+    /// success without changing the terminal input. That makes the app report
+    /// "inserted" while the user sees only the clipboard copy. Always use the
+    /// clipboard-paste path for these apps instead of trusting AX insertion.
+    private static let terminalBundleIdentifiers: Set<String> = [
+        "com.mitchellh.ghostty",
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "dev.warp.Warp-Stable",
+        "com.github.wez.wezterm",
+        "net.kovidgoyal.kitty",
+        "org.alacritty",
+        "io.alacritty",
+        "co.zeit.hyper"
+    ]
+
+    private static let terminalAppNames: Set<String> = [
+        "ghostty", "terminal", "iterm2", "warp", "wezterm", "kitty", "alacritty", "hyper"
+    ]
+
+    private static func isTerminal(_ target: CapturedTextTarget) -> Bool {
+        if let bundleID = target.bundleIdentifier,
+           terminalBundleIdentifiers.contains(bundleID) {
+            return true
+        }
+        return terminalAppNames.contains(target.appName.lowercased())
+    }
+
     var isAccessibilityTrusted: Bool {
         AXIsProcessTrusted()
     }
@@ -443,6 +475,11 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
             throw TranscriptInsertionPlatformError.targetUnavailable
         }
 
+        if Self.isTerminal(target) {
+            log.notice("AX insertion skipped for terminal \(target.appName, privacy: .public); using clipboard paste")
+            return false
+        }
+
         guard let currentValue = stringAttribute(kAXValueAttribute as CFString, on: target.focusedElement),
               var selectedRange = selectedTextRange(on: target.focusedElement) else {
             return false
@@ -482,8 +519,14 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         let clipboardSnapshot = restorePreviousClipboard ? pasteboardSnapshot() : nil
         copyTextToPasteboard(text)
 
-        _ = app.activate()
-        try? await Task.sleep(for: .milliseconds(150))
+        _ = app.activate(options: [.activateIgnoringOtherApps])
+
+        // Activation is asynchronous in macOS. Posting Cmd+V before the target
+        // is actually frontmost sends the keystroke to whatever was active
+        // before (often Transcriptor itself), which looks like "copied but not
+        // pasted". Wait for the PID, not a fixed 150 ms guess.
+        await waitUntilFrontmost(pid: target.processIdentifier, attempts: 24)
+        log.notice("pasting transcript into \(target.appName, privacy: .public), frontmost=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil", privacy: .public)")
 
         guard sendPasteCommand() else {
             if let clipboardSnapshot {
@@ -503,6 +546,18 @@ final class LiveTranscriptInsertionPlatform: TranscriptInsertionPlatform {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// Polls until `pid` owns the frontmost application. A fixed sleep is not
+    /// enough: activation can take a few hundred milliseconds, especially after
+    /// a non-activating overlay panel was on screen.
+    private func waitUntilFrontmost(pid: pid_t, attempts: Int) async {
+        for _ in 0..<max(1, attempts) {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
     }
 
     private func stringAttribute(_ attribute: CFString, on element: AXUIElement) -> String? {
