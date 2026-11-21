@@ -1,3 +1,4 @@
+import Carbon
 import XCTest
 @testable import TranscriptorKit
 
@@ -40,14 +41,104 @@ final class AppPreferencesStoreTests: XCTestCase {
             groqEnabled: true,
             openAIModelID: "gpt-4o-transcribe",
             groqModelID: "whisper-large-v3",
+            elevenLabsEnabled: true,
+            elevenLabsModelID: "scribe_v3",
             openAIPrivacyAcknowledged: true,
-            groqPrivacyAcknowledged: false
+            groqPrivacyAcknowledged: false,
+            elevenLabsPrivacyAcknowledged: true,
+            elevenLabsCredentialValidated: true
         )
 
         AppPreferencesStore(defaults: defaults).save(snapshot)
         let reloaded = AppPreferencesStore(defaults: defaults).load()
 
         XCTAssertEqual(reloaded, snapshot)
+    }
+
+    func testElevenLabsModelMigratesFromOlderScribeVersions() {
+        let suiteName = "TranscriptorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
+
+        let store = AppPreferencesStore(defaults: defaults)
+        for storedModelID in ["scribe_v1", "scribe_v2"] {
+            store.save(AppPreferencesSnapshot(elevenLabsModelID: storedModelID))
+            XCTAssertEqual(store.load().elevenLabsModelID, "scribe_v3")
+        }
+    }
+
+    func testLegacyDefaultHotkeyMigratesToOptionD() {
+        let suiteName = "TranscriptorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
+
+        let legacyDefault = AppPreferencesSnapshot(
+            hotkeyKeyCode: UInt32(kVK_Space),
+            hotkeyCarbonModifiers: UInt32(optionKey | shiftKey)
+        )
+        AppPreferencesStore(defaults: defaults).save(legacyDefault)
+
+        let loaded = AppPreferencesStore(defaults: defaults).load()
+        XCTAssertEqual(loaded.hotkeyKeyCode, UInt32(kVK_ANSI_D))
+        XCTAssertEqual(loaded.hotkeyCarbonModifiers, UInt32(optionKey))
+    }
+
+    func testCustomHotkeyIsNotMigrated() {
+        let suiteName = "TranscriptorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
+
+        let custom = AppPreferencesSnapshot(
+            hotkeyKeyCode: UInt32(kVK_ANSI_R),
+            hotkeyCarbonModifiers: UInt32(controlKey | shiftKey)
+        )
+        AppPreferencesStore(defaults: defaults).save(custom)
+
+        let loaded = AppPreferencesStore(defaults: defaults).load()
+        XCTAssertEqual(loaded.hotkeyKeyCode, UInt32(kVK_ANSI_R))
+        XCTAssertEqual(loaded.hotkeyCarbonModifiers, UInt32(controlKey | shiftKey))
+    }
+
+    func testPreferencesWithoutElevenLabsKeysDecodeToDefaults() throws {
+        let suiteName = "TranscriptorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            UserDefaults().removePersistentDomain(forName: suiteName)
+        }
+
+        let store = AppPreferencesStore(defaults: defaults)
+        store.save(AppPreferencesSnapshot())
+
+        // Simulate a preferences file written before ElevenLabs existed: all
+        // its keys are absent and the loader must fall back to defaults.
+        let key = "com.transcriptor.preferences"
+        let data = try XCTUnwrap(defaults.data(forKey: key))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for key in [
+            "elevenLabsEnabled",
+            "elevenLabsModelID",
+            "elevenLabsPrivacyAcknowledged",
+            "elevenLabsCredentialValidated",
+        ] {
+            object.removeValue(forKey: key)
+        }
+        defaults.set(try JSONSerialization.data(withJSONObject: object), forKey: key)
+
+        let loaded = store.load()
+        XCTAssertFalse(loaded.elevenLabsEnabled)
+        XCTAssertEqual(loaded.elevenLabsModelID, "scribe_v3")
+        XCTAssertFalse(loaded.elevenLabsPrivacyAcknowledged)
+        XCTAssertFalse(loaded.elevenLabsCredentialValidated)
     }
 
     func testOverlayDisplayModeFallsBackWhenKeyIsMissing() throws {

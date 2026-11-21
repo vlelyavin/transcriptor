@@ -29,16 +29,18 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
     public var excludesDownloadedModels: Bool
     public var openAIEnabled: Bool
     public var groqEnabled: Bool
+    public var elevenLabsEnabled: Bool
     public var openAIModelID: String
     public var groqModelID: String
+    public var elevenLabsModelID: String
     public var openAIPrivacyAcknowledged: Bool
     public var groqPrivacyAcknowledged: Bool
+    public var elevenLabsPrivacyAcknowledged: Bool
     public var openAICredentialValidated: Bool
     public var groqCredentialValidated: Bool
+    public var elevenLabsCredentialValidated: Bool
     public var transcriptionLanguage: String
     public var showDockIcon: Bool
-    /// Dock icon for the duration of a recording, independent of `showDockIcon`.
-    public var showDockIconWhileRecording: Bool
     public var customBaseURL: String
     public var customModelID: String
     public var customPrivacyAcknowledged: Bool
@@ -51,8 +53,8 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         alsoCopyTranscriptToClipboard: Bool = false,
         restoreClipboardAfterInsertion: Bool = true,
         recordingModeRawValue: String = RecordingMode.holdToTalk.rawValue,
-        hotkeyKeyCode: UInt32 = UInt32(kVK_Space),
-        hotkeyCarbonModifiers: UInt32 = UInt32(optionKey | shiftKey),
+        hotkeyKeyCode: UInt32 = UInt32(kVK_ANSI_D),
+        hotkeyCarbonModifiers: UInt32 = UInt32(optionKey),
         saveOriginalAudio: Bool = true,
         audioRetentionDays: Int = AudioRetentionWindow.forever.rawValue,
         overlayEnabled: Bool = true,
@@ -69,15 +71,18 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         excludesDownloadedModels: Bool = true,
         openAIEnabled: Bool = false,
         groqEnabled: Bool = false,
+        elevenLabsEnabled: Bool = false,
         openAIModelID: String = "gpt-4o-mini-transcribe",
         groqModelID: String = "whisper-large-v3-turbo",
+        elevenLabsModelID: String = "scribe_v3",
         openAIPrivacyAcknowledged: Bool = false,
         groqPrivacyAcknowledged: Bool = false,
+        elevenLabsPrivacyAcknowledged: Bool = false,
         openAICredentialValidated: Bool = false,
         groqCredentialValidated: Bool = false,
+        elevenLabsCredentialValidated: Bool = false,
         transcriptionLanguage: String = "",
         showDockIcon: Bool = false,
-        showDockIconWhileRecording: Bool = false,
         customBaseURL: String = "",
         customModelID: String = "whisper-1",
         customPrivacyAcknowledged: Bool = false,
@@ -107,15 +112,18 @@ public struct AppPreferencesSnapshot: Equatable, Sendable {
         self.excludesDownloadedModels = excludesDownloadedModels
         self.openAIEnabled = openAIEnabled
         self.groqEnabled = groqEnabled
+        self.elevenLabsEnabled = elevenLabsEnabled
         self.openAIModelID = openAIModelID
         self.groqModelID = groqModelID
+        self.elevenLabsModelID = elevenLabsModelID
         self.openAIPrivacyAcknowledged = openAIPrivacyAcknowledged
         self.groqPrivacyAcknowledged = groqPrivacyAcknowledged
+        self.elevenLabsPrivacyAcknowledged = elevenLabsPrivacyAcknowledged
         self.openAICredentialValidated = openAICredentialValidated
         self.groqCredentialValidated = groqCredentialValidated
+        self.elevenLabsCredentialValidated = elevenLabsCredentialValidated
         self.transcriptionLanguage = transcriptionLanguage
         self.showDockIcon = showDockIcon
-        self.showDockIconWhileRecording = showDockIconWhileRecording
         self.customBaseURL = customBaseURL
         self.customModelID = customModelID
         self.customPrivacyAcknowledged = customPrivacyAcknowledged
@@ -148,15 +156,18 @@ private struct CodableAppPreferencesSnapshot: Codable {
     var excludesDownloadedModels: Bool
     var openAIEnabled: Bool
     var groqEnabled: Bool
+    var elevenLabsEnabled: Bool?
     var openAIModelID: String?
     var groqModelID: String?
+    var elevenLabsModelID: String?
     var openAIPrivacyAcknowledged: Bool?
     var groqPrivacyAcknowledged: Bool?
+    var elevenLabsPrivacyAcknowledged: Bool?
     var openAICredentialValidated: Bool?
     var groqCredentialValidated: Bool?
+    var elevenLabsCredentialValidated: Bool?
     var transcriptionLanguage: String?
     var showDockIcon: Bool?
-    var showDockIconWhileRecording: Bool?
     var customBaseURL: String?
     var customModelID: String?
     var customPrivacyAcknowledged: Bool?
@@ -191,8 +202,14 @@ public final class AppPreferencesStore {
             alsoCopyTranscriptToClipboard: decoded.alsoCopyTranscriptToClipboard ?? false,
             restoreClipboardAfterInsertion: decoded.restoreClipboardAfterInsertion ?? true,
             recordingModeRawValue: decoded.recordingModeRawValue,
-            hotkeyKeyCode: decoded.hotkeyKeyCode,
-            hotkeyCarbonModifiers: decoded.hotkeyCarbonModifiers,
+            hotkeyKeyCode: Self.migratedHotkeyKeyCode(
+                keyCode: decoded.hotkeyKeyCode,
+                carbonModifiers: decoded.hotkeyCarbonModifiers
+            ),
+            hotkeyCarbonModifiers: Self.migratedHotkeyModifiers(
+                keyCode: decoded.hotkeyKeyCode,
+                carbonModifiers: decoded.hotkeyCarbonModifiers
+            ),
             saveOriginalAudio: decoded.saveOriginalAudio,
             audioRetentionDays: decoded.audioRetentionDays ?? AudioRetentionWindow.forever.rawValue,
             overlayEnabled: decoded.overlayEnabled,
@@ -209,20 +226,51 @@ public final class AppPreferencesStore {
             excludesDownloadedModels: decoded.excludesDownloadedModels,
             openAIEnabled: decoded.openAIEnabled,
             groqEnabled: decoded.groqEnabled,
+            elevenLabsEnabled: decoded.elevenLabsEnabled ?? false,
             openAIModelID: decoded.openAIModelID ?? "gpt-4o-mini-transcribe",
             groqModelID: decoded.groqModelID ?? "whisper-large-v3-turbo",
+            // One-time migration: scribe_v1 and scribe_v2 are superseded by
+            // scribe_v3 (same API, lower WER); stored IDs are bumped on load.
+            elevenLabsModelID: (decoded.elevenLabsModelID.map { id in
+                (id == "scribe_v1" || id == "scribe_v2") ? "scribe_v3" : id
+            }) ?? "scribe_v3",
             openAIPrivacyAcknowledged: decoded.openAIPrivacyAcknowledged ?? false,
             groqPrivacyAcknowledged: decoded.groqPrivacyAcknowledged ?? false,
+            elevenLabsPrivacyAcknowledged: decoded.elevenLabsPrivacyAcknowledged ?? false,
             openAICredentialValidated: decoded.openAICredentialValidated ?? false,
             groqCredentialValidated: decoded.groqCredentialValidated ?? false,
+            elevenLabsCredentialValidated: decoded.elevenLabsCredentialValidated ?? false,
             transcriptionLanguage: decoded.transcriptionLanguage ?? "",
             showDockIcon: decoded.showDockIcon ?? false,
-            showDockIconWhileRecording: decoded.showDockIconWhileRecording ?? false,
             customBaseURL: decoded.customBaseURL ?? "",
             customModelID: decoded.customModelID ?? "whisper-1",
             customPrivacyAcknowledged: decoded.customPrivacyAcknowledged ?? false,
             customCredentialValidated: decoded.customCredentialValidated ?? false
         )
+    }
+
+    /// One-time hotkey migration: builds before Option+D shipped defaulted to
+    /// Option+Shift+Space. Only that exact old default is rewritten; any custom
+    /// shortcut the user chose is left untouched.
+    private static let legacyDefaultHotkeyKeyCode = UInt32(kVK_Space)
+    private static let legacyDefaultHotkeyModifiers = UInt32(optionKey | shiftKey)
+    private static let defaultHotkeyKeyCode = UInt32(kVK_ANSI_D)
+    private static let defaultHotkeyModifiers = UInt32(optionKey)
+
+    private static func usesLegacyDefaultHotkey(keyCode: UInt32, carbonModifiers: UInt32) -> Bool {
+        keyCode == legacyDefaultHotkeyKeyCode && carbonModifiers == legacyDefaultHotkeyModifiers
+    }
+
+    static func migratedHotkeyKeyCode(keyCode: UInt32, carbonModifiers: UInt32) -> UInt32 {
+        usesLegacyDefaultHotkey(keyCode: keyCode, carbonModifiers: carbonModifiers)
+            ? defaultHotkeyKeyCode
+            : keyCode
+    }
+
+    static func migratedHotkeyModifiers(keyCode: UInt32, carbonModifiers: UInt32) -> UInt32 {
+        usesLegacyDefaultHotkey(keyCode: keyCode, carbonModifiers: carbonModifiers)
+            ? defaultHotkeyModifiers
+            : carbonModifiers
     }
 
     public func save(_ snapshot: AppPreferencesSnapshot) {
@@ -251,15 +299,18 @@ public final class AppPreferencesStore {
             excludesDownloadedModels: snapshot.excludesDownloadedModels,
             openAIEnabled: snapshot.openAIEnabled,
             groqEnabled: snapshot.groqEnabled,
+            elevenLabsEnabled: snapshot.elevenLabsEnabled,
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
+            elevenLabsModelID: snapshot.elevenLabsModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            elevenLabsPrivacyAcknowledged: snapshot.elevenLabsPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
             groqCredentialValidated: snapshot.groqCredentialValidated,
+            elevenLabsCredentialValidated: snapshot.elevenLabsCredentialValidated,
             transcriptionLanguage: snapshot.transcriptionLanguage,
             showDockIcon: snapshot.showDockIcon,
-            showDockIconWhileRecording: snapshot.showDockIconWhileRecording,
             customBaseURL: snapshot.customBaseURL,
             customModelID: snapshot.customModelID,
             customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,

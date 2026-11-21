@@ -257,6 +257,88 @@ final class CloudTranscriptionProviderTests: XCTestCase {
         XCTAssertEqual(loader.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer token")
     }
 
+    func testElevenLabsDialectUsesScribeEndpointAndHeaderNames() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":"privet ot elevenlabs","language_code":"rus"}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "elevenlabs")),
+            secretStore: InMemorySecretStore(secrets: ["elevenlabs-api-key": "el_test"]),
+            urlSession: loader
+        )
+        let audioURL = try makeTempAudioFile(named: "elevenlabs-sample.wav")
+
+        let result = try await provider.transcribe(
+            job: TranscriptionJob(
+                historyEntryID: UUID(),
+                audioFileURL: audioURL,
+                requestedProviderID: "elevenlabs",
+                requestedProviderName: "ElevenLabs",
+                requestedModelID: "scribe_v3",
+                requestedModelName: "scribe_v3",
+                sourceType: .dictation,
+                language: "ru"
+            )
+        ) { _ in }
+
+        XCTAssertEqual(result.text, "privet ot elevenlabs")
+        // ElevenLabs returns `language_code`, not OpenAI's `language`.
+        XCTAssertEqual(result.language, "rus")
+
+        let request = try XCTUnwrap(loader.requests.first)
+        XCTAssertEqual(request.url?.absoluteString, "https://api.elevenlabs.io/v1/speech-to-text")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "xi-api-key"), "el_test")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        let body = try XCTUnwrap(request.httpBody.map { String(decoding: $0, as: UTF8.self) })
+        XCTAssertTrue(body.contains(#"name="model_id""#))
+        XCTAssertTrue(body.contains("scribe_v3"))
+        XCTAssertTrue(body.contains(#"name="language_code""#))
+        XCTAssertTrue(body.contains("\r\nru\r\n"))
+        XCTAssertFalse(body.contains(#"name="response_format""#))
+        XCTAssertFalse(body.contains(#"name="temperature""#))
+    }
+
+    func testElevenLabsValidationTranscribesSilenceInsteadOfListingModels() async throws {
+        let loader = MockHTTPDataLoader()
+        loader.responses = [
+            .init(
+                data: Data(#"{"text":""}"#.utf8),
+                response: HTTPURLResponse(
+                    url: URL(string: "https://api.elevenlabs.io/v1/speech-to-text")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        ]
+        let provider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: try XCTUnwrap(ProviderCatalog.defaultCatalog.provider(id: "elevenlabs")),
+            secretStore: InMemorySecretStore(secrets: ["elevenlabs-api-key": "el_test"]),
+            urlSession: loader
+        )
+
+        try await provider.validateCredentials(modelID: "scribe_v3")
+
+        // Scribe is absent from /models, so validation must never call it.
+        XCTAssertEqual(loader.requests.count, 1)
+        let request = try XCTUnwrap(loader.requests.first)
+        XCTAssertEqual(request.url?.path, "/v1/speech-to-text")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "xi-api-key"), "el_test")
+        let body = try XCTUnwrap(request.httpBody.map { String(decoding: $0, as: UTF8.self) })
+        XCTAssertTrue(body.contains(#"name="model_id""#))
+        XCTAssertTrue(body.contains("scribe_v3"))
+    }
+
     private func makeTempAudioFile(named fileName: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -55,9 +55,6 @@ public struct HistoryView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .transcriptorFocusHistorySearch)) { _ in
-            appState.selectedScreen = .history
-        }
         .onAppear {
             if let pending = appState.pendingHistoryEntryID {
                 selectedEntryID = pending
@@ -70,6 +67,13 @@ public struct HistoryView: View {
                 selectedEntryID = newValue
                 isCompactDetailVisible = true
                 appState.pendingHistoryEntryID = nil
+            }
+        }
+        .onChange(of: appState.historySearchFocusRequest) { _, newValue in
+            // ⌘F while reading an entry in the compact layout must reveal the
+            // list so the search field it focuses actually exists.
+            if newValue > 0 {
+                isCompactDetailVisible = false
             }
         }
         .navigationTitle("History")
@@ -185,12 +189,17 @@ public struct HistoryView: View {
                     .listStyle(.inset(alternatesRowBackgrounds: false))
                 }
             }
-            .searchable(text: $searchText, prompt: "Search transcripts or filenames")
         }
     }
 
     private func headerControls(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            NativeSearchField(
+                text: $searchText,
+                placeholder: "Search transcripts or filenames",
+                focusRequest: appState.historySearchFocusRequest
+            )
+
             Picker("Source", selection: $selectedFilter) {
                 ForEach(HistoryFilter.allCases) { filter in
                     Text(filter.title).tag(filter)

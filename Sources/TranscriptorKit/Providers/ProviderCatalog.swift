@@ -1,5 +1,12 @@
 import Foundation
 
+/// Wire dialect a cloud provider speaks. Defaults to the OpenAI-compatible
+/// transcription API; ElevenLabs uses its own speech-to-text endpoint shape.
+public enum CloudAPIDialect: String, Equatable, Sendable {
+    case openAICompatible
+    case elevenLabs
+}
+
 public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
     public let id: String
     public var name: String
@@ -12,6 +19,8 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
     public var keychainAccount: String
     /// Self-hosted servers often run without authentication.
     public var requiresAPIKey: Bool
+    /// Request/response dialect of the provider's transcription API.
+    public var apiDialect: CloudAPIDialect
     public var availability: FeatureAvailability
 
     public init(
@@ -25,6 +34,7 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
         directUploadLimitBytes: Int64,
         keychainAccount: String,
         requiresAPIKey: Bool = true,
+        apiDialect: CloudAPIDialect = .openAICompatible,
         availability: FeatureAvailability
     ) {
         self.id = id
@@ -37,6 +47,7 @@ public struct ProviderDescriptor: Identifiable, Equatable, Sendable {
         self.directUploadLimitBytes = directUploadLimitBytes
         self.keychainAccount = keychainAccount
         self.requiresAPIKey = requiresAPIKey
+        self.apiDialect = apiDialect
         self.availability = availability
     }
 }
@@ -51,6 +62,16 @@ public struct ProviderCatalog: Equatable, Sendable {
     public func provider(id: String) -> ProviderDescriptor? {
         providers.first(where: { $0.id == id })
     }
+
+    /// Providers offered in the app's UI, in display order. The legacy `openai`
+    /// preset is kept in the catalog only so preferences and Keychain entries
+    /// written by older builds keep decoding; new setup goes through the
+    /// OpenAI-compatible endpoint provider instead.
+    public var visibleProviders: [ProviderDescriptor] {
+        Self.visibleProviderIDs.compactMap { provider(id: $0) }
+    }
+
+    public static let visibleProviderIDs = ["custom", "groq", "elevenlabs"]
 
     public static let defaultCatalog = ProviderCatalog(
         providers: [
@@ -83,10 +104,25 @@ public struct ProviderCatalog: Equatable, Sendable {
                 )
             ),
             ProviderDescriptor(
+                id: "elevenlabs",
+                name: "ElevenLabs",
+                modelLabel: "scribe_v3",
+                summary: "ElevenLabs Scribe — state-of-the-art accuracy across 99 languages, robust to accents and noise.",
+                priceNote: "~$0.40/hour (tier discounts)",
+                privacySummary: "Audio is uploaded to ElevenLabs for transcription.",
+                baseURL: URL(string: "https://api.elevenlabs.io/v1")!,
+                directUploadLimitBytes: 100 * 1_048_576,
+                keychainAccount: "elevenlabs-api-key",
+                apiDialect: .elevenLabs,
+                availability: .available(
+                    note: "Requires an ElevenLabs API key in Keychain and explicit cloud privacy consent."
+                )
+            ),
+            ProviderDescriptor(
                 id: "custom",
-                name: "Custom Server",
+                name: "OpenAI-compatible endpoint",
                 modelLabel: "whisper-1",
-                summary: "Any OpenAI-compatible transcription server: a proxy, another vendor, or a self-hosted Whisper server. The API key is optional.",
+                summary: "Any OpenAI-compatible transcription server: OpenAI, a proxy, another vendor, or a self-hosted Whisper server. The API key is optional.",
                 priceNote: "Depends on the server",
                 privacySummary: "Audio is uploaded to the server you configured.",
                 // Placeholder only — the real base URL comes from Settings

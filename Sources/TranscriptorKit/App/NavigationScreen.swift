@@ -53,7 +53,7 @@ public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
         case .importAudio:
             ["import", "files", "audio", "drop"]
         case .models:
-            ["models", "whisper", "parakeet", "openai", "groq", "cloud", "api key", "provider", "download", "auto-transcribe", "automation", "auto"]
+            ["models", "whisper", "parakeet", "openai", "groq", "elevenlabs", "cloud", "api key", "provider", "download", "auto-transcribe", "automation", "auto"]
         }
     }
 

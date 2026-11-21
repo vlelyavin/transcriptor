@@ -93,7 +93,7 @@ public struct TranscriptionTargetResolver: Sendable {
                 )
             }
 
-        let cloudPlans = providerCatalog.providers.compactMap { provider -> TranscriptionExecutionPlan? in
+        let cloudPlans = providerCatalog.visibleProviders.compactMap { provider -> TranscriptionExecutionPlan? in
             guard providerStatesByID[provider.id]?.isSelectable == true else {
                 return nil
             }

@@ -35,7 +35,7 @@ struct TranscriptorSmokeChecks {
         expect(SpeechAudioFormat.sampleRate == 16_000, "Stored and uploaded speech audio is 16 kHz.", failures: &failures)
         expect(SpeechAudioFormat.channelCount == 1, "Stored and uploaded speech audio is mono.", failures: &failures)
         expect(!DockIconPolicy.shouldShowDockIcon(for: .init()), "A menu-bar app shows no Dock icon by default.", failures: &failures)
-        expect(DockIconPolicy.shouldShowDockIcon(for: .init(showsDockIconWhileRecording: true, isRecording: true)), "Recording can opt into a Dock icon.", failures: &failures)
+        expect(DockIconPolicy.shouldShowDockIcon(for: .init(pinnedDockIcon: true)), "A pinned Dock icon shows in the Dock.", failures: &failures)
         expect(appState.overlayState.isNonActivating, "Overlay defaults to non-activating.", failures: &failures)
         expect(appState.storageSettings.autoDeleteOldestHistory, "Storage defaults to auto-deleting oldest history.", failures: &failures)
         expect(appState.transcriptionPreferences.preferredLocalProviderID == "whisperkit-local", "Preferred local provider defaults to WhisperKit.", failures: &failures)
@@ -48,7 +48,17 @@ struct TranscriptorSmokeChecks {
         expect(catalog.sections.flatMap(\.models).contains { $0.id == "parakeet-v3-multilingual" }, "Model catalog keeps the Parakeet roadmap section visible.", failures: &failures)
 
         let providers = ProviderCatalog.defaultCatalog
-        expect(providers.providers.map(\.id) == ["openai", "groq", "custom"], "Provider catalog includes OpenAI, Groq, and the custom OpenAI-compatible server.", failures: &failures)
+        expect(
+            providers.visibleProviders.map(\.id) == ["custom", "groq", "elevenlabs"],
+            "The visible remote providers are the OpenAI-compatible endpoint, Groq, and ElevenLabs.",
+            failures: &failures
+        )
+        expect(
+            providers.provider(id: "elevenlabs")?.apiDialect == .elevenLabs
+                && providers.provider(id: "elevenlabs")?.modelLabel == "scribe_v3",
+            "ElevenLabs speaks its own dialect and defaults to Scribe v3.",
+            failures: &failures
+        )
 
         if failures.isEmpty {
             print("Transcriptor smoke checks passed.")

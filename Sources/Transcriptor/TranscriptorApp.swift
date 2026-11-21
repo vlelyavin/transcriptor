@@ -4,9 +4,9 @@ import TranscriptorKit
 
 /// Owns the activation policy. Transcriptor is a menu bar app
 /// (`LSUIElement`): it shows a Dock icon only when the user turned on
-/// "Always show Dock icon" (or asked for one while recording). An open window
-/// does NOT promote it to `.regular` — that was the bug where turning the
-/// preference off still left an icon in the Dock while Settings was open.
+/// "Always show Dock icon". An open window does NOT promote it to `.regular` —
+/// that was the bug where turning the preference off still left an icon in the
+/// Dock while Settings was open.
 ///
 /// A `.accessory` app can still own key windows: every path that opens the
 /// window goes through `AppState.showMainWindow()`, which activates the app.
@@ -15,7 +15,7 @@ import TranscriptorKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The policy no longer depends on which windows are open; only the
-        // user's Dock preference and the recording opt-in can change it.
+        // user's Dock preference can change it.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(dockIconPreferenceChanged(_:)),
@@ -196,9 +196,16 @@ struct TranscriptorApp: App {
                 }
                 .keyboardShortcut("I", modifiers: [.command, .shift])
 
-                Button("Search History") {
-                    appState.selectedScreen = .history
-                    NotificationCenter.default.post(name: .transcriptorFocusHistorySearch, object: nil)
+                Button("Find…") {
+                    // Contextual: on Models this searches models in place; on
+                    // every other screen it jumps to History and focuses that
+                    // search field (like Finder's ⌘F switching context).
+                    if appState.selectedScreen == .models {
+                        appState.modelsSearchFocusRequest += 1
+                    } else {
+                        appState.selectedScreen = .history
+                        appState.historySearchFocusRequest += 1
+                    }
                 }
                 .keyboardShortcut("F", modifiers: [.command])
 

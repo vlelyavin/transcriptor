@@ -6,10 +6,10 @@ import SwiftUI
 /// 1. **Intro** — what Transcriptor does (how-it-works), ending with a "Proceed"
 ///    primary button.
 /// 2. **Set Up** — asks for the permissions the app needs (Microphone and
-///    Accessibility) and points to the Models page to download a transcription
-///    model. Downloading a model is **not required** to finish — the user can
-///    start exploring and add one later — but the step makes clear that
-///    transcription stays unavailable until at least one model is downloaded.
+///    Accessibility) and offers two transcription paths: download a local model,
+///    or connect a remote provider. Neither is **required** to finish — the user
+///    can start exploring and add one later — but the step makes clear that
+///    transcription stays unavailable until at least one path is set up.
 ///
 /// Primary (focus) actions use the accent `borderedProminent` style in the
 /// bottom-right; secondary actions are plain/gray in the bottom-left.
@@ -202,31 +202,37 @@ public struct WelcomeGuideView: View {
     }
 
     /// The optional model step. Downloading is not required to finish onboarding,
-    /// but this card makes the consequence explicit: no transcription until a
-    /// model is installed.
+    /// but this card makes the consequence explicit: transcription stays
+    /// unavailable until a local model or a remote provider is set up.
     private var modelCard: some View {
         permissionCard(
             done: appState.isTranscriptionConfigured,
-            title: appState.isTranscriptionConfigured ? "Transcription model ready" : "Download a transcription model",
+            title: appState.isTranscriptionConfigured ? "Transcription ready" : "Set up transcription",
             detail: appState.isTranscriptionConfigured
-                ? "A speech model is set up and runs entirely on your Mac."
-                : "Optional now — explore first if you like. Transcription stays unavailable until you download at least one model from the Models page.",
-            actionTitle: "Choose a Model…",
-            actionIsProminent: false
+                ? "A local model or remote provider is set up and ready."
+                : "Use a local model that runs on this Mac, or connect a remote provider. Optional now — transcription stays unavailable until one is set up.",
+            actionTitle: "Choose a Local Model…",
+            actionIsProminent: false,
+            secondaryActionTitle: "Use a Remote Provider…",
+            secondaryAction: {
+                appState.openModelsFromWelcomeGuide(filter: .remote)
+            }
         ) {
-            appState.openModelsFromWelcomeGuide()
+            appState.openModelsFromWelcomeGuide(filter: .local)
         }
     }
 
     /// A consistent requirement card: a status glyph (green check when done, a
-    /// neutral circle when pending), a title and explanation, and a trailing
-    /// action button (hidden once the requirement is satisfied).
+    /// neutral circle when pending), a title and explanation, and trailing
+    /// action buttons (hidden once the requirement is satisfied).
     private func permissionCard(
         done: Bool,
         title: String,
         detail: String,
         actionTitle: String,
         actionIsProminent: Bool = true,
+        secondaryActionTitle: String? = nil,
+        secondaryAction: (() -> Void)? = nil,
         action: @escaping () -> Void
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
@@ -245,12 +251,19 @@ public struct WelcomeGuideView: View {
                 }
 
                 if !done {
-                    if actionIsProminent {
-                        Button(actionTitle, action: action)
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button(actionTitle, action: action)
-                            .buttonStyle(.bordered)
+                    HStack(spacing: 8) {
+                        if actionIsProminent {
+                            Button(actionTitle, action: action)
+                                .buttonStyle(.borderedProminent)
+                        } else {
+                            Button(actionTitle, action: action)
+                                .buttonStyle(.bordered)
+                        }
+
+                        if let secondaryActionTitle, let secondaryAction {
+                            Button(secondaryActionTitle, action: secondaryAction)
+                                .buttonStyle(.bordered)
+                        }
                     }
                 }
             }

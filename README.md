@@ -15,13 +15,13 @@ Transcriptor is a free local-first macOS speech-to-text app for fast dictation, 
 - Automatic insertion into the active text field after transcription
 - Native menu bar icon and voice input controls
 - Launch at login for packaged app builds
-- Optional OpenAI and Groq cloud transcription
+- Optional OpenAI-compatible, Groq, and ElevenLabs cloud transcription
 
 ## Privacy
 
 - Local Whisper models keep audio on your Mac.
 - Cloud providers only receive audio after you explicitly enable them and confirm the privacy warning.
-- OpenAI and Groq API keys are stored in the macOS Keychain.
+- Cloud provider API keys are stored in the macOS Keychain.
 - Recordings, imports, and transcripts stay in Transcriptor-managed local storage unless you export them.
 
 ## Install
@@ -61,7 +61,7 @@ Then open the app normally. A notarized build (see [Building and Distribution](#
 - Local Parakeet beta for Apple Silicon, with in-app model management
 - Download, load, delete, and switch models from the app
 - Re-transcribe saved history items with a different provider or model
-- Optional OpenAI and Groq cloud transcription with explicit consent
+- Optional OpenAI-compatible, Groq, and ElevenLabs cloud transcription with explicit consent
 
 ### History
 

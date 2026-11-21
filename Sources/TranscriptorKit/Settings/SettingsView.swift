@@ -120,13 +120,6 @@ public struct SettingsPaneDetailView: View {
             )
 
             Toggle(
-                "Show Dock icon while recording",
-                isOn: $appState.generalSettings.showDockIconWhileRecording
-            )
-            .disabled(appState.generalSettings.showDockIcon)
-            .help("Shows Transcriptor in the Dock only for the duration of a recording, then returns to menu-bar-only.")
-
-            Toggle(
                 "Launch at login",
                 isOn: Binding(
                     get: { appState.generalSettings.launchAtLoginEnabled },
@@ -134,24 +127,10 @@ public struct SettingsPaneDetailView: View {
                 )
             )
             .disabled(!appState.launchAtLoginStatus.canRegisterFromCurrentRuntime)
-
-            LabeledContent("Status") {
-                Text(appState.launchAtLoginStatus.title)
-            }
-
-            HStack {
-                Button("Refresh Status") {
-                    appState.refreshLaunchAtLoginStatus()
-                }
-
-                Button("Open Login Items Settings") {
-                    appState.openLoginItemsSettings()
-                }
-            }
         } header: {
             Text("Application")
         } footer: {
-            Text(appState.launchAtLoginStatus.detail + " Without the Dock icon, Transcriptor lives in the menu bar only, even while a window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
+            Text("Without the Dock icon, Transcriptor lives in the menu bar only, even while a window is open. If both icons are hidden, open Transcriptor again from Spotlight or Finder to get the window back.")
         }
     }
 
@@ -230,7 +209,7 @@ public struct SettingsPaneDetailView: View {
                     .font(.system(.body, design: .monospaced))
             }
 
-            LabeledContent("Search History") {
+            LabeledContent("Find") {
                 Text("⌘F")
                     .font(.system(.body, design: .monospaced))
             }
@@ -395,7 +374,7 @@ public struct SettingsPaneDetailView: View {
             Label("Local WhisperKit transcription keeps audio on this Mac. Transcriptor does not upload recording or import audio for local runs.", systemImage: "lock.shield")
             Label("Parakeet Local uses FluidAudio Core ML bundles downloaded from Hugging Face and keeps transcription on this Mac.", systemImage: "waveform.badge.mic")
             Label("Model downloads come from public model repositories and stay in Application Support.", systemImage: "square.and.arrow.down")
-            Label("OpenAI and Groq only send audio after you store an API key in Keychain and confirm on the Models page that audio may be sent.", systemImage: "key")
+            Label("Remote providers (OpenAI-compatible endpoint, Groq, ElevenLabs) only send audio after you store an API key in Keychain and confirm on the Models page that audio may be sent.", systemImage: "key")
             Label("Imports use standard macOS user-granted file access through the open panel or drag and drop, then copies are stored under Application Support for durable local history.", systemImage: "folder.badge.plus")
         }
     }

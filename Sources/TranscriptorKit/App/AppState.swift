@@ -7,11 +7,19 @@ import Observation
 public final class AppState {
     public var sidebarSelection: SidebarItem {
         didSet {
-            guard !isPerformingHistoryNavigation, oldValue != sidebarSelection else {
-                return
+            if !isPerformingHistoryNavigation, oldValue != sidebarSelection {
+                navigationBackStack.append(oldValue)
+                navigationForwardStack.removeAll()
             }
-            navigationBackStack.append(oldValue)
-            navigationForwardStack.removeAll()
+            // Search-focus requests are one-shot per visit: leaving a screen
+            // clears its pending request so returning later does not steal
+            // focus into the search field on its own.
+            if selectedScreen != .models {
+                modelsSearchFocusRequest = 0
+            }
+            if selectedScreen != .history {
+                historySearchFocusRequest = 0
+            }
         }
     }
     public private(set) var navigationBackStack: [SidebarItem] = []
@@ -39,6 +47,17 @@ public final class AppState {
 
     /// Drives the welcome guide sheet.
     public var isPresentingWelcomeGuide = false
+
+    /// Local / Remote filter currently applied on the Models screen. Onboarding
+    /// can jump straight to the remote providers by setting this before
+    /// navigating.
+    public var modelsFilter: ModelsFilterScope = .all
+
+    /// One-shot focus counters consumed by `NativeSearchField` on the Models
+    /// and History screens. `Cmd+F` bumps the counter for the screen it wants
+    /// to search; leaving a screen resets its counter.
+    public var modelsSearchFocusRequest = 0
+    public var historySearchFocusRequest = 0
 
     /// Whether transcription still needs a usable path (a downloaded local model
     /// or a ready cloud provider). This is informational — the app is fully
@@ -114,8 +133,17 @@ public final class AppState {
 
     /// Closes the welcome guide and navigates to the Models page so the user can
     /// pick and download a transcription model when they choose to.
-    public func openModelsFromWelcomeGuide() {
+    public func openModelsFromWelcomeGuide(filter: ModelsFilterScope = .all) {
         dismissWelcomeGuide()
+        openModels(filter: filter)
+    }
+
+    /// Navigates to the Models screen, optionally applying a Local/Remote filter
+    /// (used by onboarding's "Use a Remote Provider…" path).
+    public func openModels(filter: ModelsFilterScope? = nil) {
+        if let filter {
+            modelsFilter = filter
+        }
         sidebarSelection = .screen(.models)
     }
 
@@ -163,12 +191,8 @@ public final class AppState {
     public var generalSettings: GeneralSettings {
         didSet {
             persistPreferences()
-            if oldValue.showDockIcon != generalSettings.showDockIcon
-                || oldValue.showDockIconWhileRecording != generalSettings.showDockIconWhileRecording {
-                Self.applyDockIconPolicy(
-                    showDockIcon: generalSettings.showDockIcon,
-                    showDockIconWhileRecording: generalSettings.showDockIconWhileRecording
-                )
+            if oldValue.showDockIcon != generalSettings.showDockIcon {
+                Self.applyDockIconPolicy(showDockIcon: generalSettings.showDockIcon)
             }
         }
     }
@@ -218,6 +242,12 @@ public final class AppState {
                     providerSettings.customCredentialValidated = false
                 }
             }
+            // A different ElevenLabs model invalidates the previous test result:
+            // the key may be fine, but the configured model was never verified.
+            if oldValue.elevenLabsModelID != providerSettings.elevenLabsModelID,
+               providerSettings.elevenLabsCredentialValidated {
+                providerSettings.elevenLabsCredentialValidated = false
+            }
         }
     }
     public var historyStore: HistoryStore
@@ -245,6 +275,7 @@ public final class AppState {
     public let parakeetTranscriptionProvider: ParakeetLocalTranscriptionProvider
     public let openAITranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let groqTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
+    public let elevenLabsTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let customTranscriptionProvider: OpenAICompatibleCloudTranscriptionProvider
     public let whisperModelManager: WhisperModelManager
     public let parakeetModelManager: ParakeetModelManager
@@ -323,6 +354,10 @@ public final class AppState {
             descriptor: providerCatalog.provider(id: "groq")!,
             secretStore: secretStore
         )
+        let elevenLabsProvider = OpenAICompatibleCloudTranscriptionProvider(
+            descriptor: providerCatalog.provider(id: "elevenlabs") ?? ProviderCatalog.defaultCatalog.provider(id: "elevenlabs")!,
+            secretStore: secretStore
+        )
         let customProvider = OpenAICompatibleCloudTranscriptionProvider(
             descriptor: providerCatalog.provider(id: "custom") ?? ProviderCatalog.defaultCatalog.provider(id: "custom")!,
             secretStore: secretStore
@@ -336,7 +371,7 @@ public final class AppState {
             provider: parakeetTranscriptionProvider
         )
         let transcriptionQueueController = TranscriptionQueueController(
-            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider, customProvider]
+            providers: [localTranscriptionProvider, parakeetTranscriptionProvider, openAIProvider, groqProvider, elevenLabsProvider, customProvider]
         )
         let transcriptionTargetResolver = TranscriptionTargetResolver(
             modelCatalog: modelCatalog,
@@ -377,8 +412,7 @@ public final class AppState {
             insertTranscriptIntoActiveApp: snapshot.insertTranscriptIntoActiveApp,
             alsoCopyTranscriptToClipboard: snapshot.alsoCopyTranscriptToClipboard,
             restoreClipboardAfterInsertion: snapshot.restoreClipboardAfterInsertion,
-            showDockIcon: snapshot.showDockIcon,
-            showDockIconWhileRecording: snapshot.showDockIconWhileRecording
+            showDockIcon: snapshot.showDockIcon
         )
         self.recordingState = RecordingState(
             mode: recordingMode,
@@ -411,12 +445,16 @@ public final class AppState {
         self.providerSettings = ProviderSettings(
             openAIEnabled: snapshot.openAIEnabled,
             groqEnabled: snapshot.groqEnabled,
+            elevenLabsEnabled: snapshot.elevenLabsEnabled,
             openAIModelID: snapshot.openAIModelID,
             groqModelID: snapshot.groqModelID,
+            elevenLabsModelID: snapshot.elevenLabsModelID,
             openAIPrivacyAcknowledged: snapshot.openAIPrivacyAcknowledged,
             groqPrivacyAcknowledged: snapshot.groqPrivacyAcknowledged,
+            elevenLabsPrivacyAcknowledged: snapshot.elevenLabsPrivacyAcknowledged,
             openAICredentialValidated: snapshot.openAICredentialValidated,
             groqCredentialValidated: snapshot.groqCredentialValidated,
+            elevenLabsCredentialValidated: snapshot.elevenLabsCredentialValidated,
             customBaseURL: snapshot.customBaseURL,
             customModelID: snapshot.customModelID,
             customPrivacyAcknowledged: snapshot.customPrivacyAcknowledged,
@@ -425,10 +463,7 @@ public final class AppState {
         customProvider.setBaseURL(
             ProviderSettings(customBaseURL: snapshot.customBaseURL).customBaseURLValue
         )
-        AppState.applyDockIconPolicy(
-            showDockIcon: snapshot.showDockIcon,
-            showDockIconWhileRecording: snapshot.showDockIconWhileRecording
-        )
+        AppState.applyDockIconPolicy(showDockIcon: snapshot.showDockIcon)
         self.historyStore = HistoryStore(entries: persistedEntries)
         self.modelCatalog = modelCatalog
         self.providerCatalog = providerCatalog
@@ -438,6 +473,7 @@ public final class AppState {
         self.parakeetTranscriptionProvider = parakeetTranscriptionProvider
         self.openAITranscriptionProvider = openAIProvider
         self.groqTranscriptionProvider = groqProvider
+        self.elevenLabsTranscriptionProvider = elevenLabsProvider
         self.customTranscriptionProvider = customProvider
         self.whisperModelManager = whisperModelManager
         self.parakeetModelManager = parakeetModelManager
@@ -548,7 +584,6 @@ public final class AppState {
             await self?.autoLoadSelectedModelOnLaunch()
             self?.applyAudioRetentionPolicy()
         }
-        observeDockIconActivity()
     }
 
     /// Loads the active local model automatically so transcription is ready
@@ -755,7 +790,7 @@ public final class AppState {
         for model in modelCatalog.localModels where selectableLocalModelIDs.contains(model.id) {
             targets.append(.local(model.id))
         }
-        for provider in providerCatalog.providers {
+        for provider in providerCatalog.visibleProviders {
             let state = providerRuntimeState(for: provider)
             if state.isReady || state.isAwaitingValidation {
                 targets.append(.cloud(provider.id))
@@ -1225,6 +1260,10 @@ public final class AppState {
             providerSettings.groqModelID = defaults.groqModelID
             providerSettings.groqPrivacyAcknowledged = false
             providerSettings.groqEnabled = false
+        case "elevenlabs":
+            providerSettings.elevenLabsModelID = defaults.elevenLabsModelID
+            providerSettings.elevenLabsPrivacyAcknowledged = false
+            providerSettings.elevenLabsEnabled = false
         case "custom":
             providerSettings.customBaseURL = defaults.customBaseURL
             providerSettings.customModelID = defaults.customModelID
@@ -1268,15 +1307,18 @@ public final class AppState {
                 excludesDownloadedModels: storageSettings.excludesDownloadedModels,
                 openAIEnabled: providerSettings.openAIEnabled,
                 groqEnabled: providerSettings.groqEnabled,
+                elevenLabsEnabled: providerSettings.elevenLabsEnabled,
                 openAIModelID: providerSettings.openAIModelID,
                 groqModelID: providerSettings.groqModelID,
+                elevenLabsModelID: providerSettings.elevenLabsModelID,
                 openAIPrivacyAcknowledged: providerSettings.openAIPrivacyAcknowledged,
                 groqPrivacyAcknowledged: providerSettings.groqPrivacyAcknowledged,
+                elevenLabsPrivacyAcknowledged: providerSettings.elevenLabsPrivacyAcknowledged,
                 openAICredentialValidated: providerSettings.openAICredentialValidated,
                 groqCredentialValidated: providerSettings.groqCredentialValidated,
+                elevenLabsCredentialValidated: providerSettings.elevenLabsCredentialValidated,
                 transcriptionLanguage: transcriptionPreferences.transcriptionLanguage,
                 showDockIcon: generalSettings.showDockIcon,
-                showDockIconWhileRecording: generalSettings.showDockIconWhileRecording,
                 customBaseURL: providerSettings.customBaseURL,
                 customModelID: providerSettings.customModelID,
                 customPrivacyAcknowledged: providerSettings.customPrivacyAcknowledged,
@@ -1617,7 +1659,7 @@ public final class AppState {
             ))
         }
 
-        for provider in providerCatalog.providers where providerRuntimeState(for: provider).isSelectable {
+        for provider in providerCatalog.visibleProviders where providerRuntimeState(for: provider).isSelectable {
             options.append(OverlayRetranscribeOption(
                 id: "cloud:\(provider.id)",
                 title: provider.name,
@@ -1683,10 +1725,6 @@ public final class AppState {
     /// which owns the activation policy. When this is off the app stays
     /// menu-bar-only even while a window is open.
     public private(set) static var prefersDockIcon = false
-    /// Whether a Dock icon should appear for the duration of a recording.
-    public private(set) static var showsDockIconWhileRecording = false
-    /// Set from `voiceInputController.state`; drives the recording-only Dock icon.
-    public private(set) static var isCapturingAudio = false
     public static let mainWindowID = "main"
 
     /// Re-creates the main window after the user closed it. SwiftUI releases a
@@ -1706,9 +1744,8 @@ public final class AppState {
         }
     }
 
-    public static func applyDockIconPolicy(showDockIcon: Bool, showDockIconWhileRecording: Bool = false) {
+    public static func applyDockIconPolicy(showDockIcon: Bool) {
         prefersDockIcon = showDockIcon
-        Self.showsDockIconWhileRecording = showDockIconWhileRecording
         NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
     }
 
@@ -1717,35 +1754,7 @@ public final class AppState {
     /// not an input: an open window must not override the user's choice to
     /// hide the Dock icon.
     public static func dockIconPolicyInput() -> DockIconPolicy.Input {
-        DockIconPolicy.Input(
-            pinnedDockIcon: prefersDockIcon,
-            showsDockIconWhileRecording: showsDockIconWhileRecording,
-            isRecording: isCapturingAudio
-        )
-    }
-
-    /// Re-evaluates the recording half of the Dock policy whenever the voice
-    /// input state changes. Only the recording/stopping transitions matter; the
-    /// short `pendingTranscription` flash must not toggle the Dock icon.
-    private func observeDockIconActivity() {
-        withObservationTracking {
-            _ = voiceInputController.state
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                self?.refreshDockIconRecordingActivity()
-                self?.observeDockIconActivity()
-            }
-        }
-    }
-
-    private func refreshDockIconRecordingActivity() {
-        let isCapturing = voiceInputController.state == .recording
-            || voiceInputController.state == .stopping
-        guard Self.isCapturingAudio != isCapturing else {
-            return
-        }
-        Self.isCapturingAudio = isCapturing
-        NotificationCenter.default.post(name: .transcriptorDockIconPreferenceChanged, object: nil)
+        DockIconPolicy.Input(pinnedDockIcon: prefersDockIcon)
     }
 
     private func cloudProvider(for providerID: String) -> (any CloudTranscriptionProvider)? {
@@ -1754,6 +1763,8 @@ public final class AppState {
             openAITranscriptionProvider
         case "groq":
             groqTranscriptionProvider
+        case "elevenlabs":
+            elevenLabsTranscriptionProvider
         case "custom":
             customTranscriptionProvider
         default:

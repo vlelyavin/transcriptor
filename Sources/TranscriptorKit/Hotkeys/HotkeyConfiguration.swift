@@ -23,8 +23,8 @@ public struct HotkeyConfiguration: Equatable, Sendable {
     public var carbonModifiers: UInt32
 
     public init(
-        keyCode: UInt32 = UInt32(kVK_Space),
-        carbonModifiers: UInt32 = UInt32(optionKey | shiftKey)
+        keyCode: UInt32 = UInt32(kVK_ANSI_D),
+        carbonModifiers: UInt32 = UInt32(optionKey)
     ) {
         self.keyCode = keyCode
         self.carbonModifiers = carbonModifiers
@@ -56,7 +56,7 @@ public struct HotkeyConfiguration: Equatable, Sendable {
         }
 
         if carbonModifiers == UInt32(cmdKey), keyCode == UInt32(kVK_ANSI_F) {
-            return "This conflicts with Transcriptor's Search History command."
+            return "This conflicts with Transcriptor's Find command."
         }
 
         if carbonModifiers == UInt32(cmdKey), keyCode == UInt32(kVK_ANSI_Comma) {

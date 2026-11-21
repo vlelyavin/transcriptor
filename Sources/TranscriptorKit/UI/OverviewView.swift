@@ -102,7 +102,7 @@ public struct OverviewView: View {
                 Text("Transcription")
             } footer: {
                 if appState.transcriptionReadiness == .needsModel {
-                    Text("Transcription isn't possible yet. Download at least one model from the Models page to start turning recordings into text.")
+                    Text("Transcription isn't possible yet. Download a local model or connect a remote provider from the Models page to start turning recordings into text.")
                 }
             }
 
@@ -196,10 +196,18 @@ public struct OverviewView: View {
     /// matching the way native System Settings surfaces setup recommendations.
     private var setupRow: some View {
         LabeledContent {
-            Button("Set Up…") {
-                appState.presentWelcomeGuide()
+            HStack(spacing: 8) {
+                Button("Remote Provider…") {
+                    appState.openModels(filter: .remote)
+                }
+                .buttonStyle(.bordered)
+                .help("Connect an OpenAI-compatible endpoint, Groq, or ElevenLabs instead of downloading a local model.")
+
+                Button("Set Up…") {
+                    appState.presentWelcomeGuide()
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "arrow.down.circle.fill")
@@ -209,7 +217,7 @@ public struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Set up transcription")
                         .font(.body.weight(.semibold))
-                    Text("Download a model to turn recordings into text. Until then, Transcriptor still works as a voice recorder.")
+                    Text("Download a model to turn recordings into text, or connect a remote provider. Until then, Transcriptor still works as a voice recorder.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

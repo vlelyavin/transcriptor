@@ -45,6 +45,15 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
 
     public func validateCredentials(modelID: String) async throws {
         let apiKey = try resolveAPIKey()
+
+        // ElevenLabs' Scribe models are not reliably present in the `/models`
+        // listing, so validate by transcribing a tiny silent sample through the
+        // same `speech-to-text` endpoint dictation uses.
+        if descriptor.apiDialect == .elevenLabs {
+            try await validateByTranscribingSilence(modelID: modelID, apiKey: apiKey)
+            return
+        }
+
         var request = URLRequest(url: baseURL.appending(path: "models"))
         request.httpMethod = "GET"
         request.timeoutInterval = 20
@@ -85,7 +94,8 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         try Self.silentWAV(seconds: 0.6).write(to: audioURL)
 
         let body = try multipartBody(for: audioURL, modelID: modelID, language: nil)
-        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
+        let validationPath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: validationPath))
         request.httpMethod = "POST"
         request.httpBody = body.body
         request.timeoutInterval = 30
@@ -169,7 +179,8 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         )
 
         let requestBody = try multipartBody(for: uploadURL, modelID: job.requestedModelID, language: job.language)
-        var request = URLRequest(url: baseURL.appending(path: "audio/transcriptions"))
+        let transcribePath = descriptor.apiDialect == .elevenLabs ? "speech-to-text" : "audio/transcriptions"
+        var request = URLRequest(url: baseURL.appending(path: transcribePath))
         request.httpMethod = "POST"
         request.httpBody = requestBody.body
         // Long dictations upload several MB; the 60 s default is too tight on
@@ -199,7 +210,7 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             )
         )
 
-        let decoded = try JSONDecoder().decode(CloudTranscriptionResponse.self, from: data)
+        let decoded = try decodeTranscriptionResponse(from: data)
         let normalizedText = decoded.text.normalizedTranscriptWhitespace()
         guard !normalizedText.isEmpty else {
             throw TranscriptionError.transcriptionFailed("\(descriptor.name) returned an empty transcript.")
@@ -217,6 +228,20 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         )
     }
 
+    /// Decodes the transcript response in the provider's wire dialect.
+    /// OpenAI-compatible APIs return `language`; ElevenLabs returns
+    /// `language_code`.
+    private func decodeTranscriptionResponse(from data: Data) throws -> TranscriptionResponsePayload {
+        switch descriptor.apiDialect {
+        case .elevenLabs:
+            let decoded = try JSONDecoder().decode(ElevenLabsTranscriptionResponse.self, from: data)
+            return TranscriptionResponsePayload(text: decoded.text, language: decoded.languageCode)
+        case .openAICompatible:
+            let decoded = try JSONDecoder().decode(CloudTranscriptionResponse.self, from: data)
+            return TranscriptionResponsePayload(text: decoded.text, language: decoded.language)
+        }
+    }
+
     /// The stored key, or `nil` for a keyless custom server.
     private func resolveAPIKey() throws -> String? {
         let secret = try secretStore.secret(for: descriptor.keychainAccount)
@@ -230,7 +255,11 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
     }
 
     private func authorize(_ request: inout URLRequest, apiKey: String?) {
-        if let apiKey {
+        guard let apiKey else { return }
+        switch descriptor.apiDialect {
+        case .elevenLabs:
+            request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        case .openAICompatible:
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
     }
@@ -248,26 +277,31 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
         let audioData = try Data(contentsOf: audioURL, options: .mappedIfSafe)
         var body = Data()
 
+        let modelFieldName = descriptor.apiDialect == .elevenLabs ? "model_id" : "model"
+        let languageFieldName = descriptor.apiDialect == .elevenLabs ? "language_code" : "language"
+
         body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="model""#)
+        body.appendMultipartLine("Content-Disposition: form-data; name=\"\(modelFieldName)\"")
         body.appendMultipartLine("")
         body.appendMultipartLine(modelID)
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("json")
+        if descriptor.apiDialect != .elevenLabs {
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="response_format""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("json")
 
-        body.appendMultipartLine("--\(boundary)")
-        body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
-        body.appendMultipartLine("")
-        body.appendMultipartLine("0")
+            body.appendMultipartLine("--\(boundary)")
+            body.appendMultipartLine(#"Content-Disposition: form-data; name="temperature""#)
+            body.appendMultipartLine("")
+            body.appendMultipartLine("0")
+        }
 
         // Without a hint, auto-detection on short clips often picks the wrong
         // language (short Russian phrases came back transliterated to Latin).
         if let language, !language.isEmpty {
             body.appendMultipartLine("--\(boundary)")
-            body.appendMultipartLine(#"Content-Disposition: form-data; name="language""#)
+            body.appendMultipartLine("Content-Disposition: form-data; name=\"\(languageFieldName)\"")
             body.appendMultipartLine("")
             body.appendMultipartLine(language)
         }
@@ -292,11 +326,15 @@ public actor OpenAICompatibleCloudTranscriptionProvider: CloudTranscriptionProvi
             .redactingAPIKeys()
 
         switch statusCode {
-        case 401, 403:
+        case 401:
             // Unified across providers: the upstream wording differs between
             // OpenAI and Groq, so present one consistent, non-leaking message.
-            _ = apiMessage
             return .missingCredentials("The API key was rejected. Check that the key is correct and active, then try again.")
+        case 403:
+            // A 403 can also mean a region or model-permission block — the key
+            // itself may be fine, so "key rejected" would give the wrong advice.
+            // Prefer the provider's own (already API-key-redacted) message.
+            return .missingCredentials(apiMessage ?? "\(descriptor.name) refused the request (HTTP 403). Check the key's permissions and region access, then try again.")
         case 413:
             return .fileTooLarge(apiMessage ?? "\(descriptor.name) rejected the audio upload because it exceeded the provider's current file-size limit.")
         case 429:
@@ -313,6 +351,21 @@ private struct MultipartBody: Sendable {
 }
 
 private struct CloudTranscriptionResponse: Decodable, Sendable {
+    let text: String
+    let language: String?
+}
+
+private struct ElevenLabsTranscriptionResponse: Decodable, Sendable {
+    let text: String
+    let languageCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case languageCode = "language_code"
+    }
+}
+
+private struct TranscriptionResponsePayload: Sendable {
     let text: String
     let language: String?
 }

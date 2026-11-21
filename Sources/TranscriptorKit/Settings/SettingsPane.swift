@@ -122,9 +122,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
             [
                 "Show Transcriptor in menu bar",
                 "Always show Dock icon",
-                "Show Dock icon while recording",
                 "Launch at login",
-                "Login items status",
             ]
         case .recording:
             [

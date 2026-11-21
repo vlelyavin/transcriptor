@@ -1,8 +1,9 @@
 import SwiftUI
 
 public struct ModelsView: View {
-    @State private var openAIAPIKeyInput = ""
+    @State private var searchText = ""
     @State private var groqAPIKeyInput = ""
+    @State private var elevenLabsAPIKeyInput = ""
     @State private var customAPIKeyInput = ""
     @Bindable private var appState: AppState
 
@@ -11,87 +12,167 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        Form {
-            Section("Current Selection") {
-                if appState.availableTargets.isEmpty {
-                    LabeledContent("Active model") {
-                        Text("None ready")
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Picker("Active model", selection: activeTargetBinding) {
-                        ForEach(appState.availableTargets, id: \.self) { target in
-                            Text(appState.targetDisplayName(target)).tag(target)
+        VStack(spacing: 0) {
+            filterBar
+
+            Form {
+                currentSelectionSection
+
+                if showsLocal {
+                    ForEach(appState.modelCatalog.sections) { section in
+                        let models = filteredModels(in: section)
+                        ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
+                            Section {
+                                localModelRows(model)
+                            } header: {
+                                if index == 0 {
+                                    Text(section.title)
+                                }
+                            } footer: {
+                                if index == models.count - 1 {
+                                    Text(section.description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
                 }
 
-                LabeledContent("Ready local models") {
-                    Text("\(appState.readyLocalModelIDs.count)")
+                if showsRemote {
+                    ForEach(filteredRemoteProviders) { provider in
+                        remoteProviderSection(provider)
+                    }
                 }
 
-                Toggle(
-                    "Auto-transcribe after recording or import",
-                    isOn: Binding(
-                        get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
-                        set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
-                    )
-                )
-                .disabled(!appState.canEnableAutoTranscribe)
-            }
-
-            ForEach(appState.modelCatalog.sections) { section in
-                // Each model is its own grouped card so models are clearly
-                // separated with native spacing. The catalog group title sits
-                // above the first card and its description below the last.
-                ForEach(Array(section.models.enumerated()), id: \.element.id) { index, model in
+                if !hasVisibleContent {
                     Section {
-                        localModelRows(model)
-                    } header: {
-                        if index == 0 {
-                            Text(section.title)
-                        }
-                    } footer: {
-                        if index == section.models.count - 1 {
-                            Text(section.description)
-                                .font(.caption)
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                            Text("No models match")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
-
-            if let openAI = appState.providerCatalog.providers.first(where: { $0.id == "openai" }) {
-                cloudProviderSection(
-                    provider: openAI,
-                    modelID: $appState.providerSettings.openAIModelID,
-                    privacyConsent: $appState.providerSettings.openAIPrivacyAcknowledged,
-                    apiKeyInput: $openAIAPIKeyInput
-                )
-            }
-
-            if let groq = appState.providerCatalog.providers.first(where: { $0.id == "groq" }) {
-                cloudProviderSection(
-                    provider: groq,
-                    modelID: $appState.providerSettings.groqModelID,
-                    privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
-                    apiKeyInput: $groqAPIKeyInput
-                )
-            }
-
-            if let custom = appState.providerCatalog.providers.first(where: { $0.id == "custom" }) {
-                cloudProviderSection(
-                    provider: custom,
-                    modelID: $appState.providerSettings.customModelID,
-                    privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
-                    apiKeyInput: $customAPIKeyInput,
-                    baseURL: $appState.providerSettings.customBaseURL
-                )
-            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
+    }
+
+    // MARK: - Filter bar
+
+    /// Native Local / Remote scope filter plus a real `NSSearchField`, mirroring
+    /// the search affordance on the History screen. `Cmd+F` on Models focuses
+    /// this field through `modelsSearchFocusRequest`.
+    private var filterBar: some View {
+        HStack(spacing: 12) {
+            Picker("Show", selection: $appState.modelsFilter) {
+                ForEach(ModelsFilterScope.allCases) { scope in
+                    Text(scope.title).tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 210)
+
+            NativeSearchField(
+                text: $searchText,
+                placeholder: "Search models and providers",
+                focusRequest: appState.modelsSearchFocusRequest
+            )
+            .frame(maxWidth: 320)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var showsLocal: Bool {
+        appState.modelsFilter != .remote
+    }
+
+    private var showsRemote: Bool {
+        appState.modelsFilter != .local
+    }
+
+    private var hasVisibleContent: Bool {
+        let localCount = showsLocal
+            ? appState.modelCatalog.sections.reduce(0) { $0 + filteredModels(in: $1).count }
+            : 0
+        let remoteCount = showsRemote ? filteredRemoteProviders.count : 0
+        return localCount + remoteCount > 0
+    }
+
+    /// Searches a local model by display name or catalog ID.
+    private func filteredModels(in section: ModelSection) -> [ModelDescriptor] {
+        let query = trimmedSearchText
+        guard !query.isEmpty else {
+            return section.models
+        }
+        return section.models.filter { model in
+            model.name.localizedCaseInsensitiveContains(query)
+                || model.id.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// Searches a remote provider by name, catalog ID, or its configured model.
+    private var filteredRemoteProviders: [ProviderDescriptor] {
+        let providers = appState.providerCatalog.visibleProviders
+        let query = trimmedSearchText
+        guard !query.isEmpty else {
+            return providers
+        }
+        return providers.filter { provider in
+            let configuredModel = appState.providerSettings.modelID(
+                for: provider.id,
+                fallback: provider.modelLabel
+            )
+            return provider.name.localizedCaseInsensitiveContains(query)
+                || provider.id.localizedCaseInsensitiveContains(query)
+                || provider.modelLabel.localizedCaseInsensitiveContains(query)
+                || configuredModel.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    // MARK: - Current selection
+
+    private var currentSelectionSection: some View {
+        Section("Current Selection") {
+            if appState.availableTargets.isEmpty {
+                LabeledContent("Active model") {
+                    Text("None ready")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Picker("Active model", selection: activeTargetBinding) {
+                    ForEach(appState.availableTargets, id: \.self) { target in
+                        Text(appState.targetDisplayName(target)).tag(target)
+                    }
+                }
+            }
+
+            LabeledContent("Ready local models") {
+                Text("\(appState.readyLocalModelIDs.count)")
+            }
+
+            Toggle(
+                "Auto-transcribe after recording or import",
+                isOn: Binding(
+                    get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
+                    set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
+                )
+            )
+            .disabled(!appState.canEnableAutoTranscribe)
+        }
     }
 
     /// Binds the unified "Active model" picker to the app's active target,
@@ -198,6 +279,38 @@ public struct ModelsView: View {
     }
 
     // MARK: - Cloud provider configuration
+
+    /// Binds one visible provider descriptor to its stored settings. The three
+    /// offered providers keep their existing per-provider storage fields.
+    @ViewBuilder
+    private func remoteProviderSection(_ provider: ProviderDescriptor) -> some View {
+        switch provider.id {
+        case "groq":
+            cloudProviderSection(
+                provider: provider,
+                modelID: $appState.providerSettings.groqModelID,
+                privacyConsent: $appState.providerSettings.groqPrivacyAcknowledged,
+                apiKeyInput: $groqAPIKeyInput
+            )
+        case "elevenlabs":
+            cloudProviderSection(
+                provider: provider,
+                modelID: $appState.providerSettings.elevenLabsModelID,
+                privacyConsent: $appState.providerSettings.elevenLabsPrivacyAcknowledged,
+                apiKeyInput: $elevenLabsAPIKeyInput
+            )
+        case "custom":
+            cloudProviderSection(
+                provider: provider,
+                modelID: $appState.providerSettings.customModelID,
+                privacyConsent: $appState.providerSettings.customPrivacyAcknowledged,
+                apiKeyInput: $customAPIKeyInput,
+                baseURL: $appState.providerSettings.customBaseURL
+            )
+        default:
+            EmptyView()
+        }
+    }
 
     /// Full inline configuration for one cloud provider, modeled on the native
     /// System Settings network panel: the top line carries the red/green status
@@ -493,10 +606,10 @@ public struct ModelsView: View {
     /// A short, provider-specific hint on where to find a valid model ID.
     private func modelIDHint(for provider: ProviderDescriptor) -> String {
         switch provider.id {
-        case "openai":
-            "Find model IDs in the OpenAI dashboard under API → Models (e.g. gpt-4o-mini-transcribe)."
         case "groq":
             "Find model IDs on the Groq Console models page (e.g. whisper-large-v3-turbo)."
+        case "elevenlabs":
+            "The ElevenLabs speech-to-text model ID: scribe_v3 is current; scribe_v2 remains available."
         case "custom":
             "The model name your server expects (e.g. whisper-1)."
         default:
