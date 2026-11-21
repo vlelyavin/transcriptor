@@ -34,9 +34,9 @@ struct NativeSearchField: NSViewRepresentable {
         // SwiftUI proposes the frame, but AppKit's intrinsic hugging otherwise
         // keeps the field at ~200 pt — visibly narrower than System Settings.
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        field.setContentHuggingPriority(.defaultLow, for: .vertical)
+        field.setContentHuggingPriority(.required, for: .vertical)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        field.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        field.setContentCompressionResistancePriority(.required, for: .vertical)
         field.onBecomeFirstResponder = {
             // Guarantee the keystrokes route to this app, not whatever was
             // frontmost when the window appeared.
