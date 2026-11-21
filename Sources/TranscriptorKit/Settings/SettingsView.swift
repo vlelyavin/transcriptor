@@ -421,7 +421,7 @@ public struct SettingsPaneDetailView: View {
             }
         }
 
-        Section("Recording Diagnostics") {
+        Section {
             LabeledContent("Diagnostic log") {
                 Text(appState.recordingDiagnosticsLogURL?.lastPathComponent ?? "Not created yet")
                     .foregroundStyle(.secondary)
