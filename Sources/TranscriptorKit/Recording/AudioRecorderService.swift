@@ -172,22 +172,23 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         // path is never made worse.
         let boundDeviceName = bindCurrentDefaultInputDevice(to: inputNode)
 
-        // The input node's OUTPUT format is, by definition, what the tap delivers,
-        // so it always matches (unlike `inputFormat`, which for AirPods runs the
-        // mic in a different low-rate HFP format and made `installTap` throw). We
-        // tap with `format: nil` and build the output file from the delivered
-        // buffer instead, so this value is used only for validation + the log line.
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        // The hardware input format is the only reliable sample rate for the
+        // tap. `outputFormat(forBus:)` follows the CURRENT OUTPUT device, not the
+        // microphone: with an eqMac/44.1 kHz output and a 48 kHz MacBook mic the
+        // engine tries to run input 48k into output 44.1k and `engine.start()`
+        // fails with kAudioUnitErr_FormatNotSupported (-10868). Tapping with the
+        // hardware input format also avoids the silent no-buffer AirPods case.
+        let recordingFormat = inputNode.inputFormat(forBus: 0)
+        let engineOutputFormat = inputNode.outputFormat(forBus: 0)
 
         activeInputDeviceName = boundDeviceName
             ?? AVCaptureDevice.default(for: .audio)?.localizedName
             ?? "the selected input device"
-        let hardwareFormat = inputNode.inputFormat(forBus: 0)
-        log.notice("startRecording: input=\(self.activeInputDeviceName, privacy: .public) tap=\(recordingFormat.sampleRate, privacy: .public)Hz/\(recordingFormat.channelCount, privacy: .public)ch hw=\(hardwareFormat.sampleRate, privacy: .public)Hz/\(hardwareFormat.channelCount, privacy: .public)ch")
+        log.notice("startRecording: input=\(self.activeInputDeviceName, privacy: .public) tap=\(recordingFormat.sampleRate, privacy: .public)Hz/\(recordingFormat.channelCount, privacy: .public)ch out=\(engineOutputFormat.sampleRate, privacy: .public)Hz/\(engineOutputFormat.channelCount, privacy: .public)ch")
         recordDiagnostics(
             "capture",
             "start input=\"\(activeInputDeviceName)\" transport=\(activeInputDeviceTransport) "
-                + "tap=\(Self.formatDescription(recordingFormat)) hw=\(Self.formatDescription(hardwareFormat))"
+                + "tap=\(Self.formatDescription(recordingFormat)) out=\(Self.formatDescription(engineOutputFormat))"
         )
 
         // A just-connected or mid-route-change device can momentarily report a
@@ -218,11 +219,9 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         resetBufferTracking()
         installConfigChangeObserver(for: engine)
 
-        // `format: nil` → deliver buffers in the input node's real output format
-        // (whatever the current device negotiated), instead of forcing a format
-        // that may not match the live AirPods / HFP route. Extracted so the
-        // route-change handler can re-establish delivery identically.
-        installRecordingTap(on: inputNode)
+        // Explicitly use the hardware input format for the tap. The route-change
+        // handler re-establishes delivery the same way.
+        installRecordingTap(on: inputNode, format: recordingFormat)
 
         // Pre-allocate engine resources before starting. This both surfaces
         // configuration problems early and smooths the first start on Bluetooth
@@ -550,9 +549,9 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
     /// Installs the capture tap on the given input node. Shared by
     /// `startRecording` and `handleConfigurationChange` so a mid-session route
     /// switch can re-establish buffer delivery with identical handling.
-    private func installRecordingTap(on inputNode: AVAudioInputNode) {
+    private func installRecordingTap(on inputNode: AVAudioInputNode, format: AVAudioFormat) {
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: nil) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
             guard let self else {
                 return
             }
@@ -566,11 +565,9 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             self.lastLevels = analyzedLevels
             self.storeLatestLevels(analyzedLevels)
 
-            // Write to a file whose format matches the delivered buffer. AirPods /
-            // Bluetooth deliver a different rate than the format queried before the
-            // engine started, so a file created from that earlier format made every
-            // write throw → an empty recording. Building it from the buffer's own
-            // format (once, before any frames) keeps every write valid.
+            // Write to a file whose format matches the delivered buffer. The
+            // hardware format can change while a route is settling, so building
+            // the file from the first buffer's own format keeps every write valid.
             do {
                 let file = try self.outputFileMatching(buffer.format)
                 try file.write(from: buffer)
@@ -597,7 +594,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
         defer { isReconfiguringRoute = false }
 
         let inputNode = engine.inputNode
-        let newFormat = inputNode.outputFormat(forBus: 0)
+        let newFormat = inputNode.inputFormat(forBus: 0)
         routeChangeCount += 1
         log.notice("route changed mid-session → \(newFormat.sampleRate, privacy: .public)Hz/\(newFormat.channelCount, privacy: .public)ch; re-establishing capture")
         recordDiagnostics(
@@ -619,7 +616,7 @@ public final class AudioRecorderService: AudioRecorderServing, @unchecked Sendab
             return
         }
 
-        installRecordingTap(on: inputNode)
+        installRecordingTap(on: inputNode, format: newFormat)
 
         if !engine.isRunning {
             engine.prepare()
