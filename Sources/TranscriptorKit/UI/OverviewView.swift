@@ -7,22 +7,6 @@ public struct OverviewView: View {
         self.appState = appState
     }
 
-    /// History storage limit bounds, shared with the Storage settings pane: the
-    /// lower bound tracks current usage (so the cap can't be set below the space
-    /// history already uses), up to 2 GB.
-    private var storageLimitRange: ClosedRange<Int> { appState.minimumHistoryLimitMegabytes...2_048 }
-
-    private var storageLimitBinding: Binding<Int> {
-        Binding(
-            get: {
-                min(max(appState.storageSettings.capMegabytes, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            },
-            set: { newValue in
-                appState.storageSettings.capMegabytes = min(max(newValue, storageLimitRange.lowerBound), storageLimitRange.upperBound)
-            }
-        )
-    }
-
     /// Auto-transcribe is only meaningful once a transcription model exists; the
     /// binding mirrors the guard used on the Import and Models screens.
     private var autoTranscribeBinding: Binding<Bool> {
@@ -81,9 +65,19 @@ public struct OverviewView: View {
 
                 if appState.generalSettings.insertTranscriptIntoActiveApp,
                    appState.accessibilityPermissionStatus != .granted {
-                    Text("Needs Accessibility access to type into other apps.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                        Text("Accessibility access is required to type into other apps.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Button("Grant…") {
+                            appState.requestAccessibilityPermissionPrompt()
+                            appState.openAccessibilityPrivacySettings()
+                        }
+                        .controlSize(.small)
+                    }
                 }
             } header: {
                 Text("Voice Input")
@@ -92,8 +86,12 @@ public struct OverviewView: View {
             Section {
                 activeModelRow
 
-                linkedRow("Ready local models", destination: .screen(.models)) {
-                    Text("\(appState.readyLocalModelIDs.count)")
+                linkedRow("Local models", destination: .screen(.models)) {
+                    Text("\(appState.readyLocalModelIDs.count) ready")
+                }
+
+                linkedRow("Remote providers", destination: .screen(.models)) {
+                    Text("\(appState.configuredRemoteProviderCount) configured")
                 }
 
                 Toggle("Auto-transcribe", isOn: autoTranscribeBinding)
@@ -111,10 +109,6 @@ public struct OverviewView: View {
                     Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
                 }
 
-                LabeledContent("History limit") {
-                    MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
-                }
-
                 linkedRow("History items", destination: .screen(.history)) {
                     Text("\(appState.historyStore.entries.count)")
                 }
@@ -126,6 +120,8 @@ public struct OverviewView: View {
                 }
             } header: {
                 Text("Storage")
+            } footer: {
+                Text("Storage limits and retention are in Settings > Storage.")
             }
 
             // Recent History is only shown once there is history to show — an
@@ -277,7 +273,7 @@ public struct OverviewView: View {
     @ViewBuilder
     private var activeModelSelector: some View {
         if appState.availableTargets.isEmpty {
-            Button("Download…") {
+            Button("Set Up…") {
                 appState.sidebarSelection = .screen(.models)
             }
         } else {
@@ -306,7 +302,7 @@ public struct OverviewView: View {
             case .ready:
                 statusDot(color: .green, text: "Ready")
             case .needsModel:
-                statusDot(color: .red, text: "No model downloaded")
+                statusDot(color: .red, text: "Not configured")
             }
         }
     }

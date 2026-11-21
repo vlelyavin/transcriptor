@@ -678,6 +678,14 @@ public final class AppState {
             || providerRuntimeStates.values.contains { $0.isSelectable }
     }
 
+    /// Number of visible remote providers that are configured well enough to
+    /// be selected (a stored, tested key, or one awaiting validation).
+    public var configuredRemoteProviderCount: Int {
+        providerCatalog.visibleProviders.filter {
+            providerRuntimeState(for: $0).isSelectable
+        }.count
+    }
+
     /// Auto-transcribe can only be enabled when transcription is actually
     /// configured — otherwise it would silently fail after every capture.
     public var canEnableAutoTranscribe: Bool {
