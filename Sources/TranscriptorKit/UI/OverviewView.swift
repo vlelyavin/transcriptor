@@ -173,7 +173,7 @@ public struct OverviewView: View {
     /// The same beveled waveform tile used as the first sidebar icon, scaled up
     /// so the hero reads as part of the app's icon family.
     private var appIcon: some View {
-        SidebarIconView(systemImage: NavigationScreen.overview.systemImage, size: 64)
+        SidebarIconView(systemImage: NavigationScreen.overview.systemImage, tint: NavigationScreen.overview.sidebarTint, size: 64)
     }
 
     /// Persistent call-to-action shown until a transcription model (or cloud
@@ -244,7 +244,7 @@ public struct OverviewView: View {
     /// pairs a primary control with its current state.
     private var activeModelRow: some View {
         HStack(spacing: 12) {
-            SidebarIconView(systemImage: NavigationScreen.models.systemImage, size: 32)
+            SidebarIconView(systemImage: NavigationScreen.models.systemImage, tint: NavigationScreen.models.sidebarTint, size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Active model")

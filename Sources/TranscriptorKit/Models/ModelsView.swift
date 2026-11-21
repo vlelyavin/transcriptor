@@ -206,7 +206,7 @@ public struct ModelsView: View {
             && appState.transcriptionPreferences.preferredProviderID == model.localProviderID
 
         HStack(alignment: .center, spacing: 10) {
-            SidebarIconView(systemImage: modelIconSymbol(for: model), size: 30)
+            SidebarIconView(systemImage: modelIconSymbol(for: model), tint: .purple, size: 30)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.name + (model.accentBadgeLabel.map { " (\($0))" } ?? ""))
@@ -340,7 +340,7 @@ public struct ModelsView: View {
             // provider name, and a status dot + requirement text beneath it.
             // The "send audio" consent switch sits on the trailing edge.
             HStack(alignment: .center, spacing: 10) {
-                SidebarIconView(systemImage: providerIconSymbol(for: provider), size: 30)
+                SidebarIconView(systemImage: providerIconSymbol(for: provider), tint: .blue, size: 30)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(provider.name)
