@@ -63,24 +63,14 @@ public struct OverviewView: View {
 
                 Toggle("Insert into active app", isOn: $appState.generalSettings.insertTranscriptIntoActiveApp)
 
-                if appState.generalSettings.insertTranscriptIntoActiveApp,
-                   appState.accessibilityPermissionStatus != .granted {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                        Text("Accessibility access is required to type into other apps.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
-                        Button("Grant…") {
-                            appState.requestAccessibilityPermissionPrompt()
-                            appState.openAccessibilityPrivacySettings()
-                        }
-                        .controlSize(.small)
-                    }
-                }
+
             } header: {
                 Text("Voice Input")
+            } footer: {
+                if appState.generalSettings.insertTranscriptIntoActiveApp,
+                   appState.accessibilityPermissionStatus != .granted {
+                    Text("Accessibility access is required to type into other apps. Open Settings › General to grant it.")
+                }
             }
 
             Section {
@@ -257,7 +247,7 @@ public struct OverviewView: View {
             SidebarIconView(systemImage: NavigationScreen.models.systemImage, size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Active Model")
+                Text("Active model")
                 transcriptionStatusLabel
             }
 
@@ -272,11 +262,7 @@ public struct OverviewView: View {
     /// with none, it offers a one-tap jump to the Models page to download one.
     @ViewBuilder
     private var activeModelSelector: some View {
-        if appState.availableTargets.isEmpty {
-            Button("Set Up…") {
-                appState.sidebarSelection = .screen(.models)
-            }
-        } else {
+        if !appState.availableTargets.isEmpty {
             Picker("Active model", selection: activeTargetBinding) {
                 ForEach(appState.availableTargets, id: \.self) { target in
                     Text(appState.targetDisplayName(target)).tag(target)
