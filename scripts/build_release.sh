@@ -24,6 +24,21 @@ if [[ ! -x "${EXECUTABLE_PATH}" ]]; then
   exit 1
 fi
 
+# macOS decides between the current design system (Liquid Glass on 26+) and
+# compatibility mode from LC_BUILD_VERSION's SDK field, not from the compiler
+# version. Local SwiftPM/Xcode 27 can emit sdk=14.0 even when compiling with a
+# newer compiler; installing such a build silently strips Liquid Glass and the
+# native materials. Distribution builds must use the CI Xcode 26 toolchain.
+BUILD_SDK="$(vtool -show-build "${EXECUTABLE_PATH}" 2>/dev/null | awk '/sdk /{print $2; exit}')"
+if [[ -n "${BUILD_SDK}" ]]; then
+  echo "Built with macOS SDK ${BUILD_SDK}"
+  if [[ "${BUILD_SDK%%.*}" -lt 26 && "${ALLOW_OLD_SDK:-0}" != "1" ]]; then
+    echo "ERROR: ${BUILD_SDK} SDK disables Liquid Glass and native materials." >&2
+    echo "       Use the CI release (Xcode 26) for installable builds, or set ALLOW_OLD_SDK=1 for a throwaway local run." >&2
+    exit 1
+  fi
+fi
+
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
