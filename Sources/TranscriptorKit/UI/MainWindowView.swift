@@ -257,51 +257,26 @@ struct SettingsContentWidth: ViewModifier {
     }
 }
 
-/// System Settings-style sidebar icon: a colored squircle tile with a white
-/// glyph, a soft top gloss and a fine inner highlight. The color is semantic
-/// per section, so the sidebar scans by color as well as by label.
-struct SidebarIconTint: Equatable {
-    let top: Color
-    let bottom: Color
+/// Semantic tint for a native sidebar glyph. Colors are system colors, so they
+/// follow light/dark appearance instead of being baked into a custom tile.
+struct SidebarIconTint {
+    let color: Color
 
-    static let teal = SidebarIconTint(
-        top: Color(red: 0.39, green: 0.88, blue: 0.84),
-        bottom: Color(red: 0.05, green: 0.56, blue: 0.57)
-    )
-    static let indigo = SidebarIconTint(
-        top: Color(red: 0.56, green: 0.61, blue: 1.00),
-        bottom: Color(red: 0.27, green: 0.31, blue: 0.85)
-    )
-    static let green = SidebarIconTint(
-        top: Color(red: 0.48, green: 0.89, blue: 0.58),
-        bottom: Color(red: 0.11, green: 0.61, blue: 0.32)
-    )
-    static let purple = SidebarIconTint(
-        top: Color(red: 0.75, green: 0.55, blue: 1.00),
-        bottom: Color(red: 0.48, green: 0.21, blue: 0.85)
-    )
-    static let red = SidebarIconTint(
-        top: Color(red: 1.00, green: 0.54, blue: 0.61),
-        bottom: Color(red: 0.84, green: 0.17, blue: 0.29)
-    )
-    static let blue = SidebarIconTint(
-        top: Color(red: 0.35, green: 0.66, blue: 1.00),
-        bottom: Color(red: 0.04, green: 0.39, blue: 0.85)
-    )
-    static let cyan = SidebarIconTint(
-        top: Color(red: 0.43, green: 0.85, blue: 1.00),
-        bottom: Color(red: 0.04, green: 0.52, blue: 0.77)
-    )
-    static let slate = SidebarIconTint(
-        top: Color(red: 0.67, green: 0.72, blue: 0.78),
-        bottom: Color(red: 0.33, green: 0.40, blue: 0.49)
-    )
-    static let graphite = SidebarIconTint(
-        top: Color(red: 0.60, green: 0.60, blue: 0.63),
-        bottom: Color(red: 0.29, green: 0.29, blue: 0.31)
-    )
+    static let teal = SidebarIconTint(color: Color(nsColor: .systemTeal))
+    static let indigo = SidebarIconTint(color: Color(nsColor: .systemIndigo))
+    static let green = SidebarIconTint(color: Color(nsColor: .systemGreen))
+    static let purple = SidebarIconTint(color: Color(nsColor: .systemPurple))
+    static let red = SidebarIconTint(color: Color(nsColor: .systemRed))
+    static let blue = SidebarIconTint(color: Color(nsColor: .systemBlue))
+    static let cyan = SidebarIconTint(color: Color(nsColor: .systemCyan))
+    static let slate = SidebarIconTint(color: Color(nsColor: .secondaryLabelColor))
+    static let graphite = SidebarIconTint(color: Color(nsColor: .secondaryLabelColor))
 }
 
+/// A native System Settings-style sidebar glyph: an SF Symbol tinted with a
+/// semantic system color, with no custom tile. System colors and hierarchical
+/// rendering adapt to light/dark appearance automatically, so the same view
+/// follows the user's macOS theme without a second asset set.
 struct SidebarIconView: View {
     let systemImage: String
     var tint: SidebarIconTint = .graphite
@@ -310,49 +285,13 @@ struct SidebarIconView: View {
     /// (used by the recording overlay's "listening" state).
     var animated: Bool = false
 
-    private var cornerRadius: CGFloat { size * 0.27 }
-
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.55, weight: .semibold))
-            .foregroundStyle(.white)
+            .font(.system(size: size * 0.8, weight: .regular))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(tint.color)
             .symbolEffect(.variableColor.iterative, isActive: animated)
             .frame(width: size, height: size)
-            .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.top, tint.bottom],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.42), Color.white.opacity(0.05)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.6
-                    )
-            }
-            .overlay(alignment: .top) {
-                // A thin specular line on the upper edge, like the lit rim of
-                // the System Settings tiles.
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-                    .mask(
-                        LinearGradient(
-                            colors: [.white, .clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
-            }
-            .shadow(color: .black.opacity(0.22), radius: 0.7, y: 0.6)
     }
 }
 
