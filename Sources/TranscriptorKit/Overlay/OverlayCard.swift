@@ -61,7 +61,55 @@ struct RecordingOverlayCard: View {
 
     // MARK: Standard
 
+    /// While the microphone is open the card says nothing in words: the orb
+    /// moves with the voice and the clock counts. Words only appear once there
+    /// is something to report (working, inserted, failed).
     private var standard: some View {
+        Group {
+            if isListening {
+                listeningRow
+            } else {
+                statusRow
+            }
+        }
+    }
+
+    private var listeningRow: some View {
+        HStack(spacing: OverlayDesign.Standard.spacing) {
+            ListeningOrb(levels: levels, reduceMotion: reduceMotion)
+
+            Text(timeLabel)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText())
+
+            Spacer(minLength: OverlayDesign.Standard.spacing)
+
+            if showsWaveform {
+                wave(
+                    bars: OverlayDesign.Wave.compactBars,
+                    barWidth: OverlayDesign.Wave.compactBarWidth,
+                    gap: OverlayDesign.Wave.compactGap,
+                    height: OverlayDesign.Wave.compactHeight
+                )
+                .transition(.opacity)
+            }
+
+            Spacer(minLength: OverlayDesign.Standard.spacing)
+
+            HStack(spacing: OverlayDesign.Standard.tightSpacing) {
+                if showsStop { stopButton }
+                if showsCancel { cancelButton }
+            }
+        }
+        .padding(.horizontal, OverlayDesign.Standard.horizontalPadding)
+        .padding(.vertical, 10)
+        .frame(width: OverlayDesign.Standard.width, alignment: .leading)
+        .frame(minHeight: OverlayDesign.Standard.minHeight)
+    }
+
+    private var statusRow: some View {
         HStack(spacing: 0) {
             HStack(alignment: detail == nil ? .center : .top, spacing: OverlayDesign.Standard.tightSpacing) {
                 indicator
@@ -375,6 +423,71 @@ private struct ActivityTrack: View {
 }
 
 // MARK: - Listening dot
+
+/// The listening orb: a small sphere that brightens and swells with the voice
+/// and carries a soft halo. One object replaces the dot, the "Listening" label
+/// and the "Release to finish" hint, so the card reads at a glance.
+private struct ListeningOrb: View {
+    let levels: [Float]
+    let reduceMotion: Bool
+
+    @State private var breathed = false
+
+    private var intensity: CGFloat {
+        guard !levels.isEmpty else { return 0 }
+        let mean = levels.reduce(Float(0)) { $0 + $1 * $1 } / Float(levels.count)
+        return min(1, max(0, CGFloat(sqrt(mean)) * OverlayDesign.Orb.gain))
+    }
+
+    var body: some View {
+        let size = OverlayDesign.Orb.size
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.20))
+                .frame(width: size, height: size)
+                .blur(radius: 7)
+                .scaleEffect((breathed ? 1.5 : 1.18) + intensity * 0.30)
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.55),
+                            Color.accentColor.opacity(0.95),
+                            Color.accentColor.opacity(0.55)
+                        ],
+                        center: UnitPoint(x: 0.36, y: 0.30),
+                        startRadius: 1,
+                        endRadius: size * 0.78
+                    )
+                )
+                .frame(width: size, height: size)
+                .overlay {
+                    Circle().strokeBorder(.white.opacity(0.28), lineWidth: 0.6)
+                }
+                .scaleEffect(1 + intensity * 0.16)
+
+            Circle()
+                .fill(Color.white.opacity(0.42))
+                .frame(width: size * 0.26, height: size * 0.26)
+                .blur(radius: size * 0.10)
+                .offset(x: -size * 0.17, y: -size * 0.20)
+        }
+        .frame(width: size * OverlayDesign.Orb.glowScale, height: size * OverlayDesign.Orb.glowScale)
+        .animation(
+            reduceMotion ? nil : .spring(duration: 0.16, bounce: 0.28),
+            value: intensity
+        )
+        .onAppear { breathed = !reduceMotion }
+        .animation(
+            reduceMotion
+                ? nil
+                : .easeInOut(duration: OverlayDesign.Motion.pulse).repeatForever(autoreverses: true),
+            value: breathed
+        )
+        .accessibilityLabel("Recording")
+    }
+}
 
 /// An 8 pt dot in a soft halo that breathes while the microphone is open.
 /// Reduce Motion stops the breathing and keeps the halo, so the state stays

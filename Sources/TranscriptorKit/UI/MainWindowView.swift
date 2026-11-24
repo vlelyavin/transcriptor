@@ -257,41 +257,68 @@ struct SettingsContentWidth: ViewModifier {
     }
 }
 
-/// Semantic tint for a native sidebar glyph. Colors are system colors, so they
-/// follow light/dark appearance instead of being baked into a custom tile.
+/// Semantic tint for a sidebar glyph. Colors are system colors, so they
+/// follow light/dark appearance instead of being baked into an asset.
 struct SidebarIconTint {
     let color: Color
 
-    static let teal = SidebarIconTint(color: Color(nsColor: .systemTeal))
+    static let blue = SidebarIconTint(color: Color(nsColor: .systemBlue))
     static let indigo = SidebarIconTint(color: Color(nsColor: .systemIndigo))
     static let green = SidebarIconTint(color: Color(nsColor: .systemGreen))
     static let purple = SidebarIconTint(color: Color(nsColor: .systemPurple))
     static let red = SidebarIconTint(color: Color(nsColor: .systemRed))
-    static let blue = SidebarIconTint(color: Color(nsColor: .systemBlue))
     static let cyan = SidebarIconTint(color: Color(nsColor: .systemCyan))
-    static let slate = SidebarIconTint(color: Color(nsColor: .secondaryLabelColor))
-    static let graphite = SidebarIconTint(color: Color(nsColor: .secondaryLabelColor))
+    /// Neutral glyph for utility sections, like Apple's Settings tiles that
+    /// carry a plain white/graphite symbol.
+    static let neutral = SidebarIconTint(color: Color(nsColor: .labelColor))
 }
 
-/// A native System Settings-style sidebar glyph: an SF Symbol tinted with a
-/// semantic system color, with no custom tile. System colors and hierarchical
-/// rendering adapt to light/dark appearance automatically, so the same view
-/// follows the user's macOS theme without a second asset set.
+/// A System Settings-style sidebar icon: a flat squircle tile with a thin rim
+/// and a colored glyph inside.
+///
+/// The tile is deliberately neutral, not colored: it is darker than the
+/// sidebar in dark mode and lighter than it in light mode, exactly like the
+/// native tiles. Only the glyph carries the semantic color, so sections stay
+/// scannable by hue without the tile shouting.
 struct SidebarIconView: View {
     let systemImage: String
-    var tint: SidebarIconTint = .graphite
+    var tint: SidebarIconTint = .neutral
     var size: CGFloat = 20
     /// When true, the glyph animates with a native variable-color symbol effect
     /// (used by the recording overlay's "listening" state).
     var animated: Bool = false
 
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var cornerRadius: CGFloat { size * 0.26 }
+
+    private var tileFill: Color {
+        colorScheme == .dark
+            ? Color(white: 0.115)
+            : Color(white: 0.965)
+    }
+
+    private var rimColor: Color {
+        colorScheme == .dark
+            ? Color.white.opacity(0.10)
+            : Color.black.opacity(0.10)
+    }
+
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.8, weight: .regular))
+            .font(.system(size: size * 0.62, weight: .semibold))
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(tint.color)
             .symbolEffect(.variableColor.iterative, isActive: animated)
             .frame(width: size, height: size)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(tileFill)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(rimColor, lineWidth: 0.5)
+            }
     }
 }
 
@@ -317,7 +344,7 @@ extension NavigationScreen {
     var sidebarTint: SidebarIconTint {
         switch self {
         case .overview:
-            .teal
+            .blue
         case .history:
             .indigo
         case .importAudio:
@@ -332,19 +359,19 @@ extension SettingsPane {
     var sidebarTint: SidebarIconTint {
         switch self {
         case .general:
-            .graphite
+            .neutral
         case .recording:
             .red
         case .keyboardShortcut:
-            .slate
+            .neutral
         case .overlay:
-            .graphite
+            .neutral
         case .storage:
             .cyan
         case .privacy:
             .blue
         case .advanced:
-            .slate
+            .neutral
         }
     }
 

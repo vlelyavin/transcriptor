@@ -194,11 +194,16 @@ public struct HistoryView: View {
 
     private func headerControls(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Native macOS never stretches a content search field across the
+            // whole pane: System Settings, Notes and Mail all keep it compact
+            // and leading-aligned. Cap the width so it reads as a field, not a
+            // full-width capsule.
             NativeSearchField(
                 text: $searchText,
                 placeholder: "Search transcripts or filenames",
                 focusRequest: appState.historySearchFocusRequest
             )
+            .frame(width: 260)
 
             Picker("Source", selection: $selectedFilter) {
                 ForEach(HistoryFilter.allCases) { filter in

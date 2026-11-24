@@ -81,6 +81,16 @@ enum OverlayDesign {
         static let halo: CGFloat = 18
     }
 
+    /// The listening orb: one living object instead of a dot, a label and a
+    /// hint stacked on top of each other.
+    enum Orb {
+        static let size: CGFloat = 34
+        /// Room for the glow around the sphere.
+        static let glowScale: CGFloat = 1.22
+        /// Perceptual boost so quiet speech still moves the orb.
+        static let gain: CGFloat = 2.4
+    }
+
     enum Button {
         static let stop: CGFloat = 24
         static let cancel: CGFloat = 20
