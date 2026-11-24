@@ -109,6 +109,9 @@ public struct MainWindowView: View {
             }
         }
         .listStyle(.sidebar)
+        // System Settings rows are 32 pt with the regular sidebar font; the
+        // list default (24-28 pt) packs them tighter than the real app.
+        .environment(\.defaultMinListRowHeight, 32)
         // Native System Settings keeps a permanent sidebar — there is no
         // collapse control. NavigationSplitView inserts one automatically, so
         // remove it and pin the column to `.all` for the same fixed-sidebar feel.
@@ -134,7 +137,8 @@ public struct MainWindowView: View {
     /// material as the list (a single unified shade).
     private var sidebarSearchField: some View {
         NativeSearchField(text: $sidebarSearchText, placeholder: "Search")
-            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 6)
     }
@@ -257,8 +261,10 @@ struct SettingsContentWidth: ViewModifier {
     }
 }
 
-/// Semantic tint for a sidebar glyph. Colors are system colors, so they
-/// follow light/dark appearance instead of being baked into an asset.
+/// Semantic tint for a sidebar glyph.
+///
+/// These are system colors, so they follow light/dark appearance on their own
+/// and match the optical density Apple calibrates for its own tiles.
 struct SidebarIconTint {
     let color: Color
 
@@ -268,18 +274,19 @@ struct SidebarIconTint {
     static let purple = SidebarIconTint(color: Color(nsColor: .systemPurple))
     static let red = SidebarIconTint(color: Color(nsColor: .systemRed))
     static let cyan = SidebarIconTint(color: Color(nsColor: .systemCyan))
-    /// Neutral glyph for utility sections, like Apple's Settings tiles that
-    /// carry a plain white/graphite symbol.
+    /// Neutral glyphs for utility sections, like Apple's plain white symbols.
     static let neutral = SidebarIconTint(color: Color(nsColor: .labelColor))
 }
 
-/// A System Settings-style sidebar icon: a flat squircle tile with a thin rim
-/// and a colored glyph inside.
+/// A System Settings-style sidebar icon: a flat squircle tile with a colored
+/// glyph inside.
 ///
-/// The tile is deliberately neutral, not colored: it is darker than the
-/// sidebar in dark mode and lighter than it in light mode, exactly like the
-/// native tiles. Only the glyph carries the semantic color, so sections stay
-/// scannable by hue without the tile shouting.
+/// Metrics were measured from System Settings on macOS rather than eyeballed:
+/// a 20 pt tile with continuous corners at ~25% radius, a ~0.60 glyph, and a
+/// tile that is simply *darker* than the sidebar in dark mode (and lighter in
+/// light mode). There is deliberately no outline: in the real app the tile is
+/// separated from the sidebar by tone alone, and a 0.5 pt rim reads as a boxed
+/// icon instead of a native one.
 struct SidebarIconView: View {
     let systemImage: String
     var tint: SidebarIconTint = .neutral
@@ -290,23 +297,17 @@ struct SidebarIconView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var cornerRadius: CGFloat { size * 0.26 }
+    private var cornerRadius: CGFloat { size * 0.25 }
 
     private var tileFill: Color {
         colorScheme == .dark
-            ? Color(white: 0.115)
-            : Color(white: 0.965)
-    }
-
-    private var rimColor: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.10)
-            : Color.black.opacity(0.10)
+            ? Color(white: 0.088)
+            : Color(white: 0.92)
     }
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.62, weight: .semibold))
+            .font(.system(size: size * 0.60, weight: .semibold))
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(tint.color)
             .symbolEffect(.variableColor.iterative, isActive: animated)
@@ -314,10 +315,6 @@ struct SidebarIconView: View {
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(tileFill)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(rimColor, lineWidth: 0.5)
             }
     }
 }
@@ -346,7 +343,7 @@ extension NavigationScreen {
         case .overview:
             .blue
         case .history:
-            .indigo
+            .blue
         case .importAudio:
             .green
         case .models:

@@ -29,7 +29,10 @@ struct NativeSearchField: NSViewRepresentable {
         field.sendsWholeSearchString = false
         field.sendsSearchStringImmediately = true
         field.focusRingType = .default
-        field.controlSize = .regular
+        // `.large` is the 28 pt search field System Settings uses in its
+        // sidebar; `.regular` renders a 22 pt field that reads cramped next to
+        // 32 pt rows.
+        field.controlSize = .large
         field.font = .systemFont(ofSize: NSFont.systemFontSize(for: .regular))
         // SwiftUI proposes the frame, but AppKit's intrinsic hugging otherwise
         // keeps the field at ~200 pt — visibly narrower than System Settings.
