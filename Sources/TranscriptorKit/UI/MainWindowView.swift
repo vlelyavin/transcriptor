@@ -137,8 +137,10 @@ public struct MainWindowView: View {
     /// material as the list (a single unified shade).
     private var sidebarSearchField: some View {
         NativeSearchField(text: $sidebarSearchText, placeholder: "Search")
-            // 29 pt frame → 27 pt bezel, measured against System Settings.
-            .frame(height: 29)
+            // SwiftUI pushes its own controlSize into hosted NSControls, so the
+            // AppKit-side .large is overridden unless it is set here too.
+            .controlSize(.large)
+            .frame(height: 28)
             .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 6)
