@@ -150,7 +150,7 @@ public struct MainWindowView: View {
         Label {
             Text(screen.title)
         } icon: {
-            SidebarIconView(systemImage: screen.systemImage, tint: screen.sidebarTint)
+            SidebarIconView(systemImage: screen.sidebarSymbol, tint: screen.sidebarTint)
         }
         .tag(SidebarItem.screen(screen))
         .help(screen.title)
@@ -265,8 +265,8 @@ struct SettingsContentWidth: ViewModifier {
 }
 
 /// Glyph colour for a sidebar tile. Dark-mode values are sampled from macOS
-/// System Settings (its glyphs are lighter and less saturated than the raw
-/// system colours); light mode uses the system colours as-is.
+/// System Settings glyphs (Privacy hand, Battery, Touch ID); light mode uses
+/// the system colours as-is.
 struct SidebarIconTint {
     let dark: Color
     let light: Color
@@ -280,19 +280,20 @@ struct SidebarIconTint {
 
     static let blue = SidebarIconTint(dark: (64, 144, 240), light: .systemBlue)
     static let indigo = SidebarIconTint(dark: (120, 118, 240), light: .systemIndigo)
-    static let green = SidebarIconTint(dark: (101, 200, 100), light: .systemGreen)
-    static let purple = SidebarIconTint(dark: (190, 110, 240), light: .systemPurple)
-    static let red = SidebarIconTint(dark: (240, 90, 80), light: .systemRed)
-    static let cyan = SidebarIconTint(dark: (90, 195, 235), light: .systemCyan)
+    static let green = SidebarIconTint(dark: (52, 199, 89), light: .systemGreen)
+    static let purple = SidebarIconTint(dark: (175, 92, 242), light: .systemPurple)
+    static let red = SidebarIconTint(dark: (255, 69, 78), light: .systemRed)
+    static let cyan = SidebarIconTint(dark: (64, 190, 245), light: .systemCyan)
     /// Utility panes use Apple's grey glyph (General, Keyboard, Menu Bar).
-    static let neutral = SidebarIconTint(dark: (158, 158, 163), light: .systemGray)
+    static let neutral = SidebarIconTint(dark: (186, 186, 192), light: .systemGray)
 }
 
 /// A System Settings-style icon: a dark glass squircle with a coloured glyph.
 ///
 /// Measured from System Settings on a Retina capture: 20 pt tile, a vertical
 /// fill gradient (~12% → 6% white in dark mode), a 0.5 pt highlight on the top
-/// edge only (sides stay soft), a wide soft shadow, and a medium-weight line glyph.
+/// edge only (sides stay soft), a wide soft shadow, and a filled semibold glyph
+/// (line glyphs read washed-out at this size).
 struct SidebarIconView: View {
     let systemImage: String
     var tint: SidebarIconTint = .neutral
@@ -315,7 +316,7 @@ struct SidebarIconView: View {
         Image(systemName: systemImage)
             .resizable()
             .scaledToFit()
-            .fontWeight(.medium)
+            .fontWeight(.semibold)
             .frame(width: size * glyphRatio, height: size * glyphRatio)
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(tint.color(for: colorScheme).gradient)
@@ -368,6 +369,19 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
 }
 
 extension NavigationScreen {
+    var sidebarSymbol: String {
+        switch self {
+        case .overview:
+            "waveform"
+        case .history:
+            "clock.fill"
+        case .importAudio:
+            "square.and.arrow.down.fill"
+        case .models:
+            "cpu.fill"
+        }
+    }
+
     var sidebarTint: SidebarIconTint {
         switch self {
         case .overview:
@@ -405,15 +419,15 @@ extension SettingsPane {
     var sidebarFillSymbol: String {
         switch self {
         case .general:
-            "gearshape"
+            "gearshape.fill"
         case .recording:
             "mic.fill"
         case .keyboardShortcut:
-            "keyboard"
+            "keyboard.fill"
         case .overlay:
             "rectangle.inset.filled"
         case .storage:
-            "internaldrive"
+            "internaldrive.fill"
         case .privacy:
             "hand.raised.fill"
         case .advanced:
