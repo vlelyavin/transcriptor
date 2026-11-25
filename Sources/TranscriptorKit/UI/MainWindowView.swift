@@ -265,8 +265,8 @@ struct SettingsContentWidth: ViewModifier {
 }
 
 /// Glyph colour for a sidebar tile. Dark-mode values are sampled from macOS
-/// System Settings glyphs (Privacy hand, Battery, Touch ID); light mode uses
-/// the system colours as-is.
+/// System Settings glyphs (Privacy hand, Battery, Touch ID) in Display P3,
+/// the space screenshots are taken in; light mode uses the system colours as-is.
 struct SidebarIconTint {
     let dark: Color
     let light: Color
@@ -274,16 +274,16 @@ struct SidebarIconTint {
     func color(for scheme: ColorScheme) -> Color { scheme == .dark ? dark : light }
 
     private init(dark: (Double, Double, Double), light: NSColor) {
-        self.dark = Color(.sRGB, red: dark.0 / 255, green: dark.1 / 255, blue: dark.2 / 255)
+        self.dark = Color(.displayP3, red: dark.0 / 255, green: dark.1 / 255, blue: dark.2 / 255)
         self.light = Color(nsColor: light)
     }
 
-    static let blue = SidebarIconTint(dark: (64, 144, 240), light: .systemBlue)
+    static let blue = SidebarIconTint(dark: (63, 140, 236), light: .systemBlue)
     static let indigo = SidebarIconTint(dark: (120, 118, 240), light: .systemIndigo)
-    static let green = SidebarIconTint(dark: (52, 199, 89), light: .systemGreen)
-    static let purple = SidebarIconTint(dark: (175, 92, 242), light: .systemPurple)
-    static let red = SidebarIconTint(dark: (255, 69, 78), light: .systemRed)
-    static let cyan = SidebarIconTint(dark: (64, 190, 245), light: .systemCyan)
+    static let green = SidebarIconTint(dark: (98, 200, 98), light: .systemGreen)
+    static let purple = SidebarIconTint(dark: (165, 96, 235), light: .systemPurple)
+    static let red = SidebarIconTint(dark: (226, 72, 94), light: .systemRed)
+    static let cyan = SidebarIconTint(dark: (102, 188, 240), light: .systemCyan)
     /// Utility panes use Apple's grey glyph (General, Keyboard, Menu Bar).
     static let neutral = SidebarIconTint(dark: (186, 186, 192), light: .systemGray)
 }
