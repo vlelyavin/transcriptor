@@ -35,9 +35,9 @@ public enum NavigationScreen: String, CaseIterable, Identifiable, Hashable {
         case .history:
             "clock.arrow.circlepath"
         case .importAudio:
-            "square.and.arrow.down.fill"
+            "square.and.arrow.down"
         case .models:
-            "cpu.fill"
+            "cpu"
         }
     }
 

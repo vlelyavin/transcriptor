@@ -137,7 +137,8 @@ public struct MainWindowView: View {
     /// material as the list (a single unified shade).
     private var sidebarSearchField: some View {
         NativeSearchField(text: $sidebarSearchText, placeholder: "Search")
-            .frame(height: 26)
+            // 29 pt frame → 27 pt bezel, measured against System Settings.
+            .frame(height: 29)
             .padding(.horizontal, 8)
             .padding(.top, 8)
             .padding(.bottom, 6)
@@ -261,32 +262,35 @@ struct SettingsContentWidth: ViewModifier {
     }
 }
 
-/// Semantic tint for a sidebar glyph.
-///
-/// These are system colors, so they follow light/dark appearance on their own
-/// and match the optical density Apple calibrates for its own tiles.
+/// Glyph colour for a sidebar tile. Dark-mode values are sampled from macOS
+/// System Settings (its glyphs are lighter and less saturated than the raw
+/// system colours); light mode uses the system colours as-is.
 struct SidebarIconTint {
-    let color: Color
+    let dark: Color
+    let light: Color
 
-    static let blue = SidebarIconTint(color: Color(nsColor: .systemBlue))
-    static let indigo = SidebarIconTint(color: Color(nsColor: .systemIndigo))
-    static let green = SidebarIconTint(color: Color(nsColor: .systemGreen))
-    static let purple = SidebarIconTint(color: Color(nsColor: .systemPurple))
-    static let red = SidebarIconTint(color: Color(nsColor: .systemRed))
-    static let cyan = SidebarIconTint(color: Color(nsColor: .systemCyan))
-    /// Neutral glyphs for utility sections, like Apple's plain white symbols.
-    static let neutral = SidebarIconTint(color: Color(nsColor: .labelColor))
+    func color(for scheme: ColorScheme) -> Color { scheme == .dark ? dark : light }
+
+    private init(dark: (Double, Double, Double), light: NSColor) {
+        self.dark = Color(.sRGB, red: dark.0 / 255, green: dark.1 / 255, blue: dark.2 / 255)
+        self.light = Color(nsColor: light)
+    }
+
+    static let blue = SidebarIconTint(dark: (64, 144, 240), light: .systemBlue)
+    static let indigo = SidebarIconTint(dark: (120, 118, 240), light: .systemIndigo)
+    static let green = SidebarIconTint(dark: (101, 200, 100), light: .systemGreen)
+    static let purple = SidebarIconTint(dark: (190, 110, 240), light: .systemPurple)
+    static let red = SidebarIconTint(dark: (240, 90, 80), light: .systemRed)
+    static let cyan = SidebarIconTint(dark: (90, 195, 235), light: .systemCyan)
+    /// Utility panes use Apple's grey glyph (General, Keyboard, Menu Bar).
+    static let neutral = SidebarIconTint(dark: (158, 158, 163), light: .systemGray)
 }
 
-/// A System Settings-style sidebar icon: a flat squircle tile with a colored
-/// glyph inside.
+/// A System Settings-style icon: a dark glass squircle with a coloured glyph.
 ///
-/// Metrics were measured from System Settings on macOS rather than eyeballed:
-/// a 20 pt tile with continuous corners at ~25% radius, a ~0.60 glyph, and a
-/// tile that is simply *darker* than the sidebar in dark mode (and lighter in
-/// light mode). There is deliberately no outline: in the real app the tile is
-/// separated from the sidebar by tone alone, and a 0.5 pt rim reads as a boxed
-/// icon instead of a native one.
+/// Measured from System Settings on a Retina capture: 20 pt tile, a vertical
+/// fill gradient (~12% → 6% white in dark mode), a 0.5 pt edge highlight that
+/// is brightest on top, a soft shadow below, and a medium-weight line glyph.
 struct SidebarIconView: View {
     let systemImage: String
     var tint: SidebarIconTint = .neutral
@@ -297,24 +301,41 @@ struct SidebarIconView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var cornerRadius: CGFloat { size * 0.25 }
-
-    private var tileFill: Color {
-        colorScheme == .dark
-            ? Color(white: 0.088)
-            : Color(white: 0.92)
-    }
+    private var isDark: Bool { colorScheme == .dark }
 
     var body: some View {
+        let tile = RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.60, weight: .semibold))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(tint.color)
+            .font(.system(size: size * 0.66, weight: .medium))
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(tint.color(for: colorScheme).gradient)
             .symbolEffect(.variableColor.iterative, isActive: animated)
             .frame(width: size, height: size)
             .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(tileFill)
+                tile
+                    .fill(LinearGradient(
+                        colors: isDark
+                            ? [Color(white: 0.125), Color(white: 0.06)]
+                            : [Color(white: 1.0), Color(white: 0.93)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .overlay {
+                        tile.strokeBorder(
+                            LinearGradient(
+                                stops: isDark
+                                    ? [.init(color: .white.opacity(0.16), location: 0),
+                                       .init(color: .white.opacity(0.05), location: 0.5),
+                                       .init(color: .white.opacity(0.08), location: 1)]
+                                    : [.init(color: .black.opacity(0.04), location: 0),
+                                       .init(color: .black.opacity(0.10), location: 1)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                    }
+                    .shadow(color: .black.opacity(isDark ? 0.35 : 0.12), radius: size * 0.04, y: size * 0.025)
             }
     }
 }
@@ -375,15 +396,15 @@ extension SettingsPane {
     var sidebarFillSymbol: String {
         switch self {
         case .general:
-            "gearshape.fill"
+            "gearshape"
         case .recording:
             "mic.fill"
         case .keyboardShortcut:
-            "keyboard.fill"
+            "keyboard"
         case .overlay:
             "rectangle.inset.filled"
         case .storage:
-            "internaldrive.fill"
+            "internaldrive"
         case .privacy:
             "hand.raised.fill"
         case .advanced:
