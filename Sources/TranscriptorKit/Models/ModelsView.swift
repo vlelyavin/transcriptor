@@ -74,14 +74,11 @@ public struct ModelsView: View {
                     }
                 }
                 .pickerStyle(.inline)
+                .labelsHidden()
             } label: {
-                Label(
-                    "Show \(appState.modelsFilter.title)",
-                    systemImage: appState.modelsFilter == .all
-                        ? "line.3.horizontal.decrease.circle"
-                        : "line.3.horizontal.decrease.circle.fill"
-                )
+                Label("Filter", systemImage: "line.3.horizontal.decrease")
             }
+            .menuIndicator(.hidden)
             .help("Show all, local or remote models")
 
             NativeSearchField(
@@ -226,18 +223,15 @@ public struct ModelsView: View {
                 // The selected model shows an inactive "Selected" button rather
                 // than a bare checkmark, so the relationship to "Select" is clear.
                 Button("Selected") {}
-                    .controlSize(.small)
                     .disabled(true)
                     .help("This is the selected local model")
             } else if isSelectable(state) {
                 Button("Select") {
                     appState.selectLocalModel(model.id)
                 }
-                .controlSize(.small)
             }
 
             actionButton(for: model, state: state)
-                .controlSize(.small)
 
             if canDelete(state) {
                 Button {
@@ -245,7 +239,6 @@ public struct ModelsView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .controlSize(.small)
                 .help("Delete downloaded model files")
             }
         }

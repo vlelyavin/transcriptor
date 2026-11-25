@@ -7,7 +7,6 @@ public struct HistoryView: View {
     @State private var selectedEntryID: HistoryEntry.ID?
     @State private var isCompactDetailVisible = false
     @State private var entryPendingDeletion: HistoryEntry?
-    @State private var showDeleteAllConfirmation = false
     @Bindable private var appState: AppState
 
     public init(appState: AppState) {
@@ -39,6 +38,7 @@ public struct HistoryView: View {
                 }
             }
             .background(Color(nsColor: .windowBackgroundColor))
+            .toolbar { filterToolbar }
             .toolbar {
                 // In the narrow single-column layout, a native toolbar back
                 // button returns to the list — replacing the old in-content
@@ -77,6 +77,13 @@ public struct HistoryView: View {
             }
         }
         .navigationTitle("History")
+        .navigationSubtitle(historySubtitle)
+        .onChange(of: searchText) { _, newValue in
+            // Searching from the compact detail view must reveal the list.
+            if !newValue.isEmpty {
+                isCompactDetailVisible = false
+            }
+        }
         .alert("Delete History Item", isPresented: Binding(
             get: { entryPendingDeletion != nil },
             set: { newValue in
@@ -97,18 +104,11 @@ public struct HistoryView: View {
         } message: {
             Text("This removes the history record and its managed local files.")
         }
-        .confirmationDialog("Delete all history?", isPresented: $showDeleteAllConfirmation, titleVisibility: .visible) {
-            Button("Delete All", role: .destructive) {
-                appState.deleteAllHistory()
-            }
-        } message: {
-            Text("This removes every stored history item and all managed audio files.")
-        }
     }
 
     private func historyListPane(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            headerControls(isCompact: isCompact)
+            headerControls
 
             Group {
                 if filteredEntries.isEmpty {
@@ -192,54 +192,49 @@ public struct HistoryView: View {
         }
     }
 
-    private func headerControls(isCompact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Native macOS never stretches a content search field across the
-            // whole pane: System Settings, Notes and Mail all keep it compact
-            // and leading-aligned. Cap the width so it reads as a field, not a
-            // full-width capsule.
+    /// Only transient messages remain above the list; search, the source
+    /// filter and the item count moved to the toolbar like on Models.
+    @ViewBuilder
+    private var headerControls: some View {
+        if let message = appState.historyActionMessage ?? appState.storageWarningMessage {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var filterToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Menu {
+                Picker("Source", selection: $selectedFilter) {
+                    ForEach(HistoryFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Label("Filter", systemImage: "line.3.horizontal.decrease")
+            }
+            .menuIndicator(.hidden)
+            .help("Show all items, dictations or imports")
+
             NativeSearchField(
                 text: $searchText,
-                placeholder: "Search transcripts or filenames",
+                placeholder: "Search",
                 focusRequest: appState.historySearchFocusRequest
             )
-            .frame(width: 260)
-
-            Picker("Source", selection: $selectedFilter) {
-                ForEach(HistoryFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            HStack {
-                if let historyActionMessage = appState.historyActionMessage {
-                    Text(historyActionMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let storageWarningMessage = appState.storageWarningMessage {
-                    Text(storageWarningMessage)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else {
-                    Text("\(filteredEntries.count) item\(filteredEntries.count == 1 ? "" : "s") • \(megabyteString(for: appState.storageUsage.totalManagedBytes)) / \(appState.storageSettings.capMegabytes) MB")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if !isCompact {
-                    Button("Delete All", role: .destructive) {
-                        showDeleteAllConfirmation = true
-                    }
-                    .disabled(appState.historyStore.entries.isEmpty)
-                }
-            }
+            .frame(width: 200)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+    }
+
+    private var historySubtitle: String {
+        let count = filteredEntries.count
+        let used = ByteCountFormatter.string(fromByteCount: appState.storageUsage.totalManagedBytes, countStyle: .file)
+        return "\(count) item\(count == 1 ? "" : "s"), \(used) of \(appState.storageSettings.capMegabytes) MB"
     }
 
     @ViewBuilder
@@ -744,10 +739,6 @@ public struct HistoryView: View {
         let minutes = durationSeconds / 60
         let seconds = durationSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private func megabyteString(for bytes: Int64) -> String {
-        String(format: "%.2f", Double(bytes) / 1_048_576)
     }
 
     private var byteCountFormatter: ByteCountFormatter {

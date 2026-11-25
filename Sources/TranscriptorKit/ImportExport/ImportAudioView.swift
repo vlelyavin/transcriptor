@@ -14,8 +14,6 @@ public struct ImportAudioView: View {
         Form {
             Section {
                 dropZone
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
             }
 
             if let importFeedbackMessage = appState.importFeedbackMessage {
@@ -26,30 +24,20 @@ public struct ImportAudioView: View {
                 }
             }
 
-            Section("Import Details") {
-                LabeledContent("Supported formats") {
-                    Text(".mp3, .m4a, .wav, .ogg, .oga, .opus")
-                }
-
-                LabeledContent("Storage") {
-                    Text("Copied into Transcriptor-managed storage")
-                        .foregroundStyle(.secondary)
-                }
-
-                Toggle(
-                    "Auto-transcribe",
-                    isOn: Binding(
+            Section {
+                Toggle(isOn: Binding(
                         get: { appState.transcriptionPreferences.autoTranscribeAfterCapture && appState.canEnableAutoTranscribe },
                         set: { appState.transcriptionPreferences.autoTranscribeAfterCapture = $0 && appState.canEnableAutoTranscribe }
                     )
-                )
-                .disabled(!appState.canEnableAutoTranscribe)
-
-                if !appState.canEnableAutoTranscribe {
-                    Text("Download a transcription model to enable automatic transcription.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ) {
+                    Text("Transcribe automatically")
+                    Text(appState.canEnableAutoTranscribe
+                        ? "Imported files are transcribed as soon as they're added."
+                        : "Set up a transcription model to transcribe imports automatically.")
                 }
+                .disabled(!appState.canEnableAutoTranscribe)
+            } footer: {
+                Text("Files are copied into Transcriptor's storage, so moving or deleting the original doesn't affect your history.")
             }
 
             Section("Recent Imports") {
@@ -81,46 +69,33 @@ public struct ImportAudioView: View {
         }
     }
 
-    /// A native-feeling drop well, styled like the upload surfaces macOS uses in
-    /// system panels: a large rounded card on a neutral material, a glyph inside a
-    /// tinted circle, a clear primary line with a secondary hint, and a bordered
-    /// "Choose Files…" button. The whole well tints toward the accent color and its
-    /// border switches to a dashed accent stroke while a drag is hovering.
+    /// The drop target is the section card itself, laid out like the header
+    /// cards in System Settings (icon tile, title, description). A dashed accent
+    /// outline appears only while a drag hovers.
     private var dropZone: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 64, height: 64)
-                .background(Color.accentColor.opacity(isDropTargeted ? 0.22 : 0.12), in: Circle())
+        VStack(spacing: 12) {
+            SidebarIconView(systemImage: "square.and.arrow.down", tint: .green, size: 48)
 
-            VStack(spacing: 4) {
-                Text(isDropTargeted ? "Release to import" : "Drag audio files here")
+            VStack(spacing: 3) {
+                Text(isDropTargeted ? "Release to Import" : "Drop Audio Files Here")
                     .font(.headline)
 
-                Text("MP3, M4A, WAV, OGG, OGA, or OPUS")
-                    .font(.callout)
+                Text("MP3, M4A, WAV, OGG, OGA or OPUS")
                     .foregroundStyle(.secondary)
             }
 
             Button("Choose Files…") {
                 isFileImporterPresented = true
             }
-            .controlSize(.large)
             .keyboardShortcut("I", modifiers: [.command, .shift])
         }
-        .frame(maxWidth: .infinity, minHeight: 220)
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isDropTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.06)) : AnyShapeStyle(.quaternary.opacity(0.4)))
-        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(
-                    isDropTargeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.separator),
-                    style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: isDropTargeted ? [7, 5] : [])
-                )
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+            }
         }
         .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted) { providers in
@@ -195,10 +170,6 @@ private struct RecentImportRow: View {
                 }
 
                 Spacer()
-
-                Text(item.format.fileExtensionLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))

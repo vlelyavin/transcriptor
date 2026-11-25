@@ -87,16 +87,13 @@ public struct SettingsPaneDetailView: View {
                 .disabled(appState.generalSettings.alsoCopyTranscriptToClipboard)
 
             LabeledContent("Accessibility") {
-                Text(appState.accessibilityPermissionStatus.rawValue)
-            }
-
-            HStack {
-                Button("Request Accessibility Access") {
-                    appState.requestAccessibilityPermissionPrompt()
-                }
-
-                Button("Open Accessibility Settings") {
-                    appState.openAccessibilityPrivacySettings()
+                if appState.isAccessibilityGranted {
+                    Text("Granted")
+                } else {
+                    Button("Grant Access…") {
+                        appState.requestAccessibilityPermissionPrompt()
+                        appState.openAccessibilityPrivacySettings()
+                    }
                 }
             }
         } header: {
@@ -175,7 +172,17 @@ public struct SettingsPaneDetailView: View {
     @ViewBuilder
     private var shortcutSections: some View {
         Section {
-            LabeledContent("Shortcut") {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shortcut")
+                    Text(appState.recordingState.mode == .holdToTalk
+                        ? "Hold the shortcut to dictate, release it to insert the text into the app you're using."
+                        : "Press the shortcut to start dictating, press it again to insert the text into the app you're using.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 16)
                 HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
             }
         } header: {
@@ -183,7 +190,7 @@ public struct SettingsPaneDetailView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(appState.recordingState.hotkey.obviousConflictWarning
-                    ?? "Click the shortcut and press a new key combination. Avoid system shortcuts like Spotlight or input source switching.")
+                    ?? "To change it, click the shortcut and press a new key combination. Avoid shortcuts used by Spotlight or input source switching.")
                 if let registrationError = appState.hotkeyRegistrationErrorMessage {
                     Text(registrationError)
                         .foregroundStyle(.red)
