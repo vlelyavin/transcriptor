@@ -305,10 +305,18 @@ struct SidebarIconView: View {
 
     private var isDark: Bool { colorScheme == .dark }
 
+    /// Glyph box as a share of the tile; System Settings leaves ~0.17 padding.
+    private let glyphRatio: CGFloat = 0.66
+
     var body: some View {
         let tile = RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
+        // Resizable + fixed box: a sidebar `List` scales label symbols up ~1.4x
+        // through its environment, which pushed glyphs to the tile edge.
         Image(systemName: systemImage)
-            .font(.system(size: size * 0.66, weight: .medium))
+            .resizable()
+            .scaledToFit()
+            .fontWeight(.medium)
+            .frame(width: size * glyphRatio, height: size * glyphRatio)
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(tint.color(for: colorScheme).gradient)
             .symbolEffect(.variableColor.iterative, isActive: animated)
@@ -326,9 +334,9 @@ struct SidebarIconView: View {
                         tile.strokeBorder(
                             LinearGradient(
                                 stops: isDark
-                                    ? [.init(color: .white.opacity(0.16), location: 0),
-                                       .init(color: .white.opacity(0.05), location: 0.5),
-                                       .init(color: .white.opacity(0.08), location: 1)]
+                                    ? [.init(color: .white.opacity(0.24), location: 0),
+                                       .init(color: .white.opacity(0.10), location: 0.5),
+                                       .init(color: .white.opacity(0.12), location: 1)]
                                     : [.init(color: .black.opacity(0.04), location: 0),
                                        .init(color: .black.opacity(0.10), location: 1)],
                                 startPoint: .top,
@@ -337,7 +345,7 @@ struct SidebarIconView: View {
                             lineWidth: 0.5
                         )
                     }
-                    .shadow(color: .black.opacity(isDark ? 0.35 : 0.12), radius: size * 0.04, y: size * 0.025)
+                    .shadow(color: .black.opacity(isDark ? 0.55 : 0.15), radius: size * 0.06, y: size * 0.04)
             }
     }
 }

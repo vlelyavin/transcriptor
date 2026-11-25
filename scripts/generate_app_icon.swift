@@ -2,8 +2,8 @@
 import AppKit
 
 // Renders the Transcriptor app icon as an .icns: a black squircle on Apple's
-// macOS icon grid (824/1024 tile, 100 px margin) with a glowing gradient
-// waveform. Run from the repo root: swift scripts/generate_app_icon.swift
+// macOS icon grid (824/1024 tile, 100 px margin) with a voice-memo style
+// waveform: blue spoken part, white remainder, split by a text caret. Run from the repo root: swift scripts/generate_app_icon.swift
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let iconset = root.appendingPathComponent("dist/AppIcon.iconset")
@@ -52,62 +52,68 @@ func renderIcon(canvas: CGFloat) -> NSBitmapImageRep {
     shadow.shadowBlurRadius = canvas * 0.02
     shadow.shadowOffset = NSSize(width: 0, height: -canvas * 0.01)
     shadow.set()
-    NSGradient(colors: [rgb(0x1E1E21), rgb(0x050506)])!.draw(in: tilePath, angle: -90)
+    NSGradient(colors: [rgb(0x232326), rgb(0x0B0B0C)])!.draw(in: tilePath, angle: -90)
     NSShadow().set()
-
-    // Faint violet glow behind the waveform gives the black tile depth.
-    NSGraphicsContext.saveGraphicsState()
-    tilePath.addClip()
-    NSGradient(colors: [
-        rgb(0x7A4DFF).withAlphaComponent(0.28),
-        rgb(0x7A4DFF).withAlphaComponent(0.0),
-    ])!.draw(
-        fromCenter: NSPoint(x: tileRect.midX, y: tileRect.midY), radius: 0,
-        toCenter: NSPoint(x: tileRect.midX, y: tileRect.midY), radius: tileRect.width * 0.55,
-        options: []
-    )
-    NSGraphicsContext.restoreGraphicsState()
 
     // Glass edge: brightest on top, like Apple's dark icons.
     NSGraphicsContext.saveGraphicsState()
-    let rim = NSBezierPath(roundedRect: tileRect.insetBy(dx: canvas * 0.002, dy: canvas * 0.002), xRadius: radius, yRadius: radius)
-    rim.lineWidth = max(1, canvas * 0.004)
-    rim.setClip()
-    let rimOutline = NSBezierPath(cgPath: rim.cgPath.copy(strokingWithWidth: rim.lineWidth, lineCap: .butt, lineJoin: .round, miterLimit: 10))
-    NSGradient(colors: [NSColor.white.withAlphaComponent(0.30), NSColor.white.withAlphaComponent(0.06)])!
+    let rimWidth = max(1, canvas * 0.004)
+    let rim = NSBezierPath(roundedRect: tileRect.insetBy(dx: rimWidth / 2, dy: rimWidth / 2), xRadius: radius, yRadius: radius)
+    let rimOutline = NSBezierPath(cgPath: rim.cgPath.copy(strokingWithWidth: rimWidth, lineCap: .butt, lineJoin: .round, miterLimit: 10))
+    NSGradient(colors: [NSColor.white.withAlphaComponent(0.28), NSColor.white.withAlphaComponent(0.05)])!
         .draw(in: rimOutline, angle: -90)
     NSGraphicsContext.restoreGraphicsState()
 
-    // Waveform: rounded bars with a cyan → blue → violet → pink gradient.
-    let heights: [CGFloat] = [0.20, 0.42, 0.70, 0.52, 0.95, 0.62, 0.80, 0.40, 0.20]
-    let barWidth = tileRect.width * 0.062
-    let gap = tileRect.width * 0.040
-    let totalWidth = CGFloat(heights.count) * barWidth + CGFloat(heights.count - 1) * gap
-    let maxHeight = tileRect.height * 0.58
-    let bars = NSBezierPath()
-    for (index, h) in heights.enumerated() {
-        let height = max(barWidth, maxHeight * h)
-        let rect = NSRect(
-            x: tileRect.midX - totalWidth / 2 + CGFloat(index) * (barWidth + gap),
-            y: tileRect.midY - height / 2,
-            width: barWidth,
-            height: height
-        )
-        bars.append(NSBezierPath(roundedRect: rect, xRadius: barWidth / 2, yRadius: barWidth / 2))
-    }
-    let colors = [rgb(0x4FD1FF), rgb(0x3D7BFF), rgb(0x9B5CFF), rgb(0xFF4F9A)]
+    // Voice-memo style waveform: spoken part in Apple blue, the rest in white,
+    // split by a text caret (voice → text).
+    let unit = tileRect.width / 824
+    let barWidth = 13 * unit
+    let step = 33 * unit
+    let caretX = tileRect.midX + 20 * unit
+    let blueHeights: [CGFloat] = [0.06, 0.18, 0.12, 0.40, 0.30, 0.78, 0.52, 0.64, 0.92, 0.46, 0.70]
+    let whiteHeights: [CGFloat] = [0.10, 0.30, 0.42, 0.20, 0.24, 0.08, 0.14, 0.05, 0.08]
+    let maxHeight = tileRect.height * 0.66
 
+    func bar(at x: CGFloat, _ h: CGFloat) -> NSBezierPath {
+        let height = max(barWidth, maxHeight * h)
+        return NSBezierPath(
+            roundedRect: NSRect(x: x - barWidth / 2, y: tileRect.midY - height / 2, width: barWidth, height: height),
+            xRadius: barWidth / 2, yRadius: barWidth / 2
+        )
+    }
+
+    let blue = NSBezierPath()
+    for (i, h) in blueHeights.reversed().enumerated() {
+        blue.append(bar(at: caretX - CGFloat(i + 1) * step, h))
+    }
+    NSGradient(colors: [rgb(0x5AB0FF), rgb(0x0A6CFF)])!.draw(in: blue, angle: -90)
+
+    let white = NSBezierPath()
+    for (i, h) in whiteHeights.enumerated() {
+        white.append(bar(at: caretX + CGFloat(i + 1) * step, h))
+    }
+    rgb(0xF2F2F7).setFill()
+    white.fill()
+
+    // Text caret (I-beam) with a soft blue glow.
+    let caretHeight = tileRect.height * 0.74
+    let stem = 12 * unit
+    let serif = 56 * unit
+    let caret = NSBezierPath(roundedRect: NSRect(x: caretX - stem / 2, y: tileRect.midY - caretHeight / 2, width: stem, height: caretHeight), xRadius: stem / 2, yRadius: stem / 2)
+    for y in [tileRect.midY - caretHeight / 2, tileRect.midY + caretHeight / 2 - stem] {
+        caret.append(NSBezierPath(roundedRect: NSRect(x: caretX - serif / 2, y: y, width: serif, height: stem), xRadius: stem / 2, yRadius: stem / 2))
+    }
     let glow = NSShadow()
-    glow.shadowColor = rgb(0x8A5CFF).withAlphaComponent(0.75)
-    glow.shadowBlurRadius = canvas * 0.045
+    glow.shadowColor = rgb(0x2E8BFF).withAlphaComponent(0.9)
+    glow.shadowBlurRadius = canvas * 0.03
     glow.shadowOffset = .zero
     NSGraphicsContext.saveGraphicsState()
     glow.set()
-    rgb(0x6A5CFF).setFill()
-    bars.fill()
+    rgb(0x7DBBFF).setFill()
+    caret.fill()
     NSGraphicsContext.restoreGraphicsState()
-
-    NSGradient(colors: colors)!.draw(in: bars, angle: 0)
+    rgb(0xBFDDFF).setFill()
+    caret.fill()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep
