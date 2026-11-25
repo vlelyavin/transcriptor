@@ -12,19 +12,23 @@ public struct HotkeyRecorderButton: View {
     }
 
     public var body: some View {
-        HStack(spacing: 12) {
-            Button(isCapturing ? "Press Shortcut..." : configuration.displayString) {
+        HStack(spacing: 8) {
+            if configuration != HotkeyConfiguration(), !isCapturing {
+                Button("Reset") {
+                    configuration = HotkeyConfiguration()
+                }
+            }
+
+            Button {
                 if isCapturing {
                     stopCapturing()
                 } else {
                     startCapturing()
                 }
+            } label: {
+                Text(isCapturing ? "Type Shortcut…" : configuration.displayString)
+                    .frame(minWidth: 64)
             }
-
-            Button("Reset") {
-                configuration = HotkeyConfiguration()
-            }
-            .disabled(isCapturing)
         }
         .onDisappear {
             stopCapturing()

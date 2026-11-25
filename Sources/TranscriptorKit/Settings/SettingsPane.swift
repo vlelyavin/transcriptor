@@ -33,12 +33,12 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Hashable, Sendable
     /// now (the recording overlay still works on its defaults). The case is kept
     /// so the rendering/search code stays exhaustive and the page is trivial to
     /// re-surface later — just add `.overlay` back here.
+    /// `.privacy` is omitted too: it held only static explanatory text, no settings.
     public static let sidebarVisiblePanes: [SettingsPane] = [
         .general,
         .recording,
         .keyboardShortcut,
         .storage,
-        .privacy,
         .advanced,
     ]
 

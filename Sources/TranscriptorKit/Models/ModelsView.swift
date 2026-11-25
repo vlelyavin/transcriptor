@@ -12,84 +12,85 @@ public struct ModelsView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            filterBar
+        Form {
+            currentSelectionSection
 
-            Form {
-                currentSelectionSection
-
-                if showsLocal {
-                    ForEach(appState.modelCatalog.sections) { section in
-                        let models = filteredModels(in: section)
-                        ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
-                            Section {
-                                localModelRows(model)
-                            } header: {
-                                if index == 0 {
-                                    Text(section.title)
-                                }
-                            } footer: {
-                                if index == models.count - 1 {
-                                    Text(section.description)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+            if showsLocal {
+                ForEach(appState.modelCatalog.sections) { section in
+                    let models = filteredModels(in: section)
+                    ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
+                        Section {
+                            localModelRows(model)
+                        } header: {
+                            if index == 0 {
+                                Text(section.title)
+                            }
+                        } footer: {
+                            if index == models.count - 1 {
+                                Text(section.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
+            }
 
-                if showsRemote {
-                    ForEach(filteredRemoteProviders) { provider in
-                        remoteProviderSection(provider)
-                    }
+            if showsRemote {
+                ForEach(filteredRemoteProviders) { provider in
+                    remoteProviderSection(provider)
                 }
+            }
 
-                if !hasVisibleContent {
-                    Section {
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.secondary)
-                            Text("No models match")
-                                .foregroundStyle(.secondary)
-                        }
+            if !hasVisibleContent {
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        Text("No models match")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            .formStyle(.grouped)
         }
+        .formStyle(.grouped)
+        .toolbar { filterToolbar }
         .navigationTitle("Models")
         .onAppear { appState.ensureActiveTargetValid() }
     }
 
     // MARK: - Filter bar
 
-    /// Native Local / Remote scope filter plus a real `NSSearchField`, mirroring
-    /// the search affordance on the History screen. `Cmd+F` on Models focuses
-    /// this field through `modelsSearchFocusRequest`.
-    private var filterBar: some View {
-        HStack(spacing: 12) {
-            Picker("Show", selection: $appState.modelsFilter) {
-                ForEach(ModelsFilterScope.allCases) { scope in
-                    Text(scope.title).tag(scope)
+    /// Search and the All / Local / Remote scope live in the toolbar, like
+    /// Mail or Finder, instead of a separate strip above the form. `Cmd+F` on
+    /// Models focuses the field through `modelsSearchFocusRequest`.
+    @ToolbarContentBuilder
+    private var filterToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Menu {
+                Picker("Show", selection: $appState.modelsFilter) {
+                    ForEach(ModelsFilterScope.allCases) { scope in
+                        Text(scope.title).tag(scope)
+                    }
                 }
+                .pickerStyle(.inline)
+            } label: {
+                Label(
+                    "Show \(appState.modelsFilter.title)",
+                    systemImage: appState.modelsFilter == .all
+                        ? "line.3.horizontal.decrease.circle"
+                        : "line.3.horizontal.decrease.circle.fill"
+                )
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 210)
+            .help("Show all, local or remote models")
 
             NativeSearchField(
                 text: $searchText,
-                placeholder: "Search models and providers",
+                placeholder: "Search",
                 focusRequest: appState.modelsSearchFocusRequest
             )
-            .frame(maxWidth: 320)
-
-            Spacer(minLength: 0)
+            .frame(width: 200)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
     }
 
     private var trimmedSearchText: String {

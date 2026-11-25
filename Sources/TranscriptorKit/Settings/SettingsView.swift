@@ -174,50 +174,27 @@ public struct SettingsPaneDetailView: View {
 
     @ViewBuilder
     private var shortcutSections: some View {
-        Section("Global Voice Input") {
-            LabeledContent("Current Shortcut") {
-                Text(appState.recordingState.hotkey.displayString)
-                    .font(.system(.body, design: .monospaced))
+        Section {
+            LabeledContent("Shortcut") {
+                HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
             }
-
-            HotkeyRecorderButton(configuration: $appState.recordingState.hotkey)
-
-            if let conflictWarning = appState.recordingState.hotkey.obviousConflictWarning {
-                Text(conflictWarning)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            } else {
-                Text("Avoid common system shortcuts like Spotlight or input source switching.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let registrationError = appState.hotkeyRegistrationErrorMessage {
-                Text(registrationError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            Button("Restore Recommended Shortcut") {
-                appState.resetHotkeyToRecommendedDefault()
+        } header: {
+            Text("Voice Input")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(appState.recordingState.hotkey.obviousConflictWarning
+                    ?? "Click the shortcut and press a new key combination. Avoid system shortcuts like Spotlight or input source switching.")
+                if let registrationError = appState.hotkeyRegistrationErrorMessage {
+                    Text(registrationError)
+                        .foregroundStyle(.red)
+                }
             }
         }
 
         Section("Menu Shortcuts") {
-            LabeledContent("Import Audio") {
-                Text("⌘⇧I")
-                    .font(.system(.body, design: .monospaced))
-            }
-
-            LabeledContent("Find") {
-                Text("⌘F")
-                    .font(.system(.body, design: .monospaced))
-            }
-
-            LabeledContent("Settings") {
-                Text("⌘,")
-                    .font(.system(.body, design: .monospaced))
-            }
+            LabeledContent("Import Audio", value: "⌘⇧I")
+            LabeledContent("Find", value: "⌘F")
+            LabeledContent("Settings", value: "⌘,")
         }
     }
 
@@ -269,102 +246,85 @@ public struct SettingsPaneDetailView: View {
 
     @ViewBuilder
     private var storageSections: some View {
-        Section("Retention") {
+        Section {
+            LabeledContent("Transcripts") {
+                HStack(spacing: 10) {
+                    Text("\(appState.historyStore.entries.count) items, \(megabyteString(for: appState.storageUsage.historyBytes + appState.storageUsage.metadataBytes))")
+                        .foregroundStyle(.secondary)
+                    Button("Clear History…") {
+                        showClearHistoryConfirmation = true
+                    }
+                    .disabled(appState.historyStore.entries.isEmpty)
+                    .confirmationDialog(
+                        "Delete all history?",
+                        isPresented: $showClearHistoryConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete All", role: .destructive) {
+                            appState.deleteAllHistory()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone.")
+                    }
+                }
+            }
+
+            LabeledContent("Recordings") {
+                HStack(spacing: 10) {
+                    Text(megabyteString(for: appState.storageUsage.audioBytes))
+                        .foregroundStyle(.secondary)
+                    Button("Delete…") {
+                        showDeleteRecordingsConfirmation = true
+                    }
+                    .disabled(appState.storageUsage.audioBytes == 0)
+                    .confirmationDialog(
+                        "Delete all stored recordings?",
+                        isPresented: $showDeleteRecordingsConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete Recordings", role: .destructive) {
+                            appState.deleteStoredRecordings()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Audio files are deleted from this Mac. Every transcript is kept, but the recordings can no longer be played or re-transcribed.")
+                    }
+                }
+            }
+
+            if appState.storageSettings.excludesDownloadedModels {
+                LabeledContent("Downloaded models", value: megabyteString(for: appState.storageUsage.modelBytes))
+            }
+
+            LabeledContent("Total", value: megabyteString(for: appState.storageUsage.totalManagedBytes))
+        } header: {
+            Text("Usage")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                if let storageWarningMessage = appState.storageWarningMessage {
+                    Text(storageWarningMessage)
+                }
+                Text("Recordings are the audio behind your transcripts: 16 kHz mono, about 250 KB per minute, never uploaded. Deleting them keeps every transcript; Clear History removes both. How long recordings are kept is set in Recording.")
+            }
+        }
+
+        Section {
             LabeledContent("History storage limit") {
                 MegabyteStepperField(value: storageLimitBinding, range: storageLimitRange)
             }
 
             Toggle("Auto-delete oldest history when over limit", isOn: $appState.storageSettings.autoDeleteOldestHistory)
-            Toggle("Exclude downloaded model files from cap", isOn: $appState.storageSettings.excludesDownloadedModels)
+            Toggle("Exclude downloaded models from limit", isOn: $appState.storageSettings.excludesDownloadedModels)
 
-            Button("Restore Storage Defaults") {
-                appState.resetStorageDefaults()
-            }
-        }
-
-        Section("Usage") {
-            LabeledContent("Current usage") {
-                Text(megabyteString(for: appState.storageUsage.totalManagedBytes))
-            }
-
-            LabeledContent("Audio files") {
-                Text(megabyteString(for: appState.storageUsage.audioBytes))
-            }
-
-            LabeledContent("Metadata and exports") {
-                Text(megabyteString(for: appState.storageUsage.historyBytes + appState.storageUsage.metadataBytes))
-            }
-
-            if appState.storageSettings.excludesDownloadedModels {
-                LabeledContent("Model cache (excluded)") {
-                    Text(megabyteString(for: appState.storageUsage.modelBytes))
-                        .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Restore Defaults") {
+                    appState.resetStorageDefaults()
                 }
-            }
-
-            if let storageWarningMessage = appState.storageWarningMessage {
-                Text(storageWarningMessage)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        }
-
-        Section {
-            LabeledContent("Keep recordings") {
-                Text(appState.audioRetentionSettings.keepsRecordings ? "On" : "Off")
-            }
-
-            LabeledContent("Delete recordings after") {
-                Text(appState.audioRetentionSettings.keepsRecordings
-                    ? appState.audioRetentionSettings.window.title
-                    : "When transcribed")
-            }
-
-            LabeledContent("Stored audio") {
-                Text(megabyteString(for: appState.storageUsage.audioBytes))
-            }
-
-            Button("Delete Stored Recordings…", role: .destructive) {
-                showDeleteRecordingsConfirmation = true
-            }
-            .disabled(appState.storageUsage.audioBytes == 0)
-            .confirmationDialog(
-                "Delete all stored recordings?",
-                isPresented: $showDeleteRecordingsConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Recordings", role: .destructive) {
-                    appState.deleteStoredRecordings()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Audio files are deleted from this Mac. Every transcript and history item is kept, but the recordings can no longer be played or re-transcribed.")
             }
         } header: {
-            Text("Recordings")
-        } footer: {
-            Text("Dictation audio is stored as 16 kHz mono m4a — about 250 KB per minute instead of roughly 5 MB per minute for the raw device recording — and only after a transcript exists. Cloud uploads use a temporary 16 kHz mono copy; the stored file is never sent anywhere.")
-        }
-
-        Section {
-            Button("Clear History…", role: .destructive) {
-                showClearHistoryConfirmation = true
-            }
-            .disabled(appState.historyStore.entries.isEmpty)
-            .confirmationDialog(
-                "Delete all history?",
-                isPresented: $showClearHistoryConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete All", role: .destructive) {
-                    appState.deleteAllHistory()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This permanently removes every saved transcript and its recorded audio from this Mac. This can't be undone.")
-            }
-        } footer: {
-            Text("Removes all saved transcripts and their audio. Downloaded models are not affected.")
+            Text("Limit")
         }
     }
 
@@ -468,7 +428,7 @@ public struct SettingsPaneDetailView: View {
     }
 
     private func megabyteString(for bytes: Int64) -> String {
-        String(format: "%.2f MB", Double(bytes) / 1_048_576)
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

@@ -1242,10 +1242,6 @@ public final class AppState {
         voiceInputController.refreshPermissionStatus()
     }
 
-    public func resetHotkeyToRecommendedDefault() {
-        recordingState.hotkey = HotkeyConfiguration()
-    }
-
     public func resetOverlayDefaults() {
         overlayState = OverlayState()
     }

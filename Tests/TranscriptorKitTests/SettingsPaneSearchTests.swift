@@ -16,10 +16,13 @@ final class SettingsPaneSearchTests: XCTestCase {
     }
 
     func testTitleMatchIsCaseInsensitive() {
-        // The dedicated Cloud Providers pane was removed; cloud setup now lives
-        // on the Models screen, so "cloud" only matches the Privacy pane here.
-        XCTAssertEqual(SettingsPane.matching(query: "cloud"), [.privacy])
-        XCTAssertEqual(SettingsPane.matching(query: "CLOUD"), [.privacy])
+        XCTAssertTrue(SettingsPane.matching(query: "storage").contains(.storage))
+        XCTAssertEqual(SettingsPane.matching(query: "storage"), SettingsPane.matching(query: "STORAGE"))
+    }
+
+    func testHiddenPrivacyPaneIsNotSearchable() {
+        XCTAssertFalse(SettingsPane.sidebarVisiblePanes.contains(.privacy))
+        XCTAssertFalse(SettingsPane.matching(query: "privacy").contains(.privacy))
     }
 
     func testSearchTokensMatch() {
